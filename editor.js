@@ -71137,8 +71137,14 @@ var CodeEditor = React.createClass({
   // TODO: remove hist and barChart once webppl-viz stabilizes
   // ------------------------------------------------------------
   print: function (s, k, a, x) {
-    this.addResult({ type: 'text', message: x });
-    return k(s);
+    // if x has a custom printer, use it
+    if (x.__print__) {
+      return k(s, x.__print__(x));
+    } else {
+      this.addResult({ type: 'text',
+        message: typeof x == 'object' ? JSON.stringify(x) : x });
+      return k(s);
+    }
   },
   hist: function (s, k, a, samples) {
     var frequencyDict = _(samples).countBy(function (x) {
@@ -71179,7 +71185,7 @@ var CodeEditor = React.createClass({
       return _.extend({}, state, { minHeight: $resultsDiv.height() });
     });
 
-    global.localStorage.setItem('code', this.state.code); // TODO: enable only in dev mode
+    // global.localStorage.setItem('code',this.state.code); // TODO: enable only in dev mode
 
     this.setState({ newborn: false, results: [] });
 
@@ -71212,6 +71218,19 @@ var CodeEditor = React.createClass({
     };
 
     var job = function () {
+
+      // run vanilla js
+      // TODO: detect language from codemirror value, not React prop
+      if (language == 'javascript') {
+        // TODO: grey out the run button but don't show a cancel button
+        try {
+          var res = eval(code);
+          endJob({}, eval(code));
+        } catch (e) {
+          comp.addResult({ type: 'error', message: e.message, stack: e.stack });
+          cleanup();
+        }
+      }
 
       // if webppl hasn't loaded yet, wait 250ms before trying again
       if (typeof webppl == 'undefined') {
@@ -71354,6 +71373,9 @@ var setupCode = function (preEl, options) {
   });
 };
 
+var numTopStoreKeys = 0;
+
+var topStore = {};
 var globalExport = {
   setup: setupCode,
   makeResultContainer: function () {}, // this gets set by a CodeEditor instance
@@ -71382,6 +71404,33 @@ var globalExport = {
         renderProgressBar();
       }
     };
+  },
+  put: function () {
+    var item, key;
+    if (arguments.length == 1) {
+      item = arguments[0];
+    } else {
+      key = arguments[0];
+      item = arguments[1];
+    }
+    if (!key) {
+      numTopStoreKeys++;
+      key = 'r' + numTopStoreKeys;
+    }
+    topStore[key] = item;
+    var div = globalExport.makeResultContainer();
+    $(div).html('Stored item with key <span style="border: 1px solid gray; background-color: #dddddd; border-radius: 5px; padding: 0em 0.5em">' + key + '</b>').css({
+      "font-size": "12px",
+      "padding": "2px"
+    });
+  },
+  get: function (k) {
+    if (k) {
+      return topStore[k];
+    } else {
+      // when called with no argument, returns backing dictionary
+      return topStore;
+    }
   }
 };
 
