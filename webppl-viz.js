@@ -22067,7 +22067,7 @@ function truncateOnWord(s, len, rev) {
 var truncate_word_re = /([\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u180E\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u2028\u2029\u3000\uFEFF])/;
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":196}],10:[function(require,module,exports){
+},{"buffer":197}],10:[function(require,module,exports){
 "use strict";
 (function (AggregateOp) {
     AggregateOp[AggregateOp["VALUES"] = 'values'] = "VALUES";
@@ -28677,7 +28677,7 @@ load.headers = {};
 
 module.exports = load;
 
-},{"../util":76,"fs":196,"request":196,"sync-request":196,"url":196}],69:[function(require,module,exports){
+},{"../util":76,"fs":197,"request":197,"sync-request":197,"url":197}],69:[function(require,module,exports){
 var util = require('../util'),
   type = require('./type'),
   formats = require('./formats'),
@@ -29853,7 +29853,7 @@ function get_format(pattern, type) {
 arguments[4][8][0].apply(exports,arguments)
 },{"d3-time":52,"dup":8}],76:[function(require,module,exports){
 arguments[4][9][0].apply(exports,arguments)
-},{"buffer":196,"dup":9}],77:[function(require,module,exports){
+},{"buffer":197,"dup":9}],77:[function(require,module,exports){
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
   typeof define === 'function' && define.amd ? define(['exports'], factory) :
@@ -46505,97 +46505,48 @@ module.exports = dl.extend(u, dl);
 
 var _ = require('underscore');
 var d3 = require('d3');
-var insertCss = require('insert-css');
-
 var $ = require('jquery');
 
 var vl = require('vega-lite');
 var vg = require('vega');
 
-function isErpWithSupport(x) {
+function isErp(x) {
   // TODO: take from dippl
-  return true;
+  return x.support && x.score;
 }
 
-var cssInjected = false;
 
+// a data frame is an array of objects where
+// all objects have the same keys
+function isDataFrame(arr) {
+  var first_keys = _.keys(arr[0]);
+  if (first_keys.length > 0) {
+    //check if same keys all the way through
+    for (var i=0; i<arr.length; i++) {
+      var ith_keys = _.keys(arr[i]);
+      for (var j=0; j<arr.length; j++) {
+        if (ith_keys[j] != first_keys[j]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
+var print = require('./old').print;
 
 var wait = function(ms,f) {
   setTimeout(f,ms);
 }
-// TODO: switch to vega completely
 
-var numPlots = 0;
-
-var cssFileContents = "svg {\n}\n\n.bar {\n\tfill: steelblue;\n}\n\n.axis text {\n\tfont: 10px sans-serif;\n}\n\n.axis path,\n.axis line {\n\tfill: none;\n\tstroke: #000;\n\tshape-rendering: crispEdges;\n}\n\n.line {\n\tfill: none;\n\tstroke: steelblue;\n\tstroke-width: 1.5px;\n}\n\n.marginals {\n\tpadding: 30px;\n}\n\n.scatters {\n\tpadding: 30px;\n}\n\n.plot_header {\n\tdisplay: block;\n\tmargin: auto auto;\n\ttext-align: center;\n}\n";
-
-function print(x) {
-  // TODO: remove this once i switch print() to vega
-  if (!cssInjected) {
-    insertCss(cssFileContents)
-    cssInjected = true;
-  }
-
-  // name the plots to keep compatibility with the rest of erin's code
-  var _resultDiv = wpEditor.makeResultContainer();
-  var resultDiv = $(_resultDiv);
-  var resultDivId = "_v" + numPlots;
-  resultDiv.attr("id", resultDivId);
-  numPlots = numPlots + 1;
-
-
-  if (isErpWithSupport(x)){
-    // console.log("isErpWithSupport");
-    var params = Array.prototype.slice.call(arguments, 2);
-    var labels = x.support(params);
-    var scores = _.map(labels, function(label){return x.score(params, label);});
-    // TODO: npm install underscore
-    if (_.find(scores, isNaN) !== undefined){
-      resultDiv.append(document.createTextNode("ERP with NaN scores!\n"));
-      return;
-    }
-    var counts = scores.map(Math.exp);
-    var resultDivSelector = "#" + resultDiv.attr('id');
-
-    //var resultDivSelector = resultDiv[0];
-
-    // // what kind of plot should I show?
-    if (isDataFrame(labels)) {
-      // console.log("isDataFrame");
-      plotMarginals(labels, counts, resultDivSelector);
-    } else {
-      // if not a dataframe, (currently) assume that support is just a single variable
-      // (rather than, say, a ragged structure like [{x: 1},{x:1, y:2}, ...])
-
-      // console.log("is not DataFrame");
-      var result_div = d3.select(resultDivSelector);
-      var plotid = "plot" + resultDiv.children().length;
-      var plot_div = result_div.append("svg")
-        .attr("id", plotid);
-      plotSingleVariable(labels, counts, resultDivSelector + " #" + plotid, graph_width, graph_height, "");
-    }
-  } else if (isNumericErpObject(x)) {
-    // Q: do we ever actually enter this branch? my understanding is that numericErpObject are special types of erpWithSupports
-    var keys = Object.keys(x);
-    for (var i=0; i<keys.length; i++) {
-      var key = keys[i];
-      var erp = x[key]
-      var labels = erp.support();
-      var scores = _.map(labels, function(label){return erp.score([], label);});
-      var counts = scores.map(Math.exp);
-      var resultDivSelector = "#" + resultDiv.attr('id');
-      var result_div = d3.select(resultDivSelector);
-      var plotid = "plot" + resultDiv.children().length;
-      var plot_div = result_div.append("svg")
-        .attr("id", plotid);
-      plotSingleVariable(labels, counts, resultDivSelector + " #" + plotid, graph_width/2, graph_height/2, key);
-    }
+var stringify = function(x) {
+  if (typeof x == 'object') {
+    return JSON.stringify(x)
   } else {
-    // console.log("is not ErpWithSupport");
-    //otherwise, stringify and print
-    resultDiv.append(
-      document.createTextNode(
-        JSON.stringify(x) + "\n"));
+    return x + '';
   }
 }
 
@@ -46880,7 +46831,6 @@ kindPrinter.crr = function(types, support, scores) {
 }
 
 
-
 var vegaPrint = function(obj) {
   var getColumnType = function(columnValues) {
     // for now, support real, integer, and categorical
@@ -46906,8 +46856,14 @@ var vegaPrint = function(obj) {
     )
   };
 
-  if (isErpWithSupport(obj)) {
+  if (isErp(obj)) {
     var support = obj.support();
+
+    if (!isDataFrame(support)) {
+      return table(obj);
+    }
+
+    var supportStringified = obj.support().map(function(x) { return _.mapObject(x,stringify) });
     var scores = _.map(support,
                        function(state){return obj.score(null, state);});
 
@@ -46923,11 +46879,298 @@ var vegaPrint = function(obj) {
         .join('');
 
     if (_.has(kindPrinter, dfKind)) {
-      kindPrinter[dfKind](columnTypesDict, support, scores);
+      // NB: passes in supportStringified, not support
+      kindPrinter[dfKind](columnTypesDict, supportStringified, scores);
     } else {
+      console.log(dfKind)
       throw new Error('viz.print() doesn\'t know how to render objects of kind ' + dfKind);
     }
 
+    // TODO: fall back to table when obj is not a data frame
+
+  }
+}
+
+function parseVl(vlSpec) {
+  var vgSpec = vl.compile(vlSpec).spec;
+
+  var resultContainer = wpEditor.makeResultContainer();
+  var tempDiv = document.createElement('div');
+
+  $(resultContainer).text('rendering...')
+
+  vg.parse.spec(vgSpec,
+                function(error, chart) {
+                  $(resultContainer).empty();
+                  chart({el:resultContainer,renderer: 'svg'}).update();
+                });
+}
+
+
+// TODO: maybe a better function signature is
+// bar([{<key1>: ..., <key2>: ...])
+// and we map key1 to x, key2 to y
+//.. i wish javascript had types and multiple dispatch
+var bar = function(xs,ys, opts) {
+  opts = _.defaults(opts || {},
+                    {xLabel: 'x',
+                     yLabel: 'y'});
+
+  var data = _.zip(xs,ys).map(function(pair) {
+    return {x: pair[0], y: pair[1]}
+  })
+
+  var vlSpec = {
+    "data": {"values": data},
+    "mark": "bar",
+    encoding: {
+      x: {"type": "nominal", "field": "x", axis: {title: opts.xLabel}},
+      y: {"type": "quantitative", "field": "y", axis: {title: opts.yLabel}}
+    },
+    config: {numberFormat: "f"}
+  };
+
+  parseVl(vlSpec);
+}
+
+var hist = function(x) {
+  if (isErp(x)) {
+    var erp = x;
+    var labels = erp.support();
+    var labelsStringified = labels.map(function(x) { return JSON.stringify(x) })
+    var probs = labels.map(function(x) { return Math.exp(erp.score(null, x)) });
+    bar(labelsStringified, probs, {xLabel: 'Value', yLabel: 'Probability'})
+  } else {
+    var samples = x;
+    var frequencyDict = _(samples).countBy(function(x) { return typeof x === 'string' ? x : JSON.stringify(x) });
+    var labels = _(frequencyDict).keys();
+    var counts = _(frequencyDict).values();
+    bar(labels, counts, {xLabel: 'Value', yLabel: 'Frequency'})
+  }
+};
+
+// TODO: rename to scatter after porting erin's vizPrint code to vega
+var _scatter = function(xs, ys, opts) {
+  opts = _.defaults(opts || {},
+                    {xLabel: 'x',
+                     yLabel: 'y'});
+
+  var data = _.zip(xs,ys).map(function(pair) {
+    return {x: pair[0], y: pair[1]}
+  })
+
+  var vlSpec = {
+    "data": {"values": data},
+    "mark": "point",
+    "encoding": {
+      "x": {"field": "x","type": "quantitative", axis: {title: opts.xLabel}},
+      "y": {"field": "y","type": "quantitative", axis: {title: opts.yLabel}}
+    }
+  }
+
+  parseVl(vlSpec);
+}
+
+// TODO: density visualizations can be misleading at the bounds
+// input: a list of samples and, optionally, a kernel function
+// output: a list of estimated densities (range is min to max and number
+// of bins is (max-min) / (1.06 * s * n^(-.02))
+var kde = function(samps, kernel) {
+  if (kernel === undefined || typeof kernel !== 'function') {
+    kernel = function(u) {
+      return Math.abs(u) <= 1 ? .75 * (1 - u * u) : 0;
+    };
+  }
+
+  // get optimal bandwidth
+  // HT http://en.wikipedia.org/wiki/Kernel_density_estimation#Practical_estimation_of_the_bandwidth
+  var n = samps.length;
+  var mean = samps.reduce(function(x,y) { return x + y })/n;
+
+  var s = Math.sqrt(samps.reduce(function(acc, x) {
+    return acc + Math.pow(x - mean, 2)
+  }) / (n-1));
+
+  var bandwidth = 1.06 * s * Math.pow(n, -0.2);
+
+  var min = _.min(samps);
+  var max = _.max(samps);
+
+  var numBins = (max - min) / bandwidth;
+
+  var results = [];
+
+  for (var i = 0; i <= numBins; i++) {
+    var x = min + bandwidth * i;
+    var kernelSum = 0;
+    for (var j = 0; j < samps.length; j++) {
+      kernelSum += kernel((x - samps[j]) / bandwidth);
+    }
+    results.push({item: x, density: kernelSum / (n * bandwidth)});
+  }
+  return results;
+}
+
+var kde2d = function(samps) {
+  // mimics kde2d from the MASS package in R
+  // uses axis-aligned gaussian kernel
+
+
+}
+
+// TODO: should you be able to pass this an erp too?
+var density = function(samples) {
+  var densityEstimate = kde(samples);
+
+  var vlSpec = {
+    "data": {values: densityEstimate},
+    "mark": "area",
+    "encoding": {
+      "x": {"field": "item", "type": "quantitative", axis: {title: 'Value'}},
+      "y": {"field": "density","type": "quantitative", axis: {title: 'Density'}}
+    },
+    "config": {"mark": {"interpolate": "monotone"}}
+  };
+
+  parseVl(vlSpec);
+}
+
+// TODO: show points
+var line = function(xs, ys) {
+  var data = _.zip(xs,ys).map(function(pair) { return {x: pair[0], y: pair[1]}})
+
+  var vlSpec = {
+    "data": {values: data},
+    "mark": "line",
+    "encoding": {
+      "x": {"field": "x", "type": "quantitative", axis: {title: 'x'}},
+      "y": {"field": "y","type": "quantitative", axis: {title: 'y'}}
+    }
+  };
+
+  parseVl(vlSpec);
+}
+
+// visualize an erp as a table
+// TODO: if support items all have the same keys, expand them out
+// TODO, maybe one day: make this a fancy react widget with sortable columns
+// and smart hiding if there are too many rows
+var table = function(obj, options) {
+  if (options === undefined)
+    options = {}
+  options = _.defaults(options, {log: false})
+
+  if (isErp(obj)) {
+    var support = obj.support();
+    var scores = support.map(function(state) { return obj.score(null,state) });
+
+    var sortedZipped = _.sortBy(_.zip(support, scores),function(z) {
+      return -z[1]
+    });
+
+    var tableString = '<table class="wviz-table"><tr><th>state</th><th>' + (options.log ? 'log probability' : 'probability') + '</th>';
+
+    sortedZipped.forEach(function(pair) {
+      var state = pair[0];
+      var score = pair[1];
+      tableString += "<tr><td>" + JSON.stringify(state) + "</td><td>" + (options.log ? score : Math.exp(score)) + "</td>"
+    })
+
+    var resultContainer = wpEditor.makeResultContainer();
+    resultContainer.innerHTML = tableString;
+
+  }
+}
+
+global.viz = {
+  print: print,
+  vegaPrint: vegaPrint,
+  bar: bar,
+  hist: hist,
+  scatter: _scatter,
+  density: density,
+  line: line,
+  table: table
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./old":196,"d3":1,"jquery":3,"underscore":4,"vega":48,"vega-lite":47}],196:[function(require,module,exports){
+
+var insertCss = require('insert-css');
+
+var numPlots = 0;
+
+var cssInjected = false;
+
+var cssFileContents = "svg {\n}\n\n.bar {\n\tfill: steelblue;\n}\n\n.axis text {\n\tfont: 10px sans-serif;\n}\n\n.axis path,\n.axis line {\n\tfill: none;\n\tstroke: #000;\n\tshape-rendering: crispEdges;\n}\n\n.line {\n\tfill: none;\n\tstroke: steelblue;\n\tstroke-width: 1.5px;\n}\n\n.marginals {\n\tpadding: 30px;\n}\n\n.scatters {\n\tpadding: 30px;\n}\n\n.plot_header {\n\tdisplay: block;\n\tmargin: auto auto;\n\ttext-align: center;\n}\n\n.wviz-table {\n    border-collapse: collapse;\n    margin: 0.5em;\n    font-size: 12px;\n}\n\n.wviz-table th, .wviz-table tr, .wviz-table td {\n    border: 1px solid #ccc;\n}\n\n.wviz-table th, .wviz-table td {\n    padding: 0.2em 0.4em\n}\n";
+
+function print(x) {
+  // TODO: remove this once i switch print() to vega
+  if (!cssInjected) {
+    insertCss(cssFileContents)
+    cssInjected = true;
+  }
+
+  // name the plots to keep compatibility with the rest of erin's code
+  var _resultDiv = wpEditor.makeResultContainer();
+  var resultDiv = $(_resultDiv);
+  var resultDivId = "_v" + numPlots;
+  resultDiv.attr("id", resultDivId);
+  numPlots = numPlots + 1;
+
+
+  if (isErpWithSupport(x)){
+    // console.log("isErpWithSupport");
+    var params = Array.prototype.slice.call(arguments, 2);
+    var labels = x.support(params);
+    var scores = _.map(labels, function(label){return x.score(params, label);});
+    // TODO: npm install underscore
+    if (_.find(scores, isNaN) !== undefined){
+      resultDiv.append(document.createTextNode("ERP with NaN scores!\n"));
+      return;
+    }
+    var counts = scores.map(Math.exp);
+    var resultDivSelector = "#" + resultDiv.attr('id');
+
+    //var resultDivSelector = resultDiv[0];
+
+    // // what kind of plot should I show?
+    if (isDataFrame(labels)) {
+      // console.log("isDataFrame");
+      plotMarginals(labels, counts, resultDivSelector);
+    } else {
+      // if not a dataframe, (currently) assume that support is just a single variable
+      // (rather than, say, a ragged structure like [{x: 1},{x:1, y:2}, ...])
+
+      // console.log("is not DataFrame");
+      var result_div = d3.select(resultDivSelector);
+      var plotid = "plot" + resultDiv.children().length;
+      var plot_div = result_div.append("svg")
+          .attr("id", plotid);
+      plotSingleVariable(labels, counts, resultDivSelector + " #" + plotid, graph_width, graph_height, "");
+    }
+  } else if (isNumericErpObject(x)) {
+    // Q: do we ever actually enter this branch? my understanding is that numericErpObject are special types of erpWithSupports
+    var keys = Object.keys(x);
+    for (var i=0; i<keys.length; i++) {
+      var key = keys[i];
+      var erp = x[key]
+      var labels = erp.support();
+      var scores = _.map(labels, function(label){return erp.score([], label);});
+      var counts = scores.map(Math.exp);
+      var resultDivSelector = "#" + resultDiv.attr('id');
+      var result_div = d3.select(resultDivSelector);
+      var plotid = "plot" + resultDiv.children().length;
+      var plot_div = result_div.append("svg")
+        .attr("id", plotid);
+      plotSingleVariable(labels, counts, resultDivSelector + " #" + plotid, graph_width/2, graph_height/2, key);
+    }
+  } else {
+    // console.log("is not ErpWithSupport");
+    //otherwise, stringify and print
+    resultDiv.append(
+      document.createTextNode(
+        JSON.stringify(x) + "\n"));
   }
 }
 
@@ -46940,7 +47183,7 @@ var graph_height = 300;
 var make_chart = function(container_selector, margin, width, height) {
   // initialize empty chart
   var chart = d3.select(container_selector)
-    .attr("width", width + margin.left + margin.right)
+      .attr("width", width + margin.left + margin.right)
     .attr("height", height + margin.top + margin.bottom)
     .append("g")
   // for all the elements in the chart, move to allow desired margins
@@ -46995,8 +47238,8 @@ var make_y_scale = function(chart, width, height, type, params) {
     console.log("error 93: not a valid type: " + type);
   }
   var yAxis = d3.svg.axis()
-      .scale(y)
-      .orient("left");
+    .scale(y)
+    .orient("left");
   var y_axis_drawn = chart.append("g")
     .attr("class", "y axis")
     .call(yAxis);
@@ -47135,7 +47378,7 @@ var heat_map = function(cat1_values, cat2_values, probabilities, container_selec
   // console.log(_.map(data, function(datum) {return datum.probability;}));
   // console.log(maxprob);
   var color_scale = d3.scale.linear()
-      .domain([0, maxprob])
+    .domain([0, maxprob])
     .range(["white", "steelblue"]);
 
   chart.selectAll(".tile")
@@ -47382,191 +47625,8 @@ function plotMarginals(labels, counts, resultDivSelector) {
   }
 }
 
-function parseVl(vlSpec) {
-  var vgSpec = vl.compile(vlSpec).spec;
+module.exports = {print: print}
 
-  var resultContainer = wpEditor.makeResultContainer();
-  var tempDiv = document.createElement('div');
-
-  $(resultContainer).text('rendering...')
-
-  vg.parse.spec(vgSpec,
-                function(error, chart) {
-                  $(resultContainer).empty();
-                  chart({el:resultContainer,renderer: 'svg'}).update();
-                });
-}
-
-// TODO: maybe a better function signature is
-// bar([{<key1>: ..., <key2>: ...])
-// and we map key1 to x, key2 to y
-//.. i wish javascript had types and multiple dispatch
-var bar = function(xs,ys, opts) {
-  opts = _.defaults(opts || {},
-                    {xLabel: 'x',
-                     yLabel: 'y'});
-
-  var data = _.zip(xs,ys).map(function(pair) {
-    return {x: pair[0], y: pair[1]}
-  })
-
-  var vlSpec = {
-    "data": {"values": data},
-    "mark": "bar",
-    encoding: {
-      x: {"type": "nominal", "field": "x", axis: {title: opts.xLabel}},
-      y: {"type": "quantitative", "field": "y", axis: {title: opts.yLabel}}
-    },
-    config: {numberFormat: "f"}
-  };
-
-  parseVl(vlSpec);
-}
-
-var hist = function(samples) {
-  var frequencyDict = _(samples).countBy(function(x) { return typeof x === 'string' ? x : JSON.stringify(x) });
-  var labels = _(frequencyDict).keys();
-  var counts = _(frequencyDict).values();
-  bar(labels, counts, {xLabel: 'Value', yLabel: 'Frequency'})
-};
-
-// TODO: rename to scatter after porting erin's vizPrint code to vega
-var _scatter = function(xs, ys, opts) {
-  opts = _.defaults(opts || {},
-                    {xLabel: 'x',
-                     yLabel: 'y'});
-
-  var data = _.zip(xs,ys).map(function(pair) {
-    return {x: pair[0], y: pair[1]}
-  })
-
-  var vlSpec = {
-    "data": {"values": data},
-    "mark": "point",
-    "encoding": {
-      "x": {"field": "x","type": "quantitative", axis: {title: opts.xLabel}},
-      "y": {"field": "y","type": "quantitative", axis: {title: opts.yLabel}}
-    }
-  }
-
-  parseVl(vlSpec);
-}
-
-// TODO: density visualizations can be misleading at the bounds
-// input: a list of samples and, optionally, a kernel function
-// output: a list of estimated densities (range is min to max and number
-// of bins is (max-min) / (1.06 * s * n^(-.02))
-var kde = function(samps, kernel) {
-  if (kernel === undefined || typeof kernel !== 'function') {
-    kernel = function(u) {
-      return Math.abs(u) <= 1 ? .75 * (1 - u * u) : 0;
-    };
-  }
-
-  // get optimal bandwidth
-  // HT http://en.wikipedia.org/wiki/Kernel_density_estimation#Practical_estimation_of_the_bandwidth
-  var n = samps.length;
-  var mean = samps.reduce(function(x,y) { return x + y })/n;
-
-  var s = Math.sqrt(samps.reduce(function(acc, x) {
-    return acc + Math.pow(x - mean, 2)
-  }) / (n-1));
-
-  var bandwidth = 1.06 * s * Math.pow(n, -0.2);
-
-  var min = _.min(samps);
-  var max = _.max(samps);
-
-  var numBins = (max - min) / bandwidth;
-
-  var results = [];
-
-  for (var i = 0; i <= numBins; i++) {
-    var x = min + bandwidth * i;
-    var kernelSum = 0;
-    for (var j = 0; j < samps.length; j++) {
-      kernelSum += kernel((x - samps[j]) / bandwidth);
-    }
-    results.push({item: x, density: kernelSum / (n * bandwidth)});
-  }
-  return results;
-}
-
-var density = function(samples) {
-  var densityEstimate = kde(samples);
-
-  var vlSpec = {
-    "data": {values: densityEstimate},
-    "mark": "area",
-    "encoding": {
-      "x": {"field": "item", "type": "quantitative", axis: {title: 'Value'}},
-      "y": {"field": "density","type": "quantitative", axis: {title: 'Density'}}
-    },
-    "config": {"mark": {"interpolate": "monotone"}}
-  };
-
-  parseVl(vlSpec);
-}
-
-// TODO: show points
-var line = function(xs, ys) {
-  var data = _.zip(xs,ys).map(function(pair) { return {x: pair[0], y: pair[1]}})
-
-  var vlSpec = {
-    "data": {values: data},
-    "mark": "line",
-    "encoding": {
-      "x": {"field": "x", "type": "quantitative", axis: {title: 'x'}},
-      "y": {"field": "y","type": "quantitative", axis: {title: 'y'}}
-    }
-  };
-
-  parseVl(vlSpec);
-}
-
-// visualize an erp as a table
-// TODO: if support items all have the same keys, expand them out
-// TODO, maybe one day: make this a fancy react widget with sortable columns
-// and smart hiding if there are too many rows
-var table = function(obj, options) {
-  if (options === undefined)
-    options = {}
-  options = _.defaults(options, {log: false})
-
-  if (isErpWithSupport(obj)) {
-    var support = obj.support();
-    var scores = support.map(function(state) { return obj.score(null,state) });
-
-    var sortedZipped = _.sortBy(_.zip(support, scores),function(z) {
-      return -z[1]
-    });
-
-    var tableString = '<table><tr><th>state</th><th>' + (options.log ? 'log probability' : 'probability') + '</th>';
-
-    sortedZipped.forEach(function(pair) {
-      var state = pair[0];
-      var score = pair[1];
-      tableString += "<tr><td>" + JSON.stringify(state) + "</td><td>" + (options.log ? score : Math.exp(score)) + "</td>"
-    })
-
-    var resultContainer = wpEditor.makeResultContainer();
-    resultContainer.innerHTML = tableString;
-
-  }
-}
-
-global.viz = {
-  print: print,
-  vegaPrint: vegaPrint,
-  bar: bar,
-  hist: hist,
-  scatter: _scatter,
-  density: density,
-  line: line,
-  table: table
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"d3":1,"insert-css":2,"jquery":3,"underscore":4,"vega":48,"vega-lite":47}],196:[function(require,module,exports){
+},{"insert-css":2}],197:[function(require,module,exports){
 
 },{}]},{},[195]);
