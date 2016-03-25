@@ -1,5 +1,5 @@
-webppl-viz.js is the browserified package from the master branch (update using `update.sh`)
+demo website for webppl-viz
 
-webppl.js is a hard-linked dependency from webppl
+this is more or less a mirror of the demo/ directory in the master branch.
 
-editor.js and editor.css are hard-linked dependencies from webppl-viz
+to sync with that, run `update.sh` (this assumes that you have a repo of the master branch in `../wviz/`)
