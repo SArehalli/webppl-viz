@@ -1014,6 +1014,311 @@ module.exports = {
 }
 
 },{}],6:[function(require,module,exports){
+(function (process,__filename){
+/** vim: et:ts=4:sw=4:sts=4
+ * @license amdefine 1.0.0 Copyright (c) 2011-2015, The Dojo Foundation All Rights Reserved.
+ * Available via the MIT or new BSD license.
+ * see: http://github.com/jrburke/amdefine for details
+ */
+
+/*jslint node: true */
+/*global module, process */
+'use strict';
+
+/**
+ * Creates a define for node.
+ * @param {Object} module the "module" object that is defined by Node for the
+ * current module.
+ * @param {Function} [requireFn]. Node's require function for the current module.
+ * It only needs to be passed in Node versions before 0.5, when module.require
+ * did not exist.
+ * @returns {Function} a define function that is usable for the current node
+ * module.
+ */
+function amdefine(module, requireFn) {
+    'use strict';
+    var defineCache = {},
+        loaderCache = {},
+        alreadyCalled = false,
+        path = require('path'),
+        makeRequire, stringRequire;
+
+    /**
+     * Trims the . and .. from an array of path segments.
+     * It will keep a leading path segment if a .. will become
+     * the first path segment, to help with module name lookups,
+     * which act like paths, but can be remapped. But the end result,
+     * all paths that use this function should look normalized.
+     * NOTE: this method MODIFIES the input array.
+     * @param {Array} ary the array of path segments.
+     */
+    function trimDots(ary) {
+        var i, part;
+        for (i = 0; ary[i]; i+= 1) {
+            part = ary[i];
+            if (part === '.') {
+                ary.splice(i, 1);
+                i -= 1;
+            } else if (part === '..') {
+                if (i === 1 && (ary[2] === '..' || ary[0] === '..')) {
+                    //End of the line. Keep at least one non-dot
+                    //path segment at the front so it can be mapped
+                    //correctly to disk. Otherwise, there is likely
+                    //no path mapping for a path starting with '..'.
+                    //This can still fail, but catches the most reasonable
+                    //uses of ..
+                    break;
+                } else if (i > 0) {
+                    ary.splice(i - 1, 2);
+                    i -= 2;
+                }
+            }
+        }
+    }
+
+    function normalize(name, baseName) {
+        var baseParts;
+
+        //Adjust any relative paths.
+        if (name && name.charAt(0) === '.') {
+            //If have a base name, try to normalize against it,
+            //otherwise, assume it is a top-level require that will
+            //be relative to baseUrl in the end.
+            if (baseName) {
+                baseParts = baseName.split('/');
+                baseParts = baseParts.slice(0, baseParts.length - 1);
+                baseParts = baseParts.concat(name.split('/'));
+                trimDots(baseParts);
+                name = baseParts.join('/');
+            }
+        }
+
+        return name;
+    }
+
+    /**
+     * Create the normalize() function passed to a loader plugin's
+     * normalize method.
+     */
+    function makeNormalize(relName) {
+        return function (name) {
+            return normalize(name, relName);
+        };
+    }
+
+    function makeLoad(id) {
+        function load(value) {
+            loaderCache[id] = value;
+        }
+
+        load.fromText = function (id, text) {
+            //This one is difficult because the text can/probably uses
+            //define, and any relative paths and requires should be relative
+            //to that id was it would be found on disk. But this would require
+            //bootstrapping a module/require fairly deeply from node core.
+            //Not sure how best to go about that yet.
+            throw new Error('amdefine does not implement load.fromText');
+        };
+
+        return load;
+    }
+
+    makeRequire = function (systemRequire, exports, module, relId) {
+        function amdRequire(deps, callback) {
+            if (typeof deps === 'string') {
+                //Synchronous, single module require('')
+                return stringRequire(systemRequire, exports, module, deps, relId);
+            } else {
+                //Array of dependencies with a callback.
+
+                //Convert the dependencies to modules.
+                deps = deps.map(function (depName) {
+                    return stringRequire(systemRequire, exports, module, depName, relId);
+                });
+
+                //Wait for next tick to call back the require call.
+                if (callback) {
+                    process.nextTick(function () {
+                        callback.apply(null, deps);
+                    });
+                }
+            }
+        }
+
+        amdRequire.toUrl = function (filePath) {
+            if (filePath.indexOf('.') === 0) {
+                return normalize(filePath, path.dirname(module.filename));
+            } else {
+                return filePath;
+            }
+        };
+
+        return amdRequire;
+    };
+
+    //Favor explicit value, passed in if the module wants to support Node 0.4.
+    requireFn = requireFn || function req() {
+        return module.require.apply(module, arguments);
+    };
+
+    function runFactory(id, deps, factory) {
+        var r, e, m, result;
+
+        if (id) {
+            e = loaderCache[id] = {};
+            m = {
+                id: id,
+                uri: __filename,
+                exports: e
+            };
+            r = makeRequire(requireFn, e, m, id);
+        } else {
+            //Only support one define call per file
+            if (alreadyCalled) {
+                throw new Error('amdefine with no module ID cannot be called more than once per file.');
+            }
+            alreadyCalled = true;
+
+            //Use the real variables from node
+            //Use module.exports for exports, since
+            //the exports in here is amdefine exports.
+            e = module.exports;
+            m = module;
+            r = makeRequire(requireFn, e, m, module.id);
+        }
+
+        //If there are dependencies, they are strings, so need
+        //to convert them to dependency values.
+        if (deps) {
+            deps = deps.map(function (depName) {
+                return r(depName);
+            });
+        }
+
+        //Call the factory with the right dependencies.
+        if (typeof factory === 'function') {
+            result = factory.apply(m.exports, deps);
+        } else {
+            result = factory;
+        }
+
+        if (result !== undefined) {
+            m.exports = result;
+            if (id) {
+                loaderCache[id] = m.exports;
+            }
+        }
+    }
+
+    stringRequire = function (systemRequire, exports, module, id, relId) {
+        //Split the ID by a ! so that
+        var index = id.indexOf('!'),
+            originalId = id,
+            prefix, plugin;
+
+        if (index === -1) {
+            id = normalize(id, relId);
+
+            //Straight module lookup. If it is one of the special dependencies,
+            //deal with it, otherwise, delegate to node.
+            if (id === 'require') {
+                return makeRequire(systemRequire, exports, module, relId);
+            } else if (id === 'exports') {
+                return exports;
+            } else if (id === 'module') {
+                return module;
+            } else if (loaderCache.hasOwnProperty(id)) {
+                return loaderCache[id];
+            } else if (defineCache[id]) {
+                runFactory.apply(null, defineCache[id]);
+                return loaderCache[id];
+            } else {
+                if(systemRequire) {
+                    return systemRequire(originalId);
+                } else {
+                    throw new Error('No module with ID: ' + id);
+                }
+            }
+        } else {
+            //There is a plugin in play.
+            prefix = id.substring(0, index);
+            id = id.substring(index + 1, id.length);
+
+            plugin = stringRequire(systemRequire, exports, module, prefix, relId);
+
+            if (plugin.normalize) {
+                id = plugin.normalize(id, makeNormalize(relId));
+            } else {
+                //Normalize the ID normally.
+                id = normalize(id, relId);
+            }
+
+            if (loaderCache[id]) {
+                return loaderCache[id];
+            } else {
+                plugin.load(id, makeRequire(systemRequire, exports, module, relId), makeLoad(id), {});
+
+                return loaderCache[id];
+            }
+        }
+    };
+
+    //Create a define function specific to the module asking for amdefine.
+    function define(id, deps, factory) {
+        if (Array.isArray(id)) {
+            factory = deps;
+            deps = id;
+            id = undefined;
+        } else if (typeof id !== 'string') {
+            factory = id;
+            id = deps = undefined;
+        }
+
+        if (deps && !Array.isArray(deps)) {
+            factory = deps;
+            deps = undefined;
+        }
+
+        if (!deps) {
+            deps = ['require', 'exports', 'module'];
+        }
+
+        //Set up properties for this module. If an ID, then use
+        //internal cache. If no ID, then use the external variables
+        //for this node module.
+        if (id) {
+            //Put the module in deep freeze until there is a
+            //require call for it.
+            defineCache[id] = [id, deps, factory];
+        } else {
+            runFactory(id, deps, factory);
+        }
+    }
+
+    //define.require, which has access to all the values in the
+    //cache. Useful for AMD modules that all have IDs in the file,
+    //but need to finally export a value to node based on one of those
+    //IDs.
+    define.require = function (id) {
+        if (loaderCache[id]) {
+            return loaderCache[id];
+        }
+
+        if (defineCache[id]) {
+            runFactory.apply(null, defineCache[id]);
+            return loaderCache[id];
+        }
+    };
+
+    define.amd = {};
+
+    return define;
+}
+
+module.exports = amdefine;
+
+}).call(this,require('_process'),"/node_modules/amdefine/amdefine.js")
+},{"_process":385,"path":384}],7:[function(require,module,exports){
 require("./es7");
 
 var types = require("../lib/types");
@@ -1120,7 +1425,7 @@ def("CommentLine")
     .bases("Comment")
     .build("value", /*optional:*/ "leading", "trailing");
 
-},{"../lib/shared":19,"../lib/types":20,"./es7":10}],7:[function(require,module,exports){
+},{"../lib/shared":20,"../lib/types":21,"./es7":11}],8:[function(require,module,exports){
 var types = require("../lib/types");
 var Type = types.Type;
 var def = Type.def;
@@ -1489,7 +1794,7 @@ def("Comment")
     .field("leading", Boolean, defaults["true"])
     .field("trailing", Boolean, defaults["false"]);
 
-},{"../lib/shared":19,"../lib/types":20}],8:[function(require,module,exports){
+},{"../lib/shared":20,"../lib/types":21}],9:[function(require,module,exports){
 require("./core");
 var types = require("../lib/types");
 var def = types.Type.def;
@@ -1575,7 +1880,7 @@ def("XMLProcessingInstruction")
     .field("target", String)
     .field("contents", or(String, null));
 
-},{"../lib/types":20,"./core":7}],9:[function(require,module,exports){
+},{"../lib/types":21,"./core":8}],10:[function(require,module,exports){
 require("./core");
 var types = require("../lib/types");
 var def = types.Type.def;
@@ -1794,7 +2099,7 @@ def("TemplateElement")
     .field("value", {"cooked": String, "raw": String})
     .field("tail", Boolean);
 
-},{"../lib/shared":19,"../lib/types":20,"./core":7}],10:[function(require,module,exports){
+},{"../lib/shared":20,"../lib/types":21,"./core":8}],11:[function(require,module,exports){
 require("./es6");
 
 var types = require("../lib/types");
@@ -1832,7 +2137,7 @@ def("AwaitExpression")
     .field("argument", or(def("Expression"), null))
     .field("all", Boolean, defaults["false"]);
 
-},{"../lib/shared":19,"../lib/types":20,"./es6":9}],11:[function(require,module,exports){
+},{"../lib/shared":20,"../lib/types":21,"./es6":10}],12:[function(require,module,exports){
 require("./es7");
 
 var types = require("../lib/types");
@@ -1930,7 +2235,7 @@ def("Line")
     .bases("Comment")
     .build("value", /*optional:*/ "leading", "trailing");
 
-},{"../lib/shared":19,"../lib/types":20,"./es7":10}],12:[function(require,module,exports){
+},{"../lib/shared":20,"../lib/types":21,"./es7":11}],13:[function(require,module,exports){
 require("./es7");
 
 var types = require("../lib/types");
@@ -2279,7 +2584,7 @@ def("DeclareExportDeclaration")
         null
     ), defaults["null"]);
 
-},{"../lib/shared":19,"../lib/types":20,"./es7":10}],13:[function(require,module,exports){
+},{"../lib/shared":20,"../lib/types":21,"./es7":11}],14:[function(require,module,exports){
 require("./core");
 var types = require("../lib/types");
 var def = types.Type.def;
@@ -2330,7 +2635,7 @@ def("GraphIndexExpression")
     .build("index")
     .field("index", geq(0));
 
-},{"../lib/shared":19,"../lib/types":20,"./core":7}],14:[function(require,module,exports){
+},{"../lib/shared":20,"../lib/types":21,"./core":8}],15:[function(require,module,exports){
 var types = require("../main");
 var getFieldNames = types.getFieldNames;
 var getFieldValue = types.getFieldValue;
@@ -2516,7 +2821,7 @@ function objectsAreEquivalent(a, b, problemPath) {
 
 module.exports = astNodesAreEquivalent;
 
-},{"../main":21}],15:[function(require,module,exports){
+},{"../main":22}],16:[function(require,module,exports){
 var types = require("./types");
 var n = types.namedTypes;
 var b = types.builders;
@@ -2992,7 +3297,7 @@ function cleanUpIfStatementAfterPrune(ifStatement) {
 
 module.exports = NodePath;
 
-},{"./path":17,"./scope":18,"./types":20}],16:[function(require,module,exports){
+},{"./path":18,"./scope":19,"./types":21}],17:[function(require,module,exports){
 var types = require("./types");
 var NodePath = require("./node-path");
 var Printable = types.namedTypes.Printable;
@@ -3413,7 +3718,7 @@ sharedContextProtoMethods.abort = function abort() {
 
 module.exports = PathVisitor;
 
-},{"./node-path":15,"./types":20}],17:[function(require,module,exports){
+},{"./node-path":16,"./types":21}],18:[function(require,module,exports){
 var Op = Object.prototype;
 var hasOwn = Op.hasOwnProperty;
 var types = require("./types");
@@ -3781,7 +4086,7 @@ Pp.replace = function replace(replacement) {
 
 module.exports = Path;
 
-},{"./types":20}],18:[function(require,module,exports){
+},{"./types":21}],19:[function(require,module,exports){
 var types = require("./types");
 var Type = types.Type;
 var namedTypes = types.namedTypes;
@@ -4113,7 +4418,7 @@ Sp.getGlobalScope = function() {
 
 module.exports = Scope;
 
-},{"./node-path":15,"./types":20}],19:[function(require,module,exports){
+},{"./node-path":16,"./types":21}],20:[function(require,module,exports){
 var types = require("../lib/types");
 var Type = types.Type;
 var builtin = types.builtInTypes;
@@ -4156,7 +4461,7 @@ exports.isPrimitive = new Type(function(value) {
              type === "function");
 }, naiveIsPrimitive.toString());
 
-},{"../lib/types":20}],20:[function(require,module,exports){
+},{"../lib/types":21}],21:[function(require,module,exports){
 var Ap = Array.prototype;
 var slice = Ap.slice;
 var map = Ap.map;
@@ -4986,7 +5291,7 @@ exports.finalize = function() {
     });
 };
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 var types = require("./lib/types");
 
 // This core module of AST types captures ES5 as it is parsed today by
@@ -5021,7 +5326,7 @@ exports.NodePath = require("./lib/node-path");
 exports.PathVisitor = require("./lib/path-visitor");
 exports.visit = exports.PathVisitor.visit;
 
-},{"./def/babel":6,"./def/core":7,"./def/e4x":8,"./def/es6":9,"./def/es7":10,"./def/esprima":11,"./def/fb-harmony":12,"./def/mozilla":13,"./lib/equiv":14,"./lib/node-path":15,"./lib/path-visitor":16,"./lib/types":20}],22:[function(require,module,exports){
+},{"./def/babel":7,"./def/core":8,"./def/e4x":9,"./def/es6":10,"./def/es7":11,"./def/esprima":12,"./def/fb-harmony":13,"./def/mozilla":14,"./lib/equiv":15,"./lib/node-path":16,"./lib/path-visitor":17,"./lib/types":21}],23:[function(require,module,exports){
 (function (global){
 /*
   Copyright (C) 2012-2014 Yusuke Suzuki <utatane.tea@gmail.com>
@@ -7624,7 +7929,7 @@ exports.visit = exports.PathVisitor.visit;
 /* vim: set sw=4 ts=4 et tw=80 : */
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./package.json":37,"estraverse":23,"esutils":93,"source-map":24}],23:[function(require,module,exports){
+},{"./package.json":37,"estraverse":24,"esutils":99,"source-map":25}],24:[function(require,module,exports){
 /*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
@@ -8471,7 +8776,7 @@ exports.visit = exports.PathVisitor.visit;
 }));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 /*
  * Copyright 2009-2011 Mozilla Foundation and contributors
  * Licensed under the New BSD license. See LICENSE.txt or:
@@ -8481,7 +8786,7 @@ exports.SourceMapGenerator = require('./source-map/source-map-generator').Source
 exports.SourceMapConsumer = require('./source-map/source-map-consumer').SourceMapConsumer;
 exports.SourceNode = require('./source-map/source-node').SourceNode;
 
-},{"./source-map/source-map-consumer":32,"./source-map/source-map-generator":33,"./source-map/source-node":34}],25:[function(require,module,exports){
+},{"./source-map/source-map-consumer":33,"./source-map/source-map-generator":34,"./source-map/source-node":35}],26:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -8580,7 +8885,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./util":35,"amdefine":36}],26:[function(require,module,exports){
+},{"./util":36,"amdefine":6}],27:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -8724,7 +9029,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./base64":27,"amdefine":36}],27:[function(require,module,exports){
+},{"./base64":28,"amdefine":6}],28:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -8768,7 +9073,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":36}],28:[function(require,module,exports){
+},{"amdefine":6}],29:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -9190,7 +9495,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":25,"./base64-vlq":26,"./binary-search":29,"./source-map-consumer":32,"./util":35,"amdefine":36}],29:[function(require,module,exports){
+},{"./array-set":26,"./base64-vlq":27,"./binary-search":30,"./source-map-consumer":33,"./util":36,"amdefine":6}],30:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -9272,7 +9577,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":36}],30:[function(require,module,exports){
+},{"amdefine":6}],31:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -9577,7 +9882,7 @@ define(function (require, exports, module) {
   exports.IndexedSourceMapConsumer = IndexedSourceMapConsumer;
 });
 
-},{"./basic-source-map-consumer":28,"./binary-search":29,"./source-map-consumer":32,"./util":35,"amdefine":36}],31:[function(require,module,exports){
+},{"./basic-source-map-consumer":29,"./binary-search":30,"./source-map-consumer":33,"./util":36,"amdefine":6}],32:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2014 Mozilla Foundation and contributors
@@ -9665,7 +9970,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./util":35,"amdefine":36}],32:[function(require,module,exports){
+},{"./util":36,"amdefine":6}],33:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -9889,7 +10194,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./basic-source-map-consumer":28,"./indexed-source-map-consumer":30,"./util":35,"amdefine":36}],33:[function(require,module,exports){
+},{"./basic-source-map-consumer":29,"./indexed-source-map-consumer":31,"./util":36,"amdefine":6}],34:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -10291,7 +10596,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":25,"./base64-vlq":26,"./mapping-list":31,"./util":35,"amdefine":36}],34:[function(require,module,exports){
+},{"./array-set":26,"./base64-vlq":27,"./mapping-list":32,"./util":36,"amdefine":6}],35:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -10707,7 +11012,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./source-map-generator":33,"./util":35,"amdefine":36}],35:[function(require,module,exports){
+},{"./source-map-generator":34,"./util":36,"amdefine":6}],36:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -11028,367 +11333,52 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":36}],36:[function(require,module,exports){
-(function (process,__filename){
-/** vim: et:ts=4:sw=4:sts=4
- * @license amdefine 1.0.0 Copyright (c) 2011-2015, The Dojo Foundation All Rights Reserved.
- * Available via the MIT or new BSD license.
- * see: http://github.com/jrburke/amdefine for details
- */
-
-/*jslint node: true */
-/*global module, process */
-'use strict';
-
-/**
- * Creates a define for node.
- * @param {Object} module the "module" object that is defined by Node for the
- * current module.
- * @param {Function} [requireFn]. Node's require function for the current module.
- * It only needs to be passed in Node versions before 0.5, when module.require
- * did not exist.
- * @returns {Function} a define function that is usable for the current node
- * module.
- */
-function amdefine(module, requireFn) {
-    'use strict';
-    var defineCache = {},
-        loaderCache = {},
-        alreadyCalled = false,
-        path = require('path'),
-        makeRequire, stringRequire;
-
-    /**
-     * Trims the . and .. from an array of path segments.
-     * It will keep a leading path segment if a .. will become
-     * the first path segment, to help with module name lookups,
-     * which act like paths, but can be remapped. But the end result,
-     * all paths that use this function should look normalized.
-     * NOTE: this method MODIFIES the input array.
-     * @param {Array} ary the array of path segments.
-     */
-    function trimDots(ary) {
-        var i, part;
-        for (i = 0; ary[i]; i+= 1) {
-            part = ary[i];
-            if (part === '.') {
-                ary.splice(i, 1);
-                i -= 1;
-            } else if (part === '..') {
-                if (i === 1 && (ary[2] === '..' || ary[0] === '..')) {
-                    //End of the line. Keep at least one non-dot
-                    //path segment at the front so it can be mapped
-                    //correctly to disk. Otherwise, there is likely
-                    //no path mapping for a path starting with '..'.
-                    //This can still fail, but catches the most reasonable
-                    //uses of ..
-                    break;
-                } else if (i > 0) {
-                    ary.splice(i - 1, 2);
-                    i -= 2;
-                }
-            }
-        }
-    }
-
-    function normalize(name, baseName) {
-        var baseParts;
-
-        //Adjust any relative paths.
-        if (name && name.charAt(0) === '.') {
-            //If have a base name, try to normalize against it,
-            //otherwise, assume it is a top-level require that will
-            //be relative to baseUrl in the end.
-            if (baseName) {
-                baseParts = baseName.split('/');
-                baseParts = baseParts.slice(0, baseParts.length - 1);
-                baseParts = baseParts.concat(name.split('/'));
-                trimDots(baseParts);
-                name = baseParts.join('/');
-            }
-        }
-
-        return name;
-    }
-
-    /**
-     * Create the normalize() function passed to a loader plugin's
-     * normalize method.
-     */
-    function makeNormalize(relName) {
-        return function (name) {
-            return normalize(name, relName);
-        };
-    }
-
-    function makeLoad(id) {
-        function load(value) {
-            loaderCache[id] = value;
-        }
-
-        load.fromText = function (id, text) {
-            //This one is difficult because the text can/probably uses
-            //define, and any relative paths and requires should be relative
-            //to that id was it would be found on disk. But this would require
-            //bootstrapping a module/require fairly deeply from node core.
-            //Not sure how best to go about that yet.
-            throw new Error('amdefine does not implement load.fromText');
-        };
-
-        return load;
-    }
-
-    makeRequire = function (systemRequire, exports, module, relId) {
-        function amdRequire(deps, callback) {
-            if (typeof deps === 'string') {
-                //Synchronous, single module require('')
-                return stringRequire(systemRequire, exports, module, deps, relId);
-            } else {
-                //Array of dependencies with a callback.
-
-                //Convert the dependencies to modules.
-                deps = deps.map(function (depName) {
-                    return stringRequire(systemRequire, exports, module, depName, relId);
-                });
-
-                //Wait for next tick to call back the require call.
-                if (callback) {
-                    process.nextTick(function () {
-                        callback.apply(null, deps);
-                    });
-                }
-            }
-        }
-
-        amdRequire.toUrl = function (filePath) {
-            if (filePath.indexOf('.') === 0) {
-                return normalize(filePath, path.dirname(module.filename));
-            } else {
-                return filePath;
-            }
-        };
-
-        return amdRequire;
-    };
-
-    //Favor explicit value, passed in if the module wants to support Node 0.4.
-    requireFn = requireFn || function req() {
-        return module.require.apply(module, arguments);
-    };
-
-    function runFactory(id, deps, factory) {
-        var r, e, m, result;
-
-        if (id) {
-            e = loaderCache[id] = {};
-            m = {
-                id: id,
-                uri: __filename,
-                exports: e
-            };
-            r = makeRequire(requireFn, e, m, id);
-        } else {
-            //Only support one define call per file
-            if (alreadyCalled) {
-                throw new Error('amdefine with no module ID cannot be called more than once per file.');
-            }
-            alreadyCalled = true;
-
-            //Use the real variables from node
-            //Use module.exports for exports, since
-            //the exports in here is amdefine exports.
-            e = module.exports;
-            m = module;
-            r = makeRequire(requireFn, e, m, module.id);
-        }
-
-        //If there are dependencies, they are strings, so need
-        //to convert them to dependency values.
-        if (deps) {
-            deps = deps.map(function (depName) {
-                return r(depName);
-            });
-        }
-
-        //Call the factory with the right dependencies.
-        if (typeof factory === 'function') {
-            result = factory.apply(m.exports, deps);
-        } else {
-            result = factory;
-        }
-
-        if (result !== undefined) {
-            m.exports = result;
-            if (id) {
-                loaderCache[id] = m.exports;
-            }
-        }
-    }
-
-    stringRequire = function (systemRequire, exports, module, id, relId) {
-        //Split the ID by a ! so that
-        var index = id.indexOf('!'),
-            originalId = id,
-            prefix, plugin;
-
-        if (index === -1) {
-            id = normalize(id, relId);
-
-            //Straight module lookup. If it is one of the special dependencies,
-            //deal with it, otherwise, delegate to node.
-            if (id === 'require') {
-                return makeRequire(systemRequire, exports, module, relId);
-            } else if (id === 'exports') {
-                return exports;
-            } else if (id === 'module') {
-                return module;
-            } else if (loaderCache.hasOwnProperty(id)) {
-                return loaderCache[id];
-            } else if (defineCache[id]) {
-                runFactory.apply(null, defineCache[id]);
-                return loaderCache[id];
-            } else {
-                if(systemRequire) {
-                    return systemRequire(originalId);
-                } else {
-                    throw new Error('No module with ID: ' + id);
-                }
-            }
-        } else {
-            //There is a plugin in play.
-            prefix = id.substring(0, index);
-            id = id.substring(index + 1, id.length);
-
-            plugin = stringRequire(systemRequire, exports, module, prefix, relId);
-
-            if (plugin.normalize) {
-                id = plugin.normalize(id, makeNormalize(relId));
-            } else {
-                //Normalize the ID normally.
-                id = normalize(id, relId);
-            }
-
-            if (loaderCache[id]) {
-                return loaderCache[id];
-            } else {
-                plugin.load(id, makeRequire(systemRequire, exports, module, relId), makeLoad(id), {});
-
-                return loaderCache[id];
-            }
-        }
-    };
-
-    //Create a define function specific to the module asking for amdefine.
-    function define(id, deps, factory) {
-        if (Array.isArray(id)) {
-            factory = deps;
-            deps = id;
-            id = undefined;
-        } else if (typeof id !== 'string') {
-            factory = id;
-            id = deps = undefined;
-        }
-
-        if (deps && !Array.isArray(deps)) {
-            factory = deps;
-            deps = undefined;
-        }
-
-        if (!deps) {
-            deps = ['require', 'exports', 'module'];
-        }
-
-        //Set up properties for this module. If an ID, then use
-        //internal cache. If no ID, then use the external variables
-        //for this node module.
-        if (id) {
-            //Put the module in deep freeze until there is a
-            //require call for it.
-            defineCache[id] = [id, deps, factory];
-        } else {
-            runFactory(id, deps, factory);
-        }
-    }
-
-    //define.require, which has access to all the values in the
-    //cache. Useful for AMD modules that all have IDs in the file,
-    //but need to finally export a value to node based on one of those
-    //IDs.
-    define.require = function (id) {
-        if (loaderCache[id]) {
-            return loaderCache[id];
-        }
-
-        if (defineCache[id]) {
-            runFactory.apply(null, defineCache[id]);
-            return loaderCache[id];
-        }
-    };
-
-    define.amd = {};
-
-    return define;
-}
-
-module.exports = amdefine;
-
-}).call(this,require('_process'),"/node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"_process":375,"path":374}],37:[function(require,module,exports){
+},{"amdefine":6}],37:[function(require,module,exports){
 module.exports={
-  "_args": [
-    [
-      "escodegen@^1.7.0",
-      "/Users/long/webppl"
-    ]
-  ],
-  "_from": "escodegen@>=1.7.0 <2.0.0",
-  "_id": "escodegen@1.8.0",
-  "_inCache": true,
-  "_installable": true,
-  "_location": "/escodegen",
-  "_nodeVersion": "4.1.1",
-  "_npmUser": {
-    "email": "utatane.tea@gmail.com",
-    "name": "constellation"
-  },
-  "_npmVersion": "2.14.4",
-  "_phantomChildren": {
-    "amdefine": "1.0.0",
-    "deep-is": "0.1.3",
-    "prelude-ls": "1.1.2",
-    "type-check": "0.3.2"
-  },
-  "_requested": {
-    "name": "escodegen",
-    "raw": "escodegen@^1.7.0",
-    "rawSpec": "^1.7.0",
-    "scope": null,
-    "spec": ">=1.7.0 <2.0.0",
-    "type": "range"
-  },
-  "_requiredBy": [
-    "/"
-  ],
-  "_resolved": "https://registry.npmjs.org/escodegen/-/escodegen-1.8.0.tgz",
-  "_shasum": "b246aae829ce73d59e2c55727359edd1c130a81b",
-  "_shrinkwrap": null,
-  "_spec": "escodegen@^1.7.0",
-  "_where": "/Users/long/webppl",
+  "name": "escodegen",
+  "description": "ECMAScript code generator",
+  "homepage": "http://github.com/estools/escodegen",
+  "main": "escodegen.js",
   "bin": {
-    "escodegen": "./bin/escodegen.js",
-    "esgenerate": "./bin/esgenerate.js"
+    "esgenerate": "./bin/esgenerate.js",
+    "escodegen": "./bin/escodegen.js"
   },
-  "bugs": {
-    "url": "https://github.com/estools/escodegen/issues"
+  "files": [
+    "LICENSE.BSD",
+    "LICENSE.source-map",
+    "README.md",
+    "bin",
+    "escodegen.js",
+    "package.json"
+  ],
+  "version": "1.8.0",
+  "engines": {
+    "node": ">=0.12.0"
+  },
+  "maintainers": [
+    {
+      "name": "constellation",
+      "email": "utatane.tea@gmail.com"
+    },
+    {
+      "name": "michaelficarra",
+      "email": "npm@michael.ficarra.me"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/estools/escodegen.git"
   },
   "dependencies": {
-    "esprima": "^2.7.1",
     "estraverse": "^1.9.1",
     "esutils": "^2.0.2",
+    "esprima": "^2.7.1",
     "optionator": "^0.8.1",
     "source-map": "~0.2.0"
   },
-  "description": "ECMAScript code generator",
+  "optionalDependencies": {
+    "source-map": "~0.2.0"
+  },
   "devDependencies": {
     "acorn-6to5": "^0.11.1-25",
     "bluebird": "^2.3.11",
@@ -11400,57 +11390,5951 @@ module.exports={
     "gulp-mocha": "^2.0.0",
     "semver": "^5.1.0"
   },
-  "directories": {},
+  "license": "BSD-2-Clause",
+  "scripts": {
+    "test": "gulp travis",
+    "unit-test": "gulp test",
+    "lint": "gulp lint",
+    "release": "node tools/release.js",
+    "build-min": "cjsify -ma path: tools/entry-point.js > escodegen.browser.min.js",
+    "build": "cjsify -a path: tools/entry-point.js > escodegen.browser.js"
+  },
+  "gitHead": "0e8280aa061a0dbefb32d277a05015baa7f3e7f2",
+  "bugs": {
+    "url": "https://github.com/estools/escodegen/issues"
+  },
+  "_id": "escodegen@1.8.0",
+  "_shasum": "b246aae829ce73d59e2c55727359edd1c130a81b",
+  "_from": "escodegen@>=1.7.0 <2.0.0",
+  "_npmVersion": "2.14.4",
+  "_nodeVersion": "4.1.1",
+  "_npmUser": {
+    "name": "constellation",
+    "email": "utatane.tea@gmail.com"
+  },
   "dist": {
     "shasum": "b246aae829ce73d59e2c55727359edd1c130a81b",
     "tarball": "http://registry.npmjs.org/escodegen/-/escodegen-1.8.0.tgz"
   },
-  "engines": {
-    "node": ">=0.12.0"
-  },
-  "files": [
-    "LICENSE.BSD",
-    "LICENSE.source-map",
-    "README.md",
-    "bin",
-    "escodegen.js",
-    "package.json"
-  ],
-  "gitHead": "0e8280aa061a0dbefb32d277a05015baa7f3e7f2",
-  "homepage": "http://github.com/estools/escodegen",
-  "license": "BSD-2-Clause",
-  "main": "escodegen.js",
-  "maintainers": [
-    {
-      "name": "constellation",
-      "email": "utatane.tea@gmail.com"
-    },
-    {
-      "name": "michaelficarra",
-      "email": "npm@michael.ficarra.me"
-    }
-  ],
-  "name": "escodegen",
-  "optionalDependencies": {
-    "source-map": "~0.2.0"
-  },
-  "readme": "ERROR: No README data found!",
-  "repository": {
-    "type": "git",
-    "url": "git+ssh://git@github.com/estools/escodegen.git"
-  },
-  "scripts": {
-    "build": "cjsify -a path: tools/entry-point.js > escodegen.browser.js",
-    "build-min": "cjsify -ma path: tools/entry-point.js > escodegen.browser.min.js",
-    "lint": "gulp lint",
-    "release": "node tools/release.js",
-    "test": "gulp travis",
-    "unit-test": "gulp test"
-  },
-  "version": "1.8.0"
+  "directories": {},
+  "_resolved": "https://registry.npmjs.org/escodegen/-/escodegen-1.8.0.tgz",
+  "readme": "ERROR: No README data found!"
 }
 
 },{}],38:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common;
+
+    Name = 'annotate-directive';
+    common = require('./common');
+    Syntax = common.Syntax;
+
+    function isDirective(stmt) {
+        var expr;
+        if (stmt.type === Syntax.ExpressionStatement) {
+            expr = stmt.expression;
+            if (expr.type === Syntax.Literal && typeof expr.value === 'string') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function escapeAllowedCharacter(ch, next) {
+        var code = ch.charCodeAt(0), hex = code.toString(16), result = '\\';
+
+        switch (ch) {
+        case '\b':
+            result += 'b';
+            break;
+        case '\f':
+            result += 'f';
+            break;
+        case '\t':
+            result += 't';
+            break;
+        default:
+            if (code > 0xff) {
+                result += 'u' + '0000'.slice(hex.length) + hex;
+            } else if (ch === '\u0000' && '0123456789'.indexOf(next) < 0) {
+                result += '0';
+            } else if (ch === '\v') {
+                result += 'v';
+            } else {
+                result += 'x' + '00'.slice(hex.length) + hex;
+            }
+            break;
+        }
+
+        return result;
+    }
+
+    function escapeDisallowedCharacter(ch) {
+        var result = '\\';
+        switch (ch) {
+        case '\\':
+            result += '\\';
+            break;
+        case '\n':
+            result += 'n';
+            break;
+        case '\r':
+            result += 'r';
+            break;
+        case '\u2028':
+            result += 'u2028';
+            break;
+        case '\u2029':
+            result += 'u2029';
+            break;
+        default:
+            throw new Error('Incorrectly classified character');
+        }
+
+        return result;
+    }
+
+    function escapeString(str) {
+        var result = '', i, len, ch;
+
+        if (typeof str[0] === 'undefined') {
+            str = common.stringToArray(str);
+        }
+
+        for (i = 0, len = str.length; i < len; i += 1) {
+            ch = str[i];
+            if (ch === '\'') {
+                result += '\\\'';
+                continue;
+            } else if ('\\\n\r\u2028\u2029'.indexOf(ch) >= 0) {
+                result += escapeDisallowedCharacter(ch);
+                continue;
+            } else if (!(ch >= ' ' && ch <= '~')) {
+                result += escapeAllowedCharacter(ch, str[i + 1]);
+                continue;
+            }
+            result += ch;
+        }
+
+        return result;
+    }
+
+    function annotateDirective(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+
+        common.traverse(result, {
+            enter: function enter(node, parent) {
+                var stmt, i, iz;
+
+                if (!(node.type === Syntax.Program ||
+                        (node.type === Syntax.BlockStatement && (parent.type === Syntax.FunctionExpression || parent.type === Syntax.FunctionDeclaration)))) {
+                    return;
+                }
+
+                for (i = 0, iz = node.body.length; i < iz; ++i) {
+                    stmt = node.body[i];
+                    if (isDirective(stmt)) {
+                        stmt.type = Syntax.DirectiveStatement;
+                        if (stmt.expression.raw) {
+                            stmt.directive = stmt.expression.raw.substring(1, stmt.expression.raw.length - 1);
+                            stmt.value = stmt.expression.value;
+                            stmt.raw = stmt.expression.raw;
+                        } else {
+                            stmt.directive = escapeString(stmt.expression.value);
+                            stmt.value = stmt.expression.value;
+                            stmt.raw = '\'' + stmt.directive + '\'';
+                        }
+                        delete stmt.expression;
+                    } else {
+                        return;
+                    }
+                }
+            }
+        });
+
+        return result;
+    }
+
+    annotateDirective.passName = Name;
+    module.exports = annotateDirective;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"./common":39}],39:[function(require,module,exports){
+/*
+  Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
+  Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+(function () {
+    'use strict';
+
+    var Syntax,
+        isArray,
+        arrayFrom,
+        arrayOf,
+        has,
+        sameValue,
+        estraverse,
+        escope,
+        esutils;
+
+    estraverse = require('estraverse');
+    escope = require('escope');
+    esutils = require('esutils');
+
+    Syntax = estraverse.Syntax;
+
+    isArray = Array.isArray;
+    if (!isArray) {
+        isArray = function isArray(array) {
+            return Object.prototype.toString.call(array) === '[object Array]';
+        };
+    }
+
+    function isObject(obj) {
+        return typeof obj === 'object' && obj !== null;
+    }
+
+    has = (function () {
+        var method = {}.hasOwnProperty;
+        return function has(obj, prop) {
+            return method.call(obj, prop);
+        };
+    }());
+
+    // ES6 Array.from
+    arrayFrom = (function () {
+        var slice = Array.prototype.slice;
+        return function arrayFrom(array) {
+            return slice.call(array);
+        };
+    }());
+
+    // ES6 Array.of
+    arrayOf = (function () {
+        var slice = Array.prototype.slice;
+        return function arrayOf() {
+            return slice.call(arguments);
+        };
+    }());
+
+    function arrayLast(array) {
+        return array[array.length - 1];
+    }
+
+    function arrayEmpty(array) {
+        return array.length === 0;
+    }
+
+    function stringRepeat(str, num) {
+        var result = '';
+
+        for (num |= 0; num > 0; num >>>= 1, str += str) {
+            if (num & 1) {
+                result += str;
+            }
+        }
+
+        return result;
+    }
+
+    // see http://wiki.ecmascript.org/doku.php?id=harmony:egal
+    // ECMA262 SameValue algorithm
+    if (Object.is) {
+        sameValue = Object.is;
+    } else {
+        sameValue = function sameValue(x, y) {
+            if (x === y) {
+                // 0 === -0, but they are not identical
+                return x !== 0 || 1 / x === 1 / y;
+            }
+
+            // NaN !== NaN, but they are identical.
+            // NaNs are the only non-reflexive value, i.e., if x !== x,
+            // then x is a NaN.
+            // isNaN is broken: it converts its argument to number, so
+            // isNaN("foo") => true
+            return x !== x && y !== y;
+        };
+    }
+
+    function deepCopy(obj) {
+        function deepCopyInternal(obj, result) {
+            var key, val;
+            for (key in obj) {
+                if (key.lastIndexOf('__', 0) === 0) {
+                    continue;
+                }
+                if (obj.hasOwnProperty(key)) {
+                    val = obj[key];
+                    if (typeof val === 'object' && val !== null) {
+                        if (val instanceof RegExp) {
+                            val = new RegExp(val);
+                        } else {
+                            val = deepCopyInternal(val, isArray(val) ? [] : {});
+                        }
+                    }
+                    result[key] = val;
+                }
+            }
+            return result;
+        }
+        return deepCopyInternal(obj, isArray(obj) ? [] : {});
+    }
+
+    function assert(cond, text) {
+        if (!cond) {
+            throw new Error(text);
+        }
+    }
+
+    function unreachable() {
+        throw new Error('Unreachable point. logically broken.');
+    }
+
+    function isIdentifier(name) {
+        // fallback for ES3
+        if (esutils.keyword.isKeywordES5(name, true) || esutils.keyword.isRestrictedWord(name)) {
+            return false;
+        }
+
+        return esutils.keyword.isIdentifierName(name);
+    }
+
+    function mayBeCompletionValue(node, ancestors) {
+        var i, ancestor;
+
+        if (node.type !== Syntax.ExpressionStatement) {
+            return true;
+        }
+
+        for (i = ancestors.length - 1; i >= 0; --i, node = ancestor) {
+            ancestor = ancestors[i];
+
+            switch (ancestor.type) {
+            case Syntax.FunctionExpression:
+            case Syntax.FunctionDeclaration:
+                return false;
+
+            case Syntax.BlockStatement:
+            case Syntax.Program:
+                if (arrayLast(ancestor.body) !== node) {
+                    return false;
+                }
+                break;
+
+            case Syntax.SwitchCase:
+                if (arrayLast(ancestor.consequent) !== node) {
+                    return false;
+                }
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    function moveLocation(from, to) {
+        if (from.loc == null) {
+            return to;
+        }
+        to.loc = deepCopy(from.loc);
+        return to;
+    }
+
+    function deleteLocation(node) {
+        if (node.hasOwnProperty('loc')) {
+            return delete node.loc;
+        }
+        return false;
+    }
+
+    function convertToEmptyStatement(node) {
+        var i, iz, keys;
+        keys = estraverse.VisitorKeys[node.type];
+        for (i = 0, iz = keys.length; i < iz; ++i) {
+            delete node[keys[i]];
+        }
+        node.type = Syntax.EmptyStatement;
+        return node;
+    }
+
+    function isNegative(value) {
+        return value === value && (value < 0 || (value === 0 && 1 / value < 0));
+    }
+
+    function isFunctionBody(node, parent) {
+        return node.type === Syntax.BlockStatement && (parent.type === Syntax.FunctionDeclaration || parent.type === Syntax.FunctionExpression);
+    }
+
+    function isNumberLiteral(node) {
+        return node.type === Syntax.Literal && typeof node.value === 'number';
+    }
+
+    function isOptimizedArgument(argument) {
+        return isNumberLiteral(argument) && String(argument.value).length === 1;
+    }
+
+    function generateNegativeNode(value, node) {
+        var result;
+        result = {
+            type: Syntax.UnaryExpression,
+            operator: '-',
+            argument: {
+                type: Syntax.Literal,
+                value: -value
+            }
+        };
+        return (node) ? moveLocation(node, result) : result;
+    }
+
+    function isNegativeNode(node) {
+        return node.type === Syntax.UnaryExpression && node.operator === '-' && isNumberLiteral(node.argument);
+    }
+
+    function generateUndefined(node) {
+        var result = {
+            type: Syntax.UnaryExpression,
+            operator: 'void',
+            argument: {
+                type: Syntax.Literal,
+                value: 0
+            }
+        };
+        return (node) ? moveLocation(node, result) : result;
+    }
+
+    function isUndefined(node) {
+        return node.type === Syntax.UnaryExpression && node.operator === 'void' && isOptimizedArgument(node.argument);
+    }
+
+    function generateNaN(node) {
+        var result = {
+            type: Syntax.BinaryExpression,
+            operator: '/',
+            left: {
+                type: Syntax.Literal,
+                value: 0
+            },
+            right: {
+                type: Syntax.Literal,
+                value: 0
+            }
+        };
+        return (node) ? moveLocation(node, result) : result;
+    }
+
+    function isNaNNode(node) {
+        if (node.type === Syntax.BinaryExpression) {
+            if (isOptimizedArgument(node.left) && isOptimizedArgument(node.right)) {
+                return node.left.value === 0 && node.right.value === 0;
+            }
+        }
+        return false;
+    }
+
+    function generateFromValue(value) {
+        if (typeof value === 'number') {
+            if (isNaN(value)) {
+                return generateNaN();
+            }
+            if (isNegative(value)) {
+                return generateNegativeNode(value);
+            }
+        }
+        if (value === undefined) {
+            return generateUndefined();
+        }
+        return {
+            type: Syntax.Literal,
+            value: value
+        };
+    }
+
+    function isReference(node) {
+        var type = node.type;
+        return type === Syntax.Identifier || type === Syntax.MemberExpression;
+    }
+
+    // @param last last element of SequenceExpression
+    // @param parent parent element of SequenceExpression
+    // @param scope scope
+    function canExtractSequence(last, parent, scope) {
+        var ref;
+        if (parent.type === Syntax.CallExpression) {
+            if (last.type === Syntax.Identifier) {
+                if (last.name === 'eval') {
+                    // This becomes direct call to eval.
+                    return false;
+                }
+                ref = scope.resolve(last);
+                return ref && ref.isStatic();
+            }
+            return last.type !== Syntax.MemberExpression;
+        } else if (parent.type === Syntax.UnaryExpression) {
+            if (parent.operator === 'delete') {
+                return !isReference(last);
+            } else if (parent.operator === 'typeof') {
+                if (last.type === Syntax.Identifier) {
+                    ref = scope.resolve(last);
+                    return ref && ref.isStatic();
+                }
+            }
+        } else if (parent.type === Syntax.UpdateExpression) {
+            return !isReference(last);
+        }
+        return true;
+    }
+
+    function delegateVariableDeclarations(stmt, func) {
+        var decls, target;
+
+        decls = [];
+
+        estraverse.traverse(stmt, {
+            enter: function (node) {
+                var i, iz, decl;
+                if (node.type === Syntax.VariableDeclaration) {
+                    if (node.kind === 'let' || node.kind === 'const') {
+                        return;
+                    }
+                    for (i = 0, iz = node.declarations.length; i < iz; ++i) {
+                        decl = node.declarations[i];
+                        delete decl.init;
+                        decls.push(decl);
+                    }
+                    return estraverse.VisitorOption.Skip;
+                } else if (escope.Scope.isVariableScopeRequired(node)) {
+                    return estraverse.VisitorOption.Skip;
+                }
+            }
+        });
+
+        if (!decls.length) {
+            return null;
+        }
+
+        target = null;
+
+        estraverse.traverse(func.body, {
+            enter: function (node, parent) {
+                if (node === stmt) {
+                    return estraverse.VisitorOption.Skip;
+                } else if (escope.Scope.isVariableScopeRequired(node)) {
+                    return estraverse.VisitorOption.Skip;
+                } else if (node.type === Syntax.VariableDeclaration && node.kind === 'var') {
+                    // list is not allowed
+                    if (parent.type !== Syntax.ForInStatement) {
+                        target = node;
+                        return estraverse.VisitorOption.Break;
+                    }
+                }
+            }
+        });
+
+        if (target) {
+            target.declarations = target.declarations.concat(decls);
+            return null;
+        } else {
+            return {
+                type: Syntax.VariableDeclaration,
+                kind: 'var',
+                declarations: decls
+            };
+        }
+    }
+
+    function isScopedDeclaration(node) {
+        if (node.type === Syntax.VariableDeclaration && (node.kind === 'let' || node.kind === 'const')) {
+            return true;
+        } else if (node.type === Syntax.FunctionDeclaration) {
+            return true;
+        }
+        return false;
+    }
+
+    exports.deepCopy = deepCopy;
+    exports.stringRepeat = stringRepeat;
+    exports.sameValue = sameValue;
+
+    exports.Array = {
+        isArray: isArray,
+        from: arrayFrom,
+        of: arrayOf,
+        last: arrayLast,
+        empty: arrayEmpty
+    };
+
+    exports.Object = {
+        isObject: isObject,
+        has: has
+    };
+
+    exports.Syntax = Syntax;
+    exports.traverse = estraverse.traverse;
+    exports.replace = estraverse.replace;
+    exports.VisitorKeys = estraverse.VisitorKeys;
+    exports.VisitorOption = estraverse.VisitorOption;
+
+    exports.assert = assert;
+    exports.unreachable = unreachable;
+
+    exports.isIdentifier = isIdentifier;
+
+    exports.moveLocation = moveLocation;
+    exports.deleteLocation = deleteLocation;
+    exports.convertToEmptyStatement = convertToEmptyStatement;
+
+    exports.mayBeCompletionValue = mayBeCompletionValue;
+
+    exports.isNegative = isNegative;
+
+    exports.isFunctionBody = isFunctionBody;
+    exports.SpecialNode = {
+        generateNegative: generateNegativeNode,
+        isNegative: isNegativeNode,
+        generateUndefined: generateUndefined,
+        isUndefined: isUndefined,
+        generateNaN: generateNaN,
+        isNaN: isNaNNode,
+        isReference: isReference,
+        canExtractSequence: canExtractSequence,
+        generateFromValue: generateFromValue
+    };
+
+    exports.delegateVariableDeclarations = delegateVariableDeclarations;
+
+    exports.isScopedDeclaration = isScopedDeclaration;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"escope":75,"estraverse":88,"esutils":91}],40:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global exports:true*/
+
+(function () {
+    'use strict';
+
+    var esshorten,
+        common,
+        Options,
+        Syntax,
+        Pass,
+        annotateDirective;
+
+    esshorten = require('esshorten');
+    common = require('./common');
+    Options = require('./options');
+    Pass = require('./pass');
+    annotateDirective = require('./annotate-directive');
+    Syntax = common.Syntax;
+
+    // recover some broken AST
+
+    function recover(tree, useDirectiveStatement) {
+        function trailingIf(node) {
+            while (true) {
+                switch (node.type) {
+                case Syntax.IfStatement:
+                    if (!node.alternate) {
+                        return true;
+                    }
+                    node = node.alternate;
+                    continue;
+
+                case Syntax.LabeledStatement:
+                case Syntax.ForStatement:
+                case Syntax.ForInStatement:
+                case Syntax.WhileStatement:
+                case Syntax.WithStatement:
+                    node = node.body;
+                    continue;
+                }
+                return false;
+            }
+        }
+
+        common.traverse(tree, {
+            leave: function leave(node) {
+                if (node.type === Syntax.IfStatement && node.alternate) {
+                    // force wrap up or not
+                    if (node.consequent.type !== Syntax.BlockStatement) {
+                        if (trailingIf(node.consequent)) {
+                            node.consequent = {
+                                type: Syntax.BlockStatement,
+                                body: [ node.consequent ]
+                            };
+                        }
+                    }
+                }
+                if (!useDirectiveStatement && node.type === Syntax.DirectiveStatement) {
+                    node.type = Syntax.ExpressionStatement;
+                    node.expression = common.moveLocation(node, {
+                        type: Syntax.Literal,
+                        value: node.value,
+                        raw: node.raw
+                    });
+                    delete node.directive;
+                    delete node.value;
+                    delete node.raw;
+                }
+            }
+        });
+
+        return tree;
+    }
+
+    function iteration(tree, p, options) {
+        var i, iz, pass, res, changed, statuses, passes, result;
+
+        function addPass(pass) {
+            var name;
+            if (typeof pass !== 'function') {
+                // automatic lookup pass (esmangle pass format)
+                name = Object.keys(pass)[0];
+                pass = pass[name];
+            }
+            if (pass.hasOwnProperty('passName')) {
+                name = pass.passName;
+            } else {
+                name = pass.name;
+            }
+            passes.push(pass);
+            statuses.push(true);
+        }
+
+        function fillStatuses(bool) {
+            var i, iz;
+            for (i = 0, iz = statuses.length; i < iz; ++i) {
+                statuses[i] = bool;
+            }
+        }
+
+        result = (options.get('destructive')) ? tree : common.deepCopy(tree);
+
+        statuses = [];
+        passes = [];
+
+
+        for (i = 0, iz = p.length; i < iz; ++i) {
+            addPass(p[i]);
+        }
+
+        do {
+            changed = false;
+            for (i = 0, iz = passes.length; i < iz; ++i) {
+                pass = passes[i];
+                if (statuses[i]) {
+                    res = pass(result, options);
+                    if (res.modified) {
+                        changed = true;
+                        fillStatuses(true);
+                    } else {
+                        statuses[i] = false;
+                    }
+                    result = res.result;
+                }
+            }
+        } while (changed);
+
+        return result;
+    }
+
+    function optimize(tree, pipeline, options) {
+        var i, iz, j, jz, section, pass;
+
+        tree = annotateDirective(tree, new Options({ destructive: false }));
+
+        if (null == pipeline) {
+            pipeline = Pass.__defaultPipeline;
+        }
+
+        options = new Options(options);
+
+        for (i = 0, iz = pipeline.length; i < iz; ++i) {
+            section = pipeline[i];
+            // simple iterative pass
+            if (common.Array.isArray(section)) {
+                tree = iteration(tree, section, options);
+            } else if (section.once) {
+                pass = section.pass;
+                for (j = 0, jz = pass.length; j < jz; ++j) {
+                    tree = pass[j](tree, options).result;
+                }
+            }
+        }
+
+        return recover(tree, options.get('directive'));
+    }
+
+    exports.version = require('../package.json').version;
+    exports.mangle = esshorten.mangle;
+    exports.optimize = optimize;
+    exports.pass = Pass;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../package.json":92,"./annotate-directive":38,"./common":39,"./options":43,"./pass":44,"esshorten":78}],41:[function(require,module,exports){
+/*
+  Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jshint eqeqeq:false*/
+(function () {
+    'use strict';
+
+    var Syntax, common;
+
+    common = require('./common');
+    Syntax = common.Syntax;
+
+    // constant
+
+    function isConstant(node, allowRegExp) {
+        if (node.type === Syntax.Literal) {
+            if (typeof node.value === 'object' && node.value !== null) {
+                // This is RegExp
+                return allowRegExp;
+            }
+            return true;
+        }
+        if (node.type === Syntax.UnaryExpression) {
+            if (node.operator === 'void' || node.operator === 'delete' || node.operator === '!') {
+                return isConstant(node.argument, true);
+            }
+            return isConstant(node.argument, false);
+        }
+        if (node.type === Syntax.BinaryExpression) {
+            if (node.operator === 'in' || node.operator === 'instanceof') {
+                return false;
+            }
+            return isConstant(node.left, false) && isConstant(node.right, false);
+        }
+        if (node.type === Syntax.LogicalExpression) {
+            return isConstant(node.left, true) && isConstant(node.right, true);
+        }
+        return false;
+    }
+
+    function getConstant(node) {
+        if (node.type === Syntax.Literal) {
+            return node.value;
+        }
+        if (node.type === Syntax.UnaryExpression) {
+            return doUnary(node.operator, getConstant(node.argument));
+        }
+        if (node.type === Syntax.BinaryExpression) {
+            return doBinary(node.operator, getConstant(node.left), getConstant(node.right));
+        }
+        if (node.type === Syntax.LogicalExpression) {
+            return doLogical(node.operator, getConstant(node.left), getConstant(node.right));
+        }
+        common.unreachable();
+    }
+
+    function doLogical(operator, left, right) {
+        if (operator === '||') {
+            return left || right;
+        }
+        if (operator === '&&') {
+            return left && right;
+        }
+        common.unreachable();
+    }
+
+    function doUnary(operator, argument) {
+        switch (operator) {
+        case '+':
+            return +argument;
+        case '-':
+            return -argument;
+        case '~':
+            return ~argument;
+        case '!':
+            return !argument;
+        case 'delete':
+            // do delete on constant value (not considering identifier in this tree based constant folding)
+            return true;
+        case 'void':
+            return undefined;
+        case 'typeof':
+            return typeof argument;
+        }
+        common.unreachable();
+    }
+
+    function doBinary(operator, left, right) {
+        switch (operator) {
+        case '|':
+            return left | right;
+        case '^':
+            return left ^ right;
+        case '&':
+            return left & right;
+        case '==':
+            return left == right;
+        case '!=':
+            return left != right;
+        case '===':
+            return left === right;
+        case '!==':
+            return left !== right;
+        case '<':
+            return left < right;
+        case '>':
+            return left > right;
+        case '<=':
+            return left <= right;
+        case '>=':
+            return left >= right;
+        // case 'in':
+        //    return left in right;
+        // case 'instanceof':
+        //    return left instanceof right;
+        case '<<':
+            return left << right;
+        case '>>':
+            return left >> right;
+        case '>>>':
+            return left >>> right;
+        case '+':
+            return left + right;
+        case '-':
+            return left - right;
+        case '*':
+            return left * right;
+        case '/':
+            return left / right;
+        case '%':
+            return left % right;
+        }
+        common.unreachable();
+    }
+
+    exports.constant = {
+        doBinary: doBinary,
+        doUnary: doUnary,
+        doLogical: doLogical,
+        evaluate: getConstant,
+        isConstant: isConstant
+    };
+
+    // has side effect
+    function hasSideEffect(expr, scope) {
+        function visit(expr) {
+            var i, iz, ref;
+            switch (expr.type) {
+            case Syntax.AssignmentExpression:
+                return true;
+
+            case Syntax.ArrayExpression:
+                for (i = 0, iz = expr.elements.length; i < iz; ++i) {
+                    if (expr.elements[i] !== null && visit(expr.elements[i])) {
+                        return true;
+                    }
+                }
+                return false;
+
+            case Syntax.BinaryExpression:
+                return !isConstant(expr);
+
+            case Syntax.CallExpression:
+                return true;
+
+            case Syntax.ConditionalExpression:
+                return visit(expr.test) || visit(expr.consequent) || visit(expr.alternate);
+
+            case Syntax.FunctionExpression:
+                return false;
+
+            case Syntax.Identifier:
+                ref = scope.resolve(expr);
+                if (ref && ref.isStatic()) {
+                    return false;
+                }
+                return true;
+
+            case Syntax.Literal:
+                return false;
+
+            case Syntax.LogicalExpression:
+                return visit(expr.left) || visit(expr.right);
+
+            case Syntax.MemberExpression:
+                return true;
+
+            case Syntax.NewExpression:
+                return true;
+
+            case Syntax.ObjectExpression:
+                for (i = 0, iz = expr.properties.length; i < iz; ++i) {
+                    if (visit(expr.properties[i])) {
+                        return true;
+                    }
+                }
+                return false;
+
+            case Syntax.Property:
+                return visit(expr.value);
+
+            case Syntax.SequenceExpression:
+                for (i = 0, iz = expr.expressions.length; i < iz; ++i) {
+                    if (visit(expr.expressions[i])) {
+                        return true;
+                    }
+                }
+                return false;
+
+            case Syntax.ThisExpression:
+                return false;
+
+            case Syntax.UnaryExpression:
+                if (expr.operator === 'void' || expr.operator === 'delete' || expr.operator === 'typeof' || expr.operator === '!') {
+                    return visit(expr.argument);
+                }
+                return !isConstant(expr);
+
+            case Syntax.UpdateExpression:
+                return true;
+            }
+            return true;
+        }
+
+        return visit(expr);
+    }
+
+    exports.hasSideEffect = hasSideEffect;
+
+    // boolean decision
+    // @return {boolean|null} when indeterminate value comes, returns null
+    function booleanCondition(expr) {
+        var ret;
+        switch (expr.type) {
+        case Syntax.AssignmentExpression:
+            return booleanCondition(expr.right);
+
+        case Syntax.ArrayExpression:
+            return true;
+
+        case Syntax.BinaryExpression:
+            if (isConstant(expr)) {
+                return !!getConstant(expr);
+            }
+            return null;
+
+        case Syntax.CallExpression:
+            return null;
+
+        case Syntax.ConditionalExpression:
+            ret = booleanCondition(expr.test);
+            if (ret === true) {
+                return booleanCondition(expr.consequent);
+            }
+            if (ret === false) {
+                return booleanCondition(expr.alternate);
+            }
+            ret = booleanCondition(expr.consequent);
+            if (ret === booleanCondition(expr.alternate)) {
+                return ret;
+            }
+            return null;
+
+        case Syntax.FunctionExpression:
+            return true;
+
+        case Syntax.Identifier:
+            return null;
+
+        case Syntax.Literal:
+            return !!getConstant(expr);
+
+        case Syntax.LogicalExpression:
+            if (expr.operator === '&&') {
+                ret = booleanCondition(expr.left);
+                if (ret === null) {
+                    return null;
+                }
+                if (!ret) {
+                    return false;
+                }
+                return booleanCondition(expr.right);
+            } else {
+                ret = booleanCondition(expr.left);
+                if (ret === null) {
+                    return null;
+                }
+                if (ret) {
+                    return true;
+                }
+                return booleanCondition(expr.right);
+            }
+            return null;
+
+        case Syntax.MemberExpression:
+            return null;
+
+        case Syntax.NewExpression:
+            // always return object
+            return true;
+
+        case Syntax.ObjectExpression:
+            return true;
+
+        case Syntax.Property:
+            common.unreachable();
+            return null;
+
+        case Syntax.SequenceExpression:
+            return booleanCondition(common.Array.last(expr.expressions));
+
+        case Syntax.ThisExpression:
+            // in strict mode, this may be null / undefined
+            return null;
+
+        case Syntax.UnaryExpression:
+            if (expr.operator === 'void') {
+                return false;
+            }
+            if (expr.operator === 'typeof') {
+                return true;
+            }
+            if (expr.operator === '!') {
+                ret = booleanCondition(expr.argument);
+                if (ret === null) {
+                    return null;
+                }
+                return !ret;
+            }
+            if (isConstant(expr)) {
+                return !!getConstant(expr);
+            }
+            return null;
+
+        case Syntax.UpdateExpression:
+            return null;
+        }
+
+        return null;
+    }
+
+    exports.booleanCondition = booleanCondition;
+}());
+
+},{"./common":39}],42:[function(require,module,exports){
+(function (global){
+/*
+  Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*global module:true*/
+(function () {
+    'use strict';
+
+    var Map;
+
+    if (typeof global.Map !== 'undefined') {
+        // ES6 Map
+        Map = global.Map;
+    } else {
+        Map = function Map() {
+            this.__data = {};
+        };
+
+        Map.prototype.get = function MapGet(key) {
+            key = '$' + key;
+            if (this.__data.hasOwnProperty(key)) {
+                return this.__data[key];
+            }
+        };
+
+        Map.prototype.has = function MapHas(key) {
+            key = '$' + key;
+            return this.__data.hasOwnProperty(key);
+        };
+
+        Map.prototype.set = function MapSet(key, val) {
+            key = '$' + key;
+            this.__data[key] = val;
+        };
+
+        Map.prototype['delete'] = function MapDelete(key) {
+            key = '$' + key;
+            return delete this.__data[key];
+        };
+
+        Map.prototype.clear = function MapClear() {
+            this.__data = {};
+        };
+
+        Map.prototype.forEach = function MapForEach(callback, thisArg) {
+            var real, key;
+            for (real in this.__data) {
+                if (this.__data.hasOwnProperty(real)) {
+                    key = real.substring(1);
+                    callback.call(thisArg, this.__data[real], key, this);
+                }
+            }
+        };
+
+        Map.prototype.keys = function MapKeys() {
+            var real, result;
+            result = [];
+            for (real in this.__data) {
+                if (this.__data.hasOwnProperty(real)) {
+                    result.push(real.substring(1));
+                }
+            }
+            return result;
+        };
+
+        Map.prototype.values = function MapValues() {
+            var real, result;
+            result = [];
+            for (real in this.__data) {
+                if (this.__data.hasOwnProperty(real)) {
+                    result.push(this.__data[real]);
+                }
+            }
+            return result;
+        };
+
+        Map.prototype.items = function MapItems() {
+            var real, result;
+            result = [];
+            for (real in this.__data) {
+                if (this.__data.hasOwnProperty(real)) {
+                    result.push([real.substring(1), this.__data[real]]);
+                }
+            }
+            return result;
+        };
+    }
+
+    module.exports = Map;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],43:[function(require,module,exports){
+/*
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+(function () {
+    'use strict';
+
+    var common;
+
+    common = require('./common');
+
+    function extend(result, update) {
+        var prop, lhs, rhs;
+
+        for (prop in update) {
+            if (!common.Object.has(update, prop)) {
+                continue;
+            }
+
+            if (prop in result) {
+                lhs = result[prop];
+                rhs = update[prop];
+                if (common.Object.isObject(rhs) && common.Object.isObject(lhs)) {
+                    result[prop] = extend(lhs, rhs);
+                } else {
+                    result[prop] = update[prop];
+                }
+            } else {
+                result[prop] = update[prop];
+            }
+        }
+
+        return result;
+    }
+
+    function Options(override) {
+        var defaults = {
+            destructive: true,
+            preserveCompletionValue: false
+        };
+
+        if (override == null) {
+            this.data = defaults;
+            return;
+        }
+
+        this.data = extend(defaults, override);
+    }
+
+    // options.get(name, {
+    //   pathName: pathName
+    // });
+    Options.prototype.get = function get(name, details) {
+        var local;
+        if (details != null) {
+            if (common.Object.has(details, 'pathName')) {
+                local = this.data[details.pathName];
+                if (local != null && common.Object.has(local, name)) {
+                    return local[name];
+                }
+            }
+        }
+        return this.data[name];
+    };
+
+    module.exports = Options;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"./common":39}],44:[function(require,module,exports){
+/*
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global exports:true*/
+
+(function () {
+    'use strict';
+
+    var query, Registry, pass, post, common;
+
+    common = require('./common');
+    query = require('./query');
+
+    Registry = {};
+    Registry.__direct = {};
+
+    // initialization
+
+    function initialize(kind, passes) {
+        var i, iz, pass;
+        Registry[kind] = {};
+        for (i = 0, iz = passes.length; i < iz; ++i) {
+            pass = passes[i];
+            common.assert(Registry[kind][pass.passName] == null, 'don\'t create duplicate pass names');
+            Registry[kind][pass.passName] = pass;
+        }
+        common.assert(Registry.__direct[pass.passName] == null, 'don\'t create duplicate pass names');
+        Registry.__direct[pass.passName] = pass;
+    }
+
+    pass = [
+        require('./pass/hoist-variable-to-arguments'),
+        require('./pass/transform-dynamic-to-static-property-access'),
+        require('./pass/transform-dynamic-to-static-property-definition'),
+        require('./pass/transform-immediate-function-call'),
+        require('./pass/transform-logical-association'),
+        require('./pass/reordering-function-declarations'),
+        require('./pass/remove-unused-label'),
+        require('./pass/remove-empty-statement'),
+        require('./pass/remove-wasted-blocks'),
+        require('./pass/transform-to-compound-assignment'),
+        require('./pass/transform-to-sequence-expression'),
+        require('./pass/transform-branch-to-expression'),
+        require('./pass/transform-typeof-undefined'),
+        require('./pass/reduce-sequence-expression'),
+        require('./pass/reduce-branch-jump'),
+        require('./pass/reduce-multiple-if-statements'),
+        require('./pass/dead-code-elimination'),
+        require('./pass/remove-side-effect-free-expressions'),
+        require('./pass/remove-context-sensitive-expressions'),
+        require('./pass/tree-based-constant-folding'),
+        require('./pass/concatenate-variable-definition'),
+        require('./pass/drop-variable-definition'),
+        require('./pass/remove-unreachable-branch'),
+        require('./pass/eliminate-duplicate-function-declarations')
+    ];
+
+    post = [
+        require('./post/transform-static-to-dynamic-property-access'),
+        require('./post/transform-infinity'),
+        require('./post/rewrite-boolean'),
+        require('./post/rewrite-conditional-expression'),
+        require('./post/omit-parens-in-void-context-iife')
+    ];
+
+    initialize('pass', pass);
+    initialize('post', post);
+
+    function passRequire(name) {
+        if (common.Object.has(Registry.__direct, name)) {
+            return Registry.__direct[name];
+        }
+        return query.get(Registry, name.split('/'));
+    }
+
+    exports.require = passRequire;
+    exports.Registry = Registry;
+
+    // CAUTION:(Constellation)
+    // This API would be cahnged
+    exports.__defaultPipeline = [
+        pass,
+        {
+            once: true,
+            pass: post
+        }
+    ];
+}());
+
+},{"./common":39,"./pass/concatenate-variable-definition":45,"./pass/dead-code-elimination":46,"./pass/drop-variable-definition":47,"./pass/eliminate-duplicate-function-declarations":48,"./pass/hoist-variable-to-arguments":49,"./pass/reduce-branch-jump":50,"./pass/reduce-multiple-if-statements":51,"./pass/reduce-sequence-expression":52,"./pass/remove-context-sensitive-expressions":53,"./pass/remove-empty-statement":54,"./pass/remove-side-effect-free-expressions":55,"./pass/remove-unreachable-branch":56,"./pass/remove-unused-label":57,"./pass/remove-wasted-blocks":58,"./pass/reordering-function-declarations":59,"./pass/transform-branch-to-expression":60,"./pass/transform-dynamic-to-static-property-access":61,"./pass/transform-dynamic-to-static-property-definition":62,"./pass/transform-immediate-function-call":63,"./pass/transform-logical-association":64,"./pass/transform-to-compound-assignment":65,"./pass/transform-to-sequence-expression":66,"./pass/transform-typeof-undefined":67,"./pass/tree-based-constant-folding":68,"./post/omit-parens-in-void-context-iife":69,"./post/rewrite-boolean":70,"./post/rewrite-conditional-expression":71,"./post/transform-infinity":72,"./post/transform-static-to-dynamic-property-access":73,"./query":74}],45:[function(require,module,exports){
+/*
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'concatenate-variable-definition';
+
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function concatenateVariableDefinition(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        common.traverse(result, {
+            leave: function leave(node) {
+                var i, iz, j, jz, stmt, decl, target, body;
+                if (node.type !== Syntax.BlockStatement && node.type !== Syntax.Program) {
+                    return;
+                }
+
+                // concat sequencial variable definition to one
+                target = null;
+                body = [];
+
+                for (i = 0, iz = node.body.length; i < iz; ++i) {
+                    stmt = node.body[i];
+                    if (stmt.type === Syntax.VariableDeclaration && stmt.kind === 'var') {
+                        if (!target) {
+                            target = stmt;
+                            body.push(stmt);
+                            continue;
+                        }
+
+                        modified = true;
+                        for (j = 0, jz = stmt.declarations.length; j < jz; ++j) {
+                            decl = stmt.declarations[j];
+                            target.declarations.push(decl);
+                        }
+                    } else {
+                        target = null;
+                        body.push(stmt);
+                    }
+                }
+
+                node.body = body;
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    concatenateVariableDefinition.passName = Name;
+    module.exports = concatenateVariableDefinition;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],46:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name,
+        Syntax,
+        common,
+        status,
+        modified;
+
+    Name = 'dead-code-elimination';
+
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function JumpTarget(node, status, type) {
+        this.node = node;
+        this.type = type;
+        this.labels = status.labels || [];
+        status.labels = null;
+    }
+
+    JumpTarget.NAMED_ONLY = 0;  // (00)2
+    JumpTarget.ITERATION = 2;   // (10)2
+    JumpTarget.SWITCH = 3;      // (11)2
+
+    JumpTarget.prototype.isIteration = function isIteration() {
+        return this.type === JumpTarget.ITERATION;
+    };
+
+    JumpTarget.prototype.isAnonymous = function isAnonymous() {
+        return this.type & 2;
+    };
+
+    JumpTarget.prototype.contains = function contains(label) {
+        return this.labels.indexOf(label) !== -1;
+    };
+
+    function Jumps() {
+        this.targets = [];
+    }
+
+    Jumps.prototype.lookupContinuableTarget = function lookupContinuableTarget(label) {
+        var i, target;
+        for (i = this.targets.length - 1; i >= 0; --i) {
+            target = this.targets[i];
+            if (target.isIteration() && (!label || target.contains(label.name))) {
+                return target.node;
+            }
+        }
+        common.unreachable();
+    };
+
+    Jumps.prototype.lookupBreakableTarget = function lookupBreakableTarget(label) {
+        var i, target;
+        for (i = this.targets.length - 1; i >= 0; --i) {
+            target = this.targets[i];
+            if (label) {
+                if (target.contains(label.name)) {
+                    return target.node;
+                }
+            } else {
+                if (target.isAnonymous()) {
+                    return target.node;
+                }
+            }
+        }
+        common.unreachable();
+    };
+
+    Jumps.prototype.push = function push(target) {
+        this.targets.push(target);
+    };
+
+    Jumps.prototype.pop = function pop() {
+        this.targets.pop();
+    };
+
+    // Status implementation
+    //
+    // This is based on Constellation/iv lv5 railgun compiler continuation_status.h
+
+    function Status(upper) {
+        this.current = [];
+        this.upper = upper;
+        this.jumps = new Jumps();
+        this.labels = null;
+        this.next();
+    }
+
+    Status.NEXT = {};
+
+    Status.prototype.insert = function insert(stmt) {
+        this.current.push(stmt);
+    };
+
+    Status.prototype.erase = function erase(stmt) {
+        var index = this.current.indexOf(stmt);
+        if (index === -1) {
+            return false;
+        }
+        this.current.splice(index, 1);
+        return true;
+    };
+
+    Status.prototype.kill = function kill() {
+        return this.erase(Status.NEXT);
+    };
+
+    Status.prototype.has = function has(stmt) {
+        return this.current.indexOf(stmt) !== -1;
+    };
+
+    Status.prototype.jumpTo = function jumpTo(stmt) {
+        this.kill();
+        this.insert(stmt);
+    };
+
+    Status.prototype.resolveJump = function resolveJump(stmt) {
+        var index = this.current.indexOf(stmt);
+        if (index !== -1) {
+            this.current.splice(index, 1);
+            this.insert(Status.NEXT);
+        }
+    };
+
+    Status.prototype.clear = function clear() {
+        this.current.length = 0;
+    };
+
+    Status.prototype.next = function next() {
+        this.insert(Status.NEXT);
+    };
+
+    Status.prototype.isDead = function isDead() {
+        return !this.has(Status.NEXT);
+    };
+
+    Status.prototype.revive = function revive() {
+        if (this.isDead()) {
+            this.next();
+            return true;
+        }
+        return false;
+    };
+
+    Status.prototype.register = function register(node) {
+        if (!this.labels) {
+            this.labels = [];
+        }
+        this.labels.push(node.label.name);
+    };
+
+    Status.prototype.unregister = function unregister() {
+        this.labels = null;
+    };
+
+    Status.isRequired = function isRequired(node) {
+        var type = node.type;
+        common.assert(node, 'should be node');
+        return type === Syntax.Program || type === Syntax.FunctionExpression || type === Syntax.FunctionDeclaration;
+    };
+
+    function Context(node) {
+        node.__$context = this;
+        this.node = node;
+    }
+
+    Context.prototype.detach = function detach() {
+        delete this.node.__$context;
+    };
+
+    Context.lookup = function lookup(node) {
+        return node.__$context;
+    };
+
+    function getForwardLastNode(node) {
+        while (true) {
+            switch (node.type) {
+            case Syntax.IfStatement:
+                if (node.alternate) {
+                    return null;
+                }
+                node = node.consequent;
+                continue;
+
+            case Syntax.WithStatement:
+            case Syntax.LabeledStatement:
+                node = node.body;
+                continue;
+
+            case Syntax.BlockStatement:
+                if (node.body.length) {
+                    node = common.Array.last(node.body);
+                    continue;
+                }
+                break;
+            }
+            return node;
+        }
+    }
+
+    function visitLoopBody(loop, body) {
+        var jump, last;
+        last = getForwardLastNode(body);
+        if (last) {
+            if (last.type === Syntax.ContinueStatement) {
+                jump = status.jumps.lookupContinuableTarget(last.label);
+                if (jump === loop) {
+                    // this continue is dead code
+                    modified = true;
+                    common.convertToEmptyStatement(last);
+                }
+            }
+        }
+        return visit(body);
+    }
+
+    function visit(target) {
+        var live = false;
+
+        if (!target) {
+            return !status.isDead();
+        }
+
+        function eliminate(node, array) {
+            var i, iz, stmt, ret, info, result;
+            result = [];
+            for (i = 0, iz = array.length; i < iz; ++i) {
+                stmt = array[i];
+                if (stmt.type === Syntax.IfStatement) {
+                    info = new Context(stmt);
+                    ret = visit(stmt);
+                    info.detach();
+                } else {
+                    ret = visit(stmt);
+                }
+                if (ret) {
+                    live |= 1;
+                    result.push(stmt);
+
+                    // we transform
+                    //     if (cond) {
+                    //         #1
+                    //         return;
+                    //     } else
+                    //         #2;
+                    //     #3
+                    //  to
+                    //     if (cond) {
+                    //         #1
+                    //         return;
+                    //     }
+                    //     #2
+                    //     #3
+                    //
+                    // and
+                    //
+                    //     if (cond)
+                    //         #1;
+                    //     else {
+                    //         #2
+                    //         return;
+                    //     }
+                    //     #3
+                    //  to
+                    //     if (!cond) {
+                    //         #2
+                    //         return;
+                    //     }
+                    //     #1
+                    //     #3
+                    if (stmt.type === Syntax.IfStatement && stmt.alternate) {
+                        if ((!info.consequent || !info.alternate) && info.consequent !== info.alternate) {
+                            modified = true;
+                            if (info.consequent) {
+                                stmt.test = common.moveLocation(stmt.test, {
+                                    type: Syntax.UnaryExpression,
+                                    operator: '!',
+                                    argument: stmt.test
+                                });
+                                result.push(stmt.consequent);
+                                stmt.consequent = stmt.alternate;
+                                stmt.alternate = null;
+                            } else {  // info.alternate
+                                result.push(stmt.alternate);
+                                stmt.alternate = null;
+                            }
+                        }
+                    }
+                } else {
+                    // deleted
+                    modified = true;
+                }
+            }
+            return result;
+        }
+
+        common.traverse(target, {
+            enter: function enter(node) {
+                var i, iz, stmt, consequent, alternate, ctx, hasDefaultClause;
+                if (Status.isRequired(node)) {
+                    status = new Status(status);
+                }
+
+                live |= !status.isDead();
+
+                switch (node.type) {
+                case Syntax.Program:
+                    node.body = eliminate(node, node.body);
+                    return common.VisitorOption.Skip;
+
+                case Syntax.BlockStatement:
+                    status.jumps.push(new JumpTarget(node, status, JumpTarget.NAMED_ONLY));
+                    node.body = eliminate(node, node.body);
+                    status.jumps.pop();
+
+                    status.resolveJump(node);
+                    return common.VisitorOption.Skip;
+
+                case Syntax.BreakStatement:
+                    // like
+                    //   label: break label;
+                    // we treat as like empty statement
+                    if (node.label && status.labels && status.labels.indexOf(node.label)) {
+                        // change this statement to empty statement
+                        modified = true;
+                        common.convertToEmptyStatement(node);
+                    } else {
+                        status.jumpTo(status.jumps.lookupBreakableTarget(node.label));
+                    }
+                    return common.VisitorOption.Skip;
+
+                case Syntax.CatchClause:
+                    live |= visit(node.body);
+                    return common.VisitorOption.Skip;
+
+                case Syntax.ContinueStatement:
+                    status.jumpTo(status.jumps.lookupContinuableTarget(node.label));
+                    return common.VisitorOption.Skip;
+
+                case Syntax.DoWhileStatement:
+                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
+                    live |= visitLoopBody(node, node.body);
+                    status.jumps.pop();
+
+                    live |= visit(node.test);
+                    status.resolveJump(node);
+                    status.revive();
+                    return common.VisitorOption.Skip;
+
+                case Syntax.DebuggerStatement:
+                    return common.VisitorOption.Skip;
+
+                case Syntax.EmptyStatement:
+                    return common.VisitorOption.Skip;
+
+                case Syntax.ExpressionStatement:
+                    break;
+
+                case Syntax.ForStatement:
+                    live |= visit(node.init);
+                    live |= visit(node.test);
+
+                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
+                    live |= visitLoopBody(node, node.body);
+                    status.jumps.pop();
+
+                    live |= visit(node.update);
+                    status.resolveJump(node);
+                    status.revive();
+                    return common.VisitorOption.Skip;
+
+                case Syntax.ForInStatement:
+                    live |= visit(node.left);
+                    live |= visit(node.right);
+
+                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
+                    live |= visitLoopBody(node, node.body);
+                    status.jumps.pop();
+
+                    status.resolveJump(node);
+                    status.revive();
+                    return common.VisitorOption.Skip;
+
+                case Syntax.IfStatement:
+                    live |= visit(node.test);
+                    live |= visit(node.consequent);
+                    if (!node.alternate) {
+                        status.revive();
+                        return common.VisitorOption.Skip;
+                    }
+
+                    consequent = !status.isDead();
+                    if (!status.revive()) {
+                        status.insert(node);
+                    }
+
+                    live |= visit(node.alternate);
+                    alternate = !status.isDead();
+                    if (status.erase(node)) {
+                        status.revive();
+                    }
+                    if ((ctx = Context.lookup(node))) {
+                        ctx.consequent = consequent;
+                        ctx.alternate = alternate;
+                    }
+                    return common.VisitorOption.Skip;
+
+                case Syntax.LabeledStatement:
+                    status.register(node);
+                    break;
+
+                case Syntax.ReturnStatement:
+                    live |= visit(node.argument);
+                    status.kill();
+                    return common.VisitorOption.Skip;
+
+                case Syntax.SwitchStatement:
+                    visit(node.discriminant);
+
+                    status.jumps.push(new JumpTarget(node, status, JumpTarget.SWITCH));
+                    for (i = 0, iz = node.cases.length; i < iz; ++i) {
+                        stmt = node.cases[i];
+                        live |= visit(stmt);
+                        if (!stmt.test) {
+                            hasDefaultClause = true;
+                        }
+                        if (status.isDead() && (i + 1) < iz) {
+                            status.next();
+                        }
+                    }
+                    status.jumps.pop();
+
+                    status.resolveJump(node);
+                    if (status.isDead() && !hasDefaultClause) {
+                        status.next();
+                    }
+                    return common.VisitorOption.Skip;
+
+                case Syntax.SwitchCase:
+                    if (node.test) {
+                        live |= visit(node.test);
+                    }
+                    node.consequent = eliminate(node, node.consequent);
+                    return common.VisitorOption.Skip;
+
+                case Syntax.ThrowStatement:
+                    live |= visit(node.argument);
+                    status.kill();
+                    return common.VisitorOption.Skip;
+
+                case Syntax.TryStatement:
+                    live |= visit(node.block);
+
+                    if (node.handlers && node.handlers.length) {
+                        if (!status.revive()) {
+                            status.insert(node);
+                        }
+                        node.handlers = eliminate(node, node.handlers);
+                        if (status.erase(node)) {
+                            status.revive();
+                        }
+                    }
+
+                    if (node.finalizer) {
+                        if (!status.revive()) {
+                            status.insert(node);
+                        }
+                        live |= visit(node.finalizer);
+                        if (!status.erase(node)) {
+                            status.kill();
+                        }
+                    }
+                    return common.VisitorOption.Skip;
+
+                case Syntax.WhileStatement:
+                    live |= visit(node.test);
+
+                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
+                    live |= visitLoopBody(node, node.body);
+                    status.jumps.pop();
+
+                    status.resolveJump(node);
+                    status.revive();
+                    return common.VisitorOption.Skip;
+
+                case Syntax.WithStatement:
+                    break;
+
+                case Syntax.VariableDeclaration:
+                case Syntax.FunctionDeclaration:
+                    live = true;
+                    break;
+                }
+            },
+
+            leave: function leave(node) {
+                if (Status.isRequired(node)) {
+                    status = status.upper;
+                    return;
+                }
+
+                if (node.type === Syntax.LabeledStatement) {
+                    status.unregister();
+                }
+            }
+        });
+
+        return live;
+    }
+
+    // This is iv / lv5 / railgun bytecode compiler dead code elimination algorithm
+    function deadCodeElimination(tree, options) {
+        var result;
+
+        result = (options.get('destructive', { pathName: Name })) ? tree : common.deepCopy(tree);
+
+        status = null;
+        modified = false;
+
+        visit(result);
+
+        common.assert(status === null, 'status should be null');
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    deadCodeElimination.passName = Name;
+    module.exports = deadCodeElimination;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],47:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified, escope, evaluator;
+
+    Name = 'drop-variable-definition';
+    common = require('../common');
+    escope = require('escope');
+    evaluator = require('../evaluator');
+    Syntax = common.Syntax;
+
+    function getCandidates(scope) {
+        var i, iz, j, jz, identifiers, slots, v;
+
+        if (!scope.candidates) {
+            slots = [];
+            identifiers = [];
+            for (i = 0, iz = scope.variables.length; i < iz; ++i) {
+                v = scope.variables[i];
+                for (j = 0, jz = v.identifiers.length; j < jz; ++j) {
+                    identifiers.push(v.identifiers[j]);
+                    slots.push(v);
+                }
+            }
+
+            scope.candidates = {
+                slots: slots,
+                identifiers: identifiers
+            };
+        }
+
+        return scope.candidates;
+    }
+
+    function isRemovableDefinition(slot) {
+        var i, iz, ref, parent;
+        if (slot.identifiers.length !== 1) {
+            return false;
+        }
+
+        if (slot.references.length === 0) {
+            return true;
+        }
+
+        for (i = 0, iz = slot.references.length; i < iz; ++i) {
+            ref = slot.references[i];
+            if (ref.isRead()) {
+                return false;
+            }
+            if (ref.isWrite()) {
+                if (!ref.writeExpr) {
+                    return false;
+                }
+                parent = ref.writeExpr.__$parent$__;
+                if (!parent) {
+                    return false;
+                }
+                if (parent.type !== Syntax.AssignmentExpression &&
+                    parent.type !== Syntax.VariableDeclarator) {
+                    return false;
+                }
+                if (evaluator.hasSideEffect(ref.writeExpr, ref.from)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    function overrideExpression(from, to) {
+        var key;
+        for (key in from) {
+            delete from[key];
+        }
+        for (key in to) {
+            from[key] = to[key];
+        }
+        return from;
+    }
+
+    function removeDefinition(node, index, slot) {
+        var i, iz, ref, parent;
+
+        // remove from declaration list
+        node.declarations.splice(index, 1);
+        for (i = 0, iz = slot.references.length; i < iz; ++i) {
+            ref = slot.references[i];
+            common.assert(!ref.isRead());
+            if (ref.isWrite()) {
+                parent = ref.writeExpr.__$parent$__;
+                if (parent.type === Syntax.AssignmentExpression) {
+                    overrideExpression(ref.writeExpr.__$parent$__, ref.writeExpr);
+                }
+            }
+        }
+    }
+
+    function attachParent(tree) {
+        return common.traverse(tree, {
+            enter: function (node, parent) {
+                node.__$parent$__ = parent;
+            }
+        });
+    }
+
+    function removeParent(tree) {
+        return common.traverse(tree, {
+            enter: function (node) {
+                delete node.__$parent$__;
+                delete node.__$escope$__;
+            }
+        });
+    }
+
+    function dropVariableDefinition(tree, options) {
+        var result, manager, scope;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        scope = null;
+
+        manager = escope.analyze(result, { directive: true });
+        manager.attach();
+        attachParent(result);
+
+        result = common.replace(result, {
+            enter: function enter(node, parent) {
+                var i, decl, cand, index, slot, ret;
+                ret = node;
+                if (scope) {
+                    if (scope.variableScope.isStatic()) {
+                        cand = getCandidates(scope.variableScope);
+
+                        // remove unused variable
+                        if (node.type === Syntax.VariableDeclaration && node.kind === 'var') {
+                            i = node.declarations.length;
+                            while (i--) {
+                                decl = node.declarations[i];
+                                index = cand.identifiers.indexOf(decl.id);
+                                if (index !== -1) {
+                                    slot = cand.slots[index];
+                                    if (isRemovableDefinition(slot)) {
+                                        // ok, remove this variable
+                                        modified = true;
+                                        removeDefinition(node, i, slot);
+                                        continue;
+                                    }
+                                }
+                            }
+                            if (node.declarations.length === 0) {
+                                if (parent.type === Syntax.ForStatement) {
+                                    ret = null;
+                                } else {
+                                    ret = common.moveLocation(node, {
+                                        type: Syntax.EmptyStatement
+                                    });
+                                }
+                            }
+                        }
+
+                        // remove unused function declaration
+                        if (node.type === Syntax.FunctionDeclaration) {
+                            index = cand.identifiers.indexOf(node.id);
+                            if (index !== -1) {
+                                slot = cand.slots[index];
+                                if (slot.identifiers.length === 1 && slot.references.length === 0) {
+                                    // ok, remove this function declaration
+                                    modified = true;
+                                    ret = common.moveLocation(node, {
+                                        type: Syntax.EmptyStatement
+                                    });
+                                    return ret;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                scope = manager.acquire(node) || scope;
+                return ret;
+            },
+            leave: function leave(node) {
+                scope = manager.release(node) || scope;
+            }
+        });
+
+        manager.detach();
+        removeParent(result);
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    dropVariableDefinition.passName = Name;
+    module.exports = dropVariableDefinition;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../evaluator":41,"escope":75}],48:[function(require,module,exports){
+/*
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, Map, common, modified;
+
+    Name = 'eliminate-duplicate-function-declarations';
+    common = require('../common');
+    Map = require ('../map');
+
+    Syntax = common.Syntax;
+
+    function unique(map, root) {
+        return common.replace(root, {
+            enter: function (node) {
+                var name, info;
+                if (node.type === Syntax.FunctionDeclaration) {
+                    name = node.id.name;
+                    info = map.get(name);
+                    --info.count;
+                    if (info.count !== 0) {
+                        // Duplicate function declaration.
+                        modified = true;
+                        return common.moveLocation(node, { type: Syntax.EmptyStatement });
+                    }
+                }
+
+                if (node !== root && node.type === Syntax.BlockStatement) {
+                    return this.skip();
+                }
+            }
+        });
+    }
+
+    function uniqueInGlobal(map, root) {
+        return common.replace(root, {
+            enter: function (node) {
+                var name, info, first;
+                if (node.type === Syntax.FunctionDeclaration) {
+                    name = node.id.name;
+                    info = map.get(name);
+                    first = info.count === info.declarations.length;
+                    --info.count;
+                    if (info.declarations.length > 1) {
+                        if (first) {
+                            // replace the first declaration with the last declaration
+                            modified = true;
+                            return common.Array.last(info.declarations);
+                        } else {
+                            modified = true;
+                            return common.moveLocation(node, { type: Syntax.EmptyStatement });
+                        }
+                    }
+                }
+
+                if (node !== root && node.type === Syntax.BlockStatement) {
+                    return this.skip();
+                }
+            }
+        });
+    }
+
+    function main(tree, options) {
+        var result, stack, functionDepth, globalBlockFound;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        functionDepth = 0;
+        globalBlockFound = false;
+
+        stack = [ new Map() ];
+
+        result = common.replace(result, {
+            enter: function enter(node) {
+                var map, name, info;
+                if (node.type === Syntax.FunctionDeclaration) {
+                    name = node.id.name;
+                    map = common.Array.last(stack);
+                    if (map.has(name)) {
+                        info = map.get(name);
+                        info.declarations.push(node);
+                        ++info.count;
+                    } else {
+                        info = {
+                            declarations: [ node ],
+                            count: 1
+                        };
+                        map.set(name, info);
+                    }
+                }
+
+                // To support Block scoped FunctionDeclaration (ES6)
+                // Syntax.FunctionExpression and Syntax.FunctionDeclaration also hold block.
+                if (node.type === Syntax.BlockStatement) {
+                    stack.push(new Map());
+                }
+                if (node.type === Syntax.FunctionDeclaration || node.type === Syntax.FunctionExpression) {
+                    ++functionDepth;
+                }
+            },
+            leave: function leave(node) {
+                var map, ret;
+                if (node.type === Syntax.BlockStatement) {
+                    map = stack.pop();
+                    if (functionDepth === 0) {
+                        if (map.keys().length !== 0) {
+                            globalBlockFound = true;
+                        }
+                    } else {
+                        ret = unique(map, node);
+                    }
+                }
+                if (node.type === Syntax.FunctionDeclaration || node.type === Syntax.FunctionExpression) {
+                    --functionDepth;
+                }
+                return ret;
+            }
+        });
+
+        // If we had global block that contains function declaration, we
+        // suppress this optimization on global code.
+        common.assert(stack.length === 1, 'global map remains');
+        if (!globalBlockFound) {
+            result = uniqueInGlobal(stack[0], result);
+        }
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    main.passName = Name;
+    module.exports = main;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../map":42}],49:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, escope, modified;
+
+    Name = 'hoist-variable-to-arguments';
+    escope = require('escope');
+    common = require('../common');
+
+    Syntax = common.Syntax;
+
+    function hoist(callee) {
+        function hoisting(ident) {
+            var hoisted, i, iz;
+            hoisted = false;
+            for (i = 0, iz = callee.params.length; i < iz; ++i) {
+                if (ident.name === callee.params[i].name) {
+                    // already hoisted name
+                    hoisted = true;
+                    break;
+                }
+            }
+            if (!hoisted) {
+                callee.params.push(ident);
+            }
+        }
+
+        callee.body = common.replace(callee.body, {
+            enter: function (node, parent) {
+                var i, iz, expressions, declaration, forstmt, expr;
+
+                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
+                    this.skip();
+                    return;
+                }
+
+                if (node.type === Syntax.VariableDeclaration && node.kind === 'var') {
+                    // We should consider following pattern
+                    //
+                    //   for (var i = 0;;);
+                    // or
+                    //   for (var i in []);
+                    // specialize pass for `for-in`
+                    if (parent.type === Syntax.ForInStatement) {
+                        common.assert(node.declarations.length === 1, 'for-in declaration length should be 1');
+                        declaration = node.declarations[0];
+                        // not optimize
+                        //   for (var i = 1 in []);
+                        if (declaration.init) {
+                            return;
+                        }
+
+                        // TODO(Constellation)
+                        // in the future, destructuring pattern may come
+                        if (declaration.id.type !== Syntax.Identifier) {
+                            return;
+                        }
+                        hoisting(declaration.id);
+                        modified = true;
+                        return declaration.id;
+                    }
+
+                    forstmt = parent.type === Syntax.ForStatement;
+
+                    expressions = [];
+                    for (i = 0, iz = node.declarations.length; i < iz; ++i) {
+                        declaration = node.declarations[i];
+
+                        // TODO(Constellation)
+                        // in the future, destructuring pattern may come
+                        if (declaration.id.type !== Syntax.Identifier) {
+                            return;
+                        }
+                        hoisting(declaration.id);
+                        if (declaration.init) {
+                            expressions.push(common.moveLocation(declaration, {
+                                type: Syntax.AssignmentExpression,
+                                operator: '=',
+                                left: declaration.id,
+                                right: declaration.init
+                            }));
+                        }
+                    }
+
+                    modified = true;
+                    if (expressions.length === 0) {
+                        if (forstmt) {
+                            return null;
+                        }
+                        return common.moveLocation(node, {
+                            type: Syntax.EmptyStatement
+                        });
+                    }
+
+                    if (expressions.length === 1) {
+                        expr = expressions[0];
+                    } else {
+                        expr = common.moveLocation(node, {
+                            type: Syntax.SequenceExpression,
+                            expressions: expressions
+                        });
+                    }
+
+                    if (forstmt) {
+                        return expr;
+                    }
+
+                    return common.moveLocation(node, {
+                        type: Syntax.ExpressionStatement,
+                        expression: expr
+                    });
+                }
+            }
+        });
+    }
+
+    function hoistVariableToArguments(tree, options) {
+        var result, scope, manager;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        scope = null;
+
+        manager = escope.analyze(result, { directive: true });
+        manager.attach();
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                var callee;
+                if (node.type === Syntax.CallExpression || node.type === Syntax.NewExpression) {
+                    callee = node.callee;
+                    if (callee.type === Syntax.FunctionExpression && !callee.id) {
+                        if (callee.params.length === node['arguments'].length) {
+                            scope = manager.acquire(callee);
+                            if (!scope.isArgumentsMaterialized() && (node.type !== Syntax.NewExpression || !scope.isThisMaterialized())) {
+                                // ok, arguments is not used
+                                hoist(callee);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        manager.detach();
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    hoistVariableToArguments.passName = Name;
+    module.exports = hoistVariableToArguments;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"escope":75}],50:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'reduce-branch-jump';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function reduceLast(ary, index) {
+        var node, left;
+        node = ary[index];
+        if (node.type === Syntax.IfStatement) {
+            if (!node.alternate) {
+                if (node.consequent.type === Syntax.ReturnStatement) {
+                    modified = true;
+                    left = node.consequent.argument;
+                    if (!left) {
+                        ary[index] = common.moveLocation(node, {
+                            type: Syntax.ReturnStatement,
+                            argument: {
+                                type: Syntax.SequenceExpression,
+                                expressions: [
+                                    node.test,
+                                    common.SpecialNode.generateUndefined()
+                                ]
+                            }
+                        });
+                        return true;
+                    }
+                    ary[index] = common.moveLocation(node, {
+                        type: Syntax.ReturnStatement,
+                        argument: {
+                            type: Syntax.ConditionalExpression,
+                            test: node.test,
+                            consequent: left,
+                            alternate: common.SpecialNode.generateUndefined()
+                        }
+                    });
+                    return true;
+                }
+            }
+        }
+    }
+
+    function reduce(ary, index) {
+        var node, sibling, left, right;
+        node = ary[index];
+        sibling = ary[index + 1];
+        if (node.type === Syntax.IfStatement) {
+            if (!node.alternate) {
+                if (node.consequent.type === Syntax.ReturnStatement && sibling.type === Syntax.ReturnStatement) {
+                    // pattern:
+                    //     if (cond) return v;
+                    //     return v2;
+                    modified = true;
+                    ary.splice(index, 1);
+                    left = node.consequent.argument;
+                    right = sibling.argument;
+                    if (!left && !right) {
+                        ary[index] = common.moveLocation(node, {
+                            type: Syntax.ReturnStatement,
+                            argument: {
+                                type: Syntax.SequenceExpression,
+                                expressions: [
+                                    node.test,
+                                    common.SpecialNode.generateUndefined()
+                                ]
+                            }
+                        });
+                        return true;
+                    }
+                    if (!left) {
+                        left = common.SpecialNode.generateUndefined();
+                    }
+                    if (!right) {
+                        right = common.SpecialNode.generateUndefined();
+                    }
+                    ary[index] = common.moveLocation(node, {
+                        type: Syntax.ReturnStatement,
+                        argument: {
+                            type: Syntax.ConditionalExpression,
+                            test: node.test,
+                            consequent: left,
+                            alternate: right
+                        }
+                    });
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function reduceBranchJump(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        common.traverse(result, {
+            leave: function leave(node, parent) {
+                var i;
+                switch (node.type) {
+                case Syntax.BlockStatement:
+                case Syntax.Program:
+                    i = 0;
+                    while (i < (node.body.length - 1)) {
+                        if (!reduce(node.body, i)) {
+                            ++i;
+                        }
+                    }
+
+                    if (common.isFunctionBody(node, parent)) {
+                        if (node.body.length > 0) {
+                            i = node.body.length - 1;
+                            reduceLast(node.body, i);
+                        }
+                    }
+                    break;
+
+                case Syntax.SwitchCase:
+                    i = 0;
+                    while (i < (node.consequent.length - 1)) {
+                        if (!reduce(node.consequent, i)) {
+                            ++i;
+                        }
+                    }
+                    break;
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    reduceBranchJump.passName = Name;
+    module.exports = reduceBranchJump;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],51:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'reduce-multiple-if-statements';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function reduceMultipleIfStatements(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        common.traverse(result, {
+            leave: function leave(node) {
+                // reduce
+                //     if (cond) {
+                //         if (cond2) {
+                //             ...
+                //         }
+                //     }
+                // to
+                //     if (cond && cond2) {
+                //         ...
+                //     }
+                if (node.type === Syntax.IfStatement && !node.alternate &&
+                    node.consequent.type === Syntax.IfStatement && !node.consequent.alternate) {
+                    modified = true;
+                    node.test = {
+                        type: Syntax.LogicalExpression,
+                        operator: '&&',
+                        left: node.test,
+                        right: node.consequent.test
+                    };
+                    node.consequent = node.consequent.consequent;
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    reduceMultipleIfStatements.passName = Name;
+    module.exports = reduceMultipleIfStatements;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],52:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, evaluator, escope, modified;
+
+    Name = 'reduce-sequence-expression';
+    escope = require('escope');
+    common = require('../common');
+    evaluator = require('../evaluator');
+    Syntax = common.Syntax;
+
+    function reduce(node) {
+        var i, iz, j, jz, expr, result;
+        result = [];
+        for (i = 0, iz = node.expressions.length; i < iz; ++i) {
+            expr = node.expressions[i];
+            if (expr.type === Syntax.SequenceExpression) {
+                modified = true;
+                // delete SequenceExpression location information,
+                // because information of SequenceExpression is not used effectively in source-map.
+                common.deleteLocation(node);
+                for (j = 0, jz = expr.expressions.length; j < jz; ++j) {
+                    result.push(expr.expressions[j]);
+                }
+            } else {
+                result.push(expr);
+            }
+        }
+        node.expressions = result;
+    }
+
+    function isLoadSideEffectFree(node, scope) {
+        var ref, value;
+        if (evaluator.constant.isConstant(node)) {
+            value = evaluator.constant.evaluate(node);
+            if (value === null || typeof value !== 'object') {
+                return true;
+            }
+        }
+        if (node.type === Syntax.Identifier) {
+            ref = scope.resolve(node);
+            return ref && ref.isStatic();
+        }
+        return false;
+    }
+
+    function isStoreSideEffectFree(node, scope) {
+        if (!evaluator.hasSideEffect(node, scope)) {
+            return true;
+        }
+        if (node.type === Syntax.Identifier) {
+            return true;
+        }
+        if (node.type === Syntax.MemberExpression) {
+            if (!evaluator.hasSideEffect(node.object, scope)) {
+                // Because of toString operation
+                if (!node.computed || isLoadSideEffectFree(node.property, scope)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return false;
+    }
+
+    function reduceSequenceExpression(tree, options) {
+        var result, scope, manager;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        scope = null;
+
+        manager = escope.analyze(result, { directive: true });
+        manager.attach();
+
+        result = common.replace(result, {
+            enter: function enter(node) {
+                scope = manager.acquire(node) || scope;
+            },
+            leave: function leave(node) {
+                var result, last;
+                switch (node.type) {
+                case Syntax.SequenceExpression:
+                    reduce(node);
+                    break;
+
+                case Syntax.ConditionalExpression:
+                    if (node.test.type === Syntax.SequenceExpression) {
+                        modified = true;
+                        result = node.test;
+                        node.test = common.Array.last(result.expressions);
+                        result.expressions[result.expressions.length - 1] = node;
+                    }
+                    break;
+
+                case Syntax.LogicalExpression:
+                    if (node.left.type === Syntax.SequenceExpression) {
+                        modified = true;
+                        result = node.left;
+                        node.left = common.Array.last(result.expressions);
+                        result.expressions[result.expressions.length - 1] = node;
+                    }
+                    break;
+
+                case Syntax.BinaryExpression:
+                    if (node.left.type === Syntax.SequenceExpression) {
+                        modified = true;
+                        result = node.left;
+                        node.left = common.Array.last(result.expressions);
+                        result.expressions[result.expressions.length - 1] = node;
+                    } else if (node.right.type === Syntax.SequenceExpression && !evaluator.hasSideEffect(node.left, scope)) {
+                        modified = true;
+                        result = node.right;
+                        node.right = common.Array.last(result.expressions);
+                        result.expressions[result.expressions.length - 1] = node;
+                    }
+                    break;
+
+                case Syntax.UpdateExpression:
+                case Syntax.UnaryExpression:
+                    if (node.argument.type === Syntax.SequenceExpression) {
+                        // Don't transform
+                        //   typeof (0, ident)
+                        // to
+                        //   0, typeof ident
+                        //
+                        //   delete (0, 1, t.t)
+                        // to
+                        //   delete t.t
+                        last = common.Array.last(node.argument.expressions);
+                        if (!common.SpecialNode.canExtractSequence(last, node, scope)) {
+                            break;
+                        }
+                        modified = true;
+                        result = node.argument;
+                        node.argument = common.Array.last(result.expressions);
+                        result.expressions[result.expressions.length - 1] = node;
+                    }
+                    break;
+
+                case Syntax.AssignmentExpression:
+                    if (node.operator === '=' && node.right.type === Syntax.SequenceExpression && isStoreSideEffectFree(node.left, scope)) {
+                        modified = true;
+                        result = node.right;
+                        node.right = common.Array.last(result.expressions);
+                        result.expressions[result.expressions.length - 1] = node;
+                    }
+                    break;
+                }
+                scope = manager.release(node) || scope;
+                return result;
+            }
+        });
+
+        manager.detach();
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    reduceSequenceExpression.passName = Name;
+    module.exports = reduceSequenceExpression;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../evaluator":41,"escope":75}],53:[function(require,module,exports){
+/*
+  Copyright (C) 2012 Mihai Bazon <mihai.bazon@gmail.com>
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, evaluator, escope, modified;
+
+    Name = 'remove-context-sensitive-expressions';
+    common = require('../common');
+    evaluator = require('../evaluator');
+    escope = require('escope');
+    Syntax = common.Syntax;
+
+
+    function Transformer(trans, booleanFunction, voidFunction, scope) {
+        this.transform = trans;
+        this.booleanFunction = booleanFunction;
+        this.voidFunction = voidFunction;
+        this.scope = scope;
+    }
+
+    Transformer.prototype.booleanTransformation = function (expr) {
+        var consequent;
+        do {
+            if (expr.type === Syntax.UnaryExpression) {
+                if (expr.operator === '!' &&
+                    expr.argument.type === Syntax.UnaryExpression && expr.argument.operator === '!') {
+                    modified = true;
+                    expr = expr.argument.argument;
+                    continue;
+                }
+            } else if (expr.type === Syntax.LogicalExpression) {
+                if (expr.left.type === Syntax.UnaryExpression && expr.left.operator === '!' &&
+                    expr.right.type === Syntax.UnaryExpression && expr.right.operator === '!') {
+                    // !cond && !ok() => !(cond || ok())
+                    // this introduces more optimizations
+                    modified = true;
+                    expr.left = expr.left.argument;
+                    expr.right = expr.right.argument;
+                    expr.operator = (expr.operator === '||') ? '&&' : '||';
+                    expr = common.moveLocation(expr, {
+                        type: Syntax.UnaryExpression,
+                        operator: '!',
+                        argument: expr
+                    });
+                    continue;
+                }
+            } else if (expr.type === Syntax.ConditionalExpression) {
+                if (expr.test.type === Syntax.UnaryExpression && expr.test.operator === '!') {
+                    modified = true;
+                    expr.test = expr.test.argument;
+                    consequent = expr.consequent;
+                    expr.consequent = expr.alternate;
+                    expr.alternate = consequent;
+                }
+            }
+            break;
+        } while (true);
+        return expr;
+    };
+
+    Transformer.prototype.voidTransformation = function (expr) {
+        var leftHasSideEffect, rightHasSideEffect;
+        do {
+            expr = this.booleanTransformation(expr);
+            if (expr.type === Syntax.UnaryExpression) {
+                if (expr.operator === '!' || expr.operator === 'void') {
+                    modified = true;
+                    expr = expr.argument;
+                    continue;
+                }
+            } else if (expr.type === Syntax.LogicalExpression) {
+                if (expr.left.type === Syntax.UnaryExpression && expr.left.operator === '!') {
+                    // !cond && ok() => cond || ok()
+                    modified = true;
+                    expr.left = expr.left.argument;
+                    expr.operator = (expr.operator === '||') ? '&&' : '||';
+                }
+            } else if (expr.type === Syntax.ConditionalExpression) {
+                // a?0:1 => a
+                // a?0:b => a||b
+                // a?b:0 => a&&b
+                leftHasSideEffect = evaluator.hasSideEffect(expr.consequent, this.scope);
+                rightHasSideEffect = evaluator.hasSideEffect(expr.alternate, this.scope);
+                if (!leftHasSideEffect && !rightHasSideEffect) {
+                    modified = true;
+                    expr = expr.test;
+                } else if (!leftHasSideEffect) {
+                    modified = true;
+                    expr = common.moveLocation(expr, {
+                        type: Syntax.LogicalExpression,
+                        operator: '||',
+                        left: expr.test,
+                        right: expr.alternate
+                    });
+                } else if (!rightHasSideEffect) {
+                    modified = true;
+                    expr = common.moveLocation(expr, {
+                        type: Syntax.LogicalExpression,
+                        operator: '&&',
+                        left: expr.test,
+                        right: expr.consequent
+                    });
+                }
+            }
+            break;
+        } while (true);
+        return expr;
+    };
+
+    Transformer.prototype.apply = function (expr) {
+        var prev;
+        do {
+            prev = expr;
+            expr = this.transform(expr);
+            if (prev !== expr) {
+                continue;
+            }
+
+            if (expr.type === Syntax.LogicalExpression) {
+                expr.left = this.booleanFunction(expr.left, this.scope);
+                expr.right = this.voidFunction(expr.right, this.scope);
+            } else if (expr.type === Syntax.ConditionalExpression) {
+                expr.consequent = this.voidFunction(expr.consequent, this.scope);
+                expr.alternate = this.voidFunction(expr.alternate, this.scope);
+            } else if (expr.type === Syntax.SequenceExpression) {
+                expr.expressions[expr.expressions.length - 1] = this.voidFunction(common.Array.last(expr.expressions), this.scope);
+            }
+            break;
+        } while (true);
+        return expr;
+    };
+
+    function voidContext(expr, scope) {
+        var trans = new Transformer(Transformer.prototype.voidTransformation, booleanContext, voidContext, scope);
+        return trans.apply(expr);
+    }
+
+    function booleanContext(expr, scope) {
+        var trans = new Transformer(Transformer.prototype.booleanTransformation, booleanContext, booleanContext, scope);
+        return trans.apply(expr);
+    }
+
+    function removeContextSensitiveExpressions(tree, options) {
+        var result, stackCount, preserveCompletionValue, scope, manager;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        stackCount = 0;
+        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
+
+        scope = null;
+        manager = escope.analyze(result, { directive: true });
+        manager.attach();
+
+        result = common.replace(result, {
+            enter: function enter(node) {
+                var i, iz;
+
+                scope = manager.acquire(node) || scope;
+
+                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
+                    ++stackCount;
+                }
+
+                switch (node.type) {
+                case Syntax.AssignmentExpression:
+                    break;
+
+                case Syntax.ArrayExpression:
+                    break;
+
+                case Syntax.BlockStatement:
+                    break;
+
+                case Syntax.BinaryExpression:
+                    break;
+
+                case Syntax.BreakStatement:
+                    break;
+
+                case Syntax.CallExpression:
+                    break;
+
+                case Syntax.CatchClause:
+                    break;
+
+                case Syntax.ConditionalExpression:
+                    node.test = booleanContext(node.test, scope);
+                    break;
+
+                case Syntax.ContinueStatement:
+                    break;
+
+                case Syntax.DoWhileStatement:
+                    node.test = booleanContext(node.test, scope);
+                    break;
+
+                case Syntax.DebuggerStatement:
+                    break;
+
+                case Syntax.EmptyStatement:
+                    break;
+
+                case Syntax.ExpressionStatement:
+                    if (!preserveCompletionValue || stackCount !== 0) {
+                        // not global context
+                        node.expression = voidContext(node.expression, scope);
+                    }
+                    break;
+
+                case Syntax.FunctionExpression:
+                    break;
+
+                case Syntax.ForInStatement:
+                    break;
+
+                case Syntax.FunctionDeclaration:
+                    break;
+
+                case Syntax.ForStatement:
+                    if (node.init && node.init.type !== Syntax.VariableDeclaration) {
+                        node.init = voidContext(node.init, scope);
+                    }
+                    if (node.test) {
+                        node.test = booleanContext(node.test, scope);
+                    }
+                    if (node.update) {
+                        node.update = voidContext(node.update, scope);
+                    }
+                    break;
+
+                case Syntax.Identifier:
+                    break;
+
+                case Syntax.IfStatement:
+                    node.test = booleanContext(node.test, scope);
+                    break;
+
+                case Syntax.Literal:
+                    break;
+
+                case Syntax.LabeledStatement:
+                    break;
+
+                case Syntax.LogicalExpression:
+                    break;
+
+                case Syntax.MemberExpression:
+                    break;
+
+                case Syntax.NewExpression:
+                    break;
+
+                case Syntax.ObjectExpression:
+                    break;
+
+                case Syntax.Program:
+                    break;
+
+                case Syntax.Property:
+                    break;
+
+                case Syntax.ReturnStatement:
+                    break;
+
+                case Syntax.SequenceExpression:
+                    for (i = 0, iz = node.expressions.length - 1; i < iz; ++i) {
+                        node.expressions[i] = voidContext(node.expressions[i], scope);
+                    }
+                    break;
+
+                case Syntax.SwitchStatement:
+                    break;
+
+                case Syntax.SwitchCase:
+                    break;
+
+                case Syntax.ThisExpression:
+                    break;
+
+                case Syntax.ThrowStatement:
+                    break;
+
+                case Syntax.TryStatement:
+                    break;
+
+                case Syntax.UnaryExpression:
+                    if (node.operator === '!') {
+                        node.argument = booleanContext(node.argument, scope);
+                    } else if (node.operator === 'void') {
+                        node.argument = voidContext(node.argument, scope);
+                    }
+                    break;
+
+                case Syntax.UpdateExpression:
+                    break;
+
+                case Syntax.VariableDeclaration:
+                    break;
+
+                case Syntax.VariableDeclarator:
+                    break;
+
+                case Syntax.WhileStatement:
+                    node.test = booleanContext(node.test, scope);
+                    break;
+
+                case Syntax.WithStatement:
+                    break;
+
+                }
+            },
+
+            leave: function leave(node) {
+                scope = manager.release(node) || scope;
+                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
+                    --stackCount;
+                }
+            }
+        });
+
+        manager.detach();
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    removeContextSensitiveExpressions.passName = Name;
+    module.exports = removeContextSensitiveExpressions;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../evaluator":41,"escope":75}],54:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'remove-empty-statement';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function remove(array) {
+        var i, iz, node, result;
+        result = [];
+        for (i = 0, iz = array.length; i < iz; ++i) {
+            node = array[i];
+            if (node.type === Syntax.EmptyStatement) {
+                modified = true;
+            } else {
+                result.push(node);
+            }
+        }
+        return result;
+    }
+
+    function removeAlternate(node) {
+        if (node.alternate) {
+            if (node.alternate.type === Syntax.EmptyStatement) {
+                modified = true;
+                node.alternate = null;
+            } else if (node.consequent.type === Syntax.EmptyStatement) {
+                modified = true;
+                node.consequent = node.alternate;
+                node.alternate = null;
+                node.test = common.moveLocation(node.test, {
+                    type: Syntax.UnaryExpression,
+                    operator: '!',
+                    argument: node.test
+                });
+            }
+        }
+    }
+
+    function removeEmptyStatement(tree, options) {
+        var result;
+
+        modified = false;
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                var clause;
+                switch (node.type) {
+                case Syntax.BlockStatement:
+                case Syntax.Program:
+                    node.body = remove(node.body);
+                    break;
+
+                case Syntax.SwitchCase:
+                    node.consequent = remove(node.consequent);
+                    break;
+
+                case Syntax.IfStatement:
+                    removeAlternate(node);
+                    break;
+
+                // drop unused default block
+                case Syntax.SwitchStatement:
+                    if (node.cases.length) {
+                        clause = common.Array.last(node.cases);
+                        if (!clause.test && common.Array.empty(clause.consequent)) {
+                            // this is wasted default case
+                            modified = true;
+                            node.cases.pop();
+                        }
+                    }
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    removeEmptyStatement.passName = Name;
+    module.exports = removeEmptyStatement;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],55:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, escope, evaluator, modified;
+
+    Name = 'remove-side-effect-free-expressions';
+    escope = require('escope');
+    common = require('../common');
+    evaluator = require('../evaluator');
+    Syntax = common.Syntax;
+
+    function reduce(node, scope, parent, isResultNeeded) {
+        var i, iz, expr, result, prev;
+
+        common.assert(node.expressions.length > 1, 'expressions should be more than one');
+
+        result = [];
+        for (i = 0, iz = node.expressions.length; i < iz; ++i) {
+            prev = expr;
+            expr = node.expressions[i];
+            if (((i + 1) !== iz) || !isResultNeeded) {
+                if (!evaluator.hasSideEffect(expr, scope)) {
+                    continue;
+                }
+            }
+            result.push(expr);
+        }
+
+        if (!isResultNeeded && result.length === 0) {
+            modified = true;
+            return expr;
+        }
+
+        common.assert(result.length > 0, 'result should be more than zero');
+
+        // not changed
+        do {
+            if (iz === result.length) {
+                return node;
+            }
+
+            if (result.length === 1) {
+                if (!common.SpecialNode.canExtractSequence(result[0], parent, scope)) {
+                    result.unshift(prev);
+                    continue;
+                }
+                modified = true;
+                return result[0];
+            }
+            modified = true;
+            node.expressions = result;
+            return node;
+        } while (true);
+    }
+
+    function removeSideEffectFreeExpressions(tree, options) {
+        var result, scope, manager, preserveCompletionValue;
+
+        function isResultNeeded(parent, scope) {
+            if (parent.type === Syntax.ExpressionStatement && (!preserveCompletionValue || scope.type !== 'global')) {
+                return false;
+            }
+            return true;
+        }
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
+        modified = false;
+        scope = null;
+        manager = escope.analyze(result, { directive: true });
+        manager.attach();
+
+        result = common.replace(result, {
+            enter: function enter(node, parent) {
+                var res, unary, trans;
+
+                res = node;
+                scope = manager.acquire(node) || scope;
+                if (res.type === Syntax.SequenceExpression) {
+                    res = reduce(res, scope, parent, isResultNeeded(parent, scope));
+                }
+
+                if (res.type === Syntax.SequenceExpression) {
+                    common.assert(res.expressions.length > 1, 'sequences\' length should be more than 1');
+                    unary = common.Array.last(res.expressions);
+                    if (unary.type === Syntax.UnaryExpression && unary.operator === 'void' && !evaluator.hasSideEffect(unary.argument, scope)) {
+                        // (x, void sideEffectFree) => (void x)
+                        modified = true;
+                        res.expressions.pop();
+                        trans = common.moveLocation(unary, {
+                            type: Syntax.UnaryExpression,
+                            operator: 'void',
+                            argument: common.Array.last(res.expressions)
+                        });
+                        if (res.expressions.length === 1) {
+                            res = trans;
+                        } else {
+                            res.expressions[res.expressions.length - 1] = trans;
+                        }
+                    }
+                }
+
+                // Because eval code should return last evaluated value in
+                // ExpressionStatement, we should not remove.
+                if (!isResultNeeded(res, scope)) {
+                    if (!evaluator.hasSideEffect(res.expression, scope)) {
+                        modified = true;
+                        res = common.moveLocation(res, {
+                            type: Syntax.EmptyStatement
+                        });
+                    }
+                }
+                return res;
+            },
+            leave: function leave(node) {
+                scope = manager.release(node) || scope;
+            }
+        });
+
+        manager.detach();
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    removeSideEffectFreeExpressions.passName = Name;
+    module.exports = removeSideEffectFreeExpressions;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../evaluator":41,"escope":75}],56:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, escope, evaluator, modified;
+
+    Name = 'remove-unreachable-branch';
+    escope = require('escope');
+    common = require('../common');
+    evaluator = require('../evaluator');
+    Syntax = common.Syntax;
+
+    function handleIfStatement(func, node) {
+        var test, body, decl;
+        test = evaluator.booleanCondition(node.test);
+        if (!node.alternate) {
+            if (typeof test === 'boolean') {
+                modified = true;
+                body = [];
+
+                if (test) {
+                    body.push(common.moveLocation(node.test, {
+                        type: Syntax.ExpressionStatement,
+                        expression: node.test
+                    }), node.consequent);
+                    return {
+                        type: Syntax.BlockStatement,
+                        body: body
+                    };
+                } else {
+                    decl = common.delegateVariableDeclarations(node.consequent, func);
+                    if (decl) {
+                        body.push(decl);
+                    }
+                    body.push(common.moveLocation(node.test, {
+                        type: Syntax.ExpressionStatement,
+                        expression: node.test
+                    }));
+                    return {
+                        type: Syntax.BlockStatement,
+                        body: body
+                    };
+                }
+            }
+        } else {
+            if (typeof test === 'boolean') {
+                modified = true;
+                body = [];
+
+                if (test) {
+                    decl = common.delegateVariableDeclarations(node.alternate, func);
+                    if (decl) {
+                        body.push(decl);
+                    }
+                    body.push(common.moveLocation(node.test, {
+                        type: Syntax.ExpressionStatement,
+                        expression: node.test
+                    }), node.consequent);
+                    return {
+                        type: Syntax.BlockStatement,
+                        body: body
+                    };
+                } else {
+                    decl = common.delegateVariableDeclarations(node.consequent, func);
+                    if (decl) {
+                        body.push(decl);
+                    }
+                    body.push(common.moveLocation(node.test, {
+                        type: Syntax.ExpressionStatement,
+                        expression: node.test
+                    }), node.alternate);
+                    return {
+                        type: Syntax.BlockStatement,
+                        body: body
+                    };
+                }
+            }
+        }
+    }
+
+    function handleLogicalExpression(func, node) {
+        var test;
+        test = evaluator.booleanCondition(node.left);
+        if (typeof test === 'boolean') {
+            modified = true;
+            if (test) {
+                if (node.operator === '&&') {
+                    return common.moveLocation(node, {
+                        type: Syntax.SequenceExpression,
+                        expressions: [ node.left, node.right ]
+                    });
+                } else {
+                    return node.left;
+                }
+            } else {
+                if (node.operator === '&&') {
+                    return node.left;
+                } else {
+                    return common.moveLocation(node, {
+                        type: Syntax.SequenceExpression,
+                        expressions: [ node.left, node.right ]
+                    });
+                }
+            }
+        }
+    }
+
+    function handleConditionalExpression(func, node) {
+        var test;
+        test = evaluator.booleanCondition(node.test);
+        if (typeof test === 'boolean') {
+            modified = true;
+            if (test) {
+                return common.moveLocation(node, {
+                    type: Syntax.SequenceExpression,
+                    expressions: [ node.test, node.consequent ]
+                });
+            } else {
+                return common.moveLocation(node, {
+                    type: Syntax.SequenceExpression,
+                    expressions: [ node.test, node.alternate ]
+                });
+            }
+        }
+    }
+
+    function removeUnreachableBranch(tree, options) {
+        var result, stack;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        stack = [];
+
+        result = common.replace(result, {
+            enter: function enter(node) {
+                var func;
+
+                if (escope.Scope.isVariableScopeRequired(node)) {
+                    stack.push(node);
+                    return;
+                }
+                func = common.Array.last(stack);
+
+                switch (node.type) {
+                case Syntax.IfStatement:
+                    return handleIfStatement(func, node);
+
+                case Syntax.LogicalExpression:
+                    return handleLogicalExpression(func, node);
+
+                case Syntax.ConditionalExpression:
+                    return handleConditionalExpression(func, node);
+                }
+            },
+            leave: function leave(node) {
+                if (escope.Scope.isVariableScopeRequired(node)) {
+                    stack.pop();
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    removeUnreachableBranch.passName = Name;
+    module.exports = removeUnreachableBranch;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../evaluator":41,"escope":75}],57:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, Map, common, scope, modified;
+
+    Name = 'remove-unused-label';
+    common = require('../common');
+    Map = require('../map');
+    Syntax = common.Syntax;
+
+    function Scope(upper) {
+        this.set = new Map();
+        this.unused = [];
+        this.upper = upper;
+    }
+
+    Scope.prototype.register = function register(node) {
+        var name;
+
+        common.assert(node.type === Syntax.LabeledStatement);
+
+        name = node.label.name;
+        common.assert(!this.set.has(name), 'duplicate label is found');
+        this.set.set(name, {
+            used: false,
+            stmt: node
+        });
+    };
+
+    Scope.prototype.unregister = function unregister(node) {
+        var name, ref;
+        if (node.type === Syntax.LabeledStatement) {
+            name = node.label.name;
+            ref = this.set.get(name);
+            this.set['delete'](name);
+            if (!ref.used) {
+                modified = true;
+                return node.body;
+            }
+        }
+        return node;
+    };
+
+    Scope.prototype.resolve = function resolve(node) {
+        var name;
+        if (node.label) {
+            name = node.label.name;
+            common.assert(this.set.has(name), 'unresolved label');
+            this.set.get(name).used = true;
+        }
+    };
+
+    Scope.prototype.close = function close() {
+        return this.upper;
+    };
+
+    function removeUnusedLabel(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        scope = null;
+        modified = false;
+
+        result = common.replace(result, {
+            enter: function enter(node) {
+                switch (node.type) {
+                case Syntax.Program:
+                case Syntax.FunctionDeclaration:
+                case Syntax.FunctionExpression:
+                    scope = new Scope(scope);
+                    break;
+
+                case Syntax.LabeledStatement:
+                    scope.register(node);
+                    break;
+
+                case Syntax.BreakStatement:
+                case Syntax.ContinueStatement:
+                    scope.resolve(node);
+                    break;
+                }
+            },
+            leave: function leave(node) {
+                var ret;
+                ret = scope.unregister(node);
+                if (node.type === Syntax.Program || node.type === Syntax.FunctionDeclaration || node.type === Syntax.FunctionExpression) {
+                    scope = scope.close();
+                }
+                return ret;
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    removeUnusedLabel.passName = Name;
+    module.exports = removeUnusedLabel;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../map":42}],58:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'remove-wasted-blocks';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function flattenBlockStatement(body) {
+        var i, iz, j, jz, result, stmt, inner, ok;
+        result = [];
+        for (i = 0, iz = body.length; i < iz; ++i) {
+            stmt = body[i];
+            if (stmt.type === Syntax.BlockStatement) {
+                ok = true;
+                for (j = 0, jz = stmt.body.length; j < jz; ++j) {
+                    inner = stmt.body[j];
+                    if (common.isScopedDeclaration(inner)) {
+                        // we cannot remove this block
+                        ok = false;
+                    }
+                }
+                if (ok) {
+                    modified = true;
+                    result = result.concat(stmt.body);
+                } else {
+                    result.push(stmt);
+                }
+            } else {
+                result.push(stmt);
+            }
+        }
+        return result;
+    }
+
+    function removeWastedBlocks(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        result = common.replace(result, {
+            leave: function leave(node, parent) {
+                var i, iz, stmt;
+                // remove nested blocks
+                if (node.type === Syntax.BlockStatement || node.type === Syntax.Program) {
+                    for (i = 0, iz = node.body.length; i < iz; ++i) {
+                        stmt = node.body[i];
+                        if (stmt.type === Syntax.BlockStatement) {
+                            node.body = flattenBlockStatement(node.body);
+                            break;
+                        }
+                    }
+                }
+
+                // These type needs BlockStatement
+                if (parent.type === Syntax.FunctionDeclaration || parent.type === Syntax.FunctionExpression || parent.type === Syntax.TryStatement || parent.type === Syntax.CatchClause) {
+                    return;
+                }
+
+                while (node.type === Syntax.BlockStatement && node.body.length === 1 && !common.isScopedDeclaration(node.body[0])) {
+                    modified = true;
+                    node = node.body[0];
+                }
+                // empty body
+                if (node.type === Syntax.BlockStatement && node.body.length === 0) {
+                    modified = true;
+                    return {
+                        type: Syntax.EmptyStatement
+                    };
+                }
+                return node;
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    removeWastedBlocks.passName = Name;
+    module.exports = removeWastedBlocks;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],59:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'reordering-function-declarations';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function reordering(array) {
+        var i, iz, node, directives, declarations, others;
+        directives = [];
+        declarations = [];
+        others = [];
+        for (i = 0, iz = array.length; i < iz; ++i) {
+            node = array[i];
+            if (node.type === Syntax.FunctionDeclaration) {
+                if ((declarations.length + directives.length) !== i) {
+                    modified = true;
+                }
+                declarations.push(node);
+            } else if (node.type === Syntax.DirectiveStatement) {
+                directives.push(node);
+            } else {
+                others.push(node);
+            }
+        }
+        return directives.concat(declarations, others);
+    }
+
+    function reorderingFunctionDeclarations(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        common.traverse(result, {
+            leave: function leave(node) {
+                switch (node.type) {
+                case Syntax.Program:
+                    node.body = reordering(node.body);
+                    break;
+
+                case Syntax.FunctionDeclaration:
+                case Syntax.FunctionExpression:
+                    node.body.body = reordering(node.body.body);
+                    break;
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    reorderingFunctionDeclarations.passName = Name;
+    module.exports = reorderingFunctionDeclarations;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],60:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'transform-branch-to-expression';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function transformBranchToExpression(tree, options) {
+        var result, preserveCompletionValue;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
+        modified = false;
+
+        result = common.replace(result, {
+            leave: function leave(node) {
+                var consequent, alternate, ancestors;
+                if (node.type === Syntax.IfStatement) {
+                    ancestors = this.parents();
+                    if (preserveCompletionValue && common.mayBeCompletionValue(node, ancestors)) {
+                        return;
+                    }
+
+                    if (node.alternate) {
+                        if (node.consequent.type === Syntax.ExpressionStatement && node.alternate.type === Syntax.ExpressionStatement) {
+                            // ok, we can reconstruct this to ConditionalExpression
+                            modified = true;
+                            return common.moveLocation(node, {
+                                type: Syntax.ExpressionStatement,
+                                expression: common.moveLocation(node, {
+                                    type: Syntax.ConditionalExpression,
+                                    test: node.test,
+                                    consequent: node.consequent.expression,
+                                    alternate: node.alternate.expression
+                                })
+                            });
+                        }
+                        if (node.consequent.type === Syntax.ReturnStatement && node.alternate.type === Syntax.ReturnStatement) {
+                            // pattern:
+                            //   if (cond) return a;
+                            //   else return b;
+                            modified = true;
+
+                            if (!node.consequent.argument && !node.alternate.argument) {
+                                // if (cond) return;
+                                // else return;
+                                return common.moveLocation(node, {
+                                    type: Syntax.ReturnStatement,
+                                    argument: common.moveLocation(node, {
+                                        type: Syntax.SequenceExpression,
+                                        expressions: [node.test, common.SpecialNode.generateUndefined() ]
+                                    })
+                                });
+                            }
+                            consequent = node.consequent.argument || common.SpecialNode.generateUndefined();
+                            alternate = node.alternate.argument || common.SpecialNode.generateUndefined();
+
+                            return common.moveLocation(node, {
+                                type: Syntax.ReturnStatement,
+                                argument: common.moveLocation(node, {
+                                    type: Syntax.ConditionalExpression,
+                                    test: node.test,
+                                    consequent: consequent,
+                                    alternate: alternate
+                                })
+                            });
+                        }
+                        if (node.consequent.type === Syntax.ThrowStatement && node.alternate.type === Syntax.ThrowStatement) {
+                            // pattern:
+                            //   if (cond) throw a;
+                            //   else throw b;
+                            modified = true;
+                            return common.moveLocation(node, {
+                                type: Syntax.ThrowStatement,
+                                argument: common.moveLocation(node, {
+                                    type: Syntax.ConditionalExpression,
+                                    test: node.test,
+                                    consequent: node.consequent.argument,
+                                    alternate: node.alternate.argument
+                                })
+                            });
+                        }
+                    } else {
+                        if (node.consequent.type === Syntax.ExpressionStatement) {
+                            // ok, we can reconstruct this to LogicalExpression
+                            modified = true;
+                            return common.moveLocation(node, {
+                                type: Syntax.ExpressionStatement,
+                                expression: common.moveLocation(node, {
+                                    type: Syntax.LogicalExpression,
+                                    operator: '&&',
+                                    left: node.test,
+                                    right: node.consequent.expression
+                                })
+                            });
+                        } else if (node.consequent.type === Syntax.EmptyStatement) {
+                            // ok, we can reconstruct this to expression statement
+                            modified = true;
+                            return common.moveLocation(node, {
+                                type: Syntax.ExpressionStatement,
+                                expression: node.test
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformBranchToExpression.passName = Name;
+    module.exports = transformBranchToExpression;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],61:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'transform-dynamic-to-static-property-access';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function transformDynamicToStaticPropertyAccess(tree, options) {
+        var result;
+
+        modified = false;
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                var property;
+                if (node.type === Syntax.MemberExpression && node.computed) {
+                    property = node.property;
+                    if (property.type === Syntax.Literal && typeof property.value === 'string') {
+                        if (common.isIdentifier(property.value)) {
+                            modified = true;
+                            node.computed = false;
+                            node.property = common.moveLocation(property, {
+                                type: Syntax.Identifier,
+                                name: property.value
+                            });
+                        } else if (property.value === Number(property.value).toString()) {
+                            modified = true;
+                            node.computed = true;
+                            node.property = common.moveLocation(node.property, common.SpecialNode.generateFromValue(Number(node.property.value)));
+                        }
+                    }
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformDynamicToStaticPropertyAccess.passName = Name;
+    module.exports = transformDynamicToStaticPropertyAccess;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],62:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'transform-dynamic-to-static-property-definition';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function transformDynamicToStaticPropertyDefinition(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                var generated;
+                if (node.type === Syntax.Property) {
+                    if (node.key.type === Syntax.Literal && typeof node.key.value === 'string') {
+                        if (common.isIdentifier(node.key.value)) {
+                            modified = true;
+                            node.key = common.moveLocation(node.key, {
+                                type: Syntax.Identifier,
+                                name: node.key.value
+                            });
+                        } else if (node.key.value === Number(node.key.value).toString()) {
+                            // we should not generate
+                            // var obj = {
+                            //   -20: 20
+                            // };
+                            generated = common.SpecialNode.generateFromValue(Number(node.key.value));
+                            if (generated.type === Syntax.Literal) {
+                                modified = true;
+                                node.key = common.moveLocation(node.key, generated);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformDynamicToStaticPropertyDefinition.passName = Name;
+    module.exports = transformDynamicToStaticPropertyDefinition;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],63:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'transform-immediate-function-call';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function isEmptyFunctionCall(call) {
+        var callee, i, iz, stmt;
+        if (call.type !== Syntax.CallExpression) {
+            return false;
+        }
+
+        callee = call.callee;
+
+        if (callee.type !== Syntax.FunctionExpression) {
+            return false;
+        }
+
+        if (callee.body.type !== Syntax.BlockStatement) {
+            return false;
+        }
+
+        // see side effect
+        if (callee.body.body.length === 0) {
+            return true;
+        }
+
+        for (i = 0, iz = callee.body.body.length; i < iz; ++i) {
+            stmt = callee.body.body[i];
+            if (stmt.type !== Syntax.FunctionDeclaration) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function callToSequence(call) {
+        var expressions;
+        expressions = common.Array.from(call['arguments']);
+
+        if (expressions.length === 0) {
+            return common.SpecialNode.generateUndefined(call);
+        }
+
+        expressions.push(common.SpecialNode.generateUndefined());
+        return common.moveLocation(call, {
+            type: Syntax.SequenceExpression,
+            expressions: expressions
+        });
+    }
+
+    function transformImmediateFunctionCall(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        result = common.replace(result, {
+            leave: function leave(node) {
+                if (isEmptyFunctionCall(node)) {
+                    modified = true;
+                    return callToSequence(node);
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformImmediateFunctionCall.passName = Name;
+    module.exports = transformImmediateFunctionCall;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],64:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'transform-logical-association';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function transformLogicalAssociation(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                if (node.type === Syntax.LogicalExpression) {
+                    // transform
+                    // a && (b && c) => (a && b) && c
+                    // a || (b || c) => (a || b) || c
+                    if (node.right.type === Syntax.LogicalExpression && node.operator === node.right.operator) {
+                        modified = true;
+                        node.left = {
+                            type: Syntax.LogicalExpression,
+                            operator: node.operator,
+                            left: node.left,
+                            right: node.right.left
+                        };
+                        node.right = node.right.right;
+                    }
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformLogicalAssociation.passName = Name;
+    module.exports = transformLogicalAssociation;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],65:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, escope, modified;
+
+    Name = 'transform-to-compound-assignment';
+    escope = require('escope');
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function equals(lhs, rhs) {
+        if (lhs.type !== rhs.type) {
+            return false;
+        }
+        if (lhs.type === Syntax.Identifier) {
+            return lhs.name === rhs.name;
+        }
+        return false;
+    }
+
+    function compound(operator) {
+        switch (operator) {
+        case '*':
+        case '/':
+        case '%':
+        case '+':
+        case '-':
+        case '<<':
+        case '>>':
+        case '>>>':
+        case '&':
+        case '^':
+        case '|':
+            return operator + '=';
+        }
+        return null;
+    }
+
+    function observableCompound(operator) {
+        switch (operator) {
+        case '*=':
+        case '/=':
+        case '%=':
+        case '+=':
+        case '-=':
+        case '<<=':
+        case '>>=':
+        case '>>>=':
+        case '&=':
+        case '^=':
+        case '|=':
+            return operator;
+        }
+        return null;
+    }
+
+    function transformToCompoundAssignment(tree, options) {
+        var result, scope, manager;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        scope = null;
+
+        manager = escope.analyze(result, { directive: true });
+        manager.attach();
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                var left, right, operator, ref;
+                scope = manager.acquire(node) || scope;
+                if (node.type === Syntax.AssignmentExpression && node.operator === '=') {
+                    left = node.left;
+                    right = node.right;
+                    if (right.type === Syntax.BinaryExpression && equals(right.left, left)) {
+                        operator = compound(right.operator);
+                        if (operator) {
+                            modified = true;
+                            node.operator = operator;
+                            node.right = right.right;
+                        }
+                    } else if (right.type === Syntax.AssignmentExpression && equals(right.left, left)) {
+                        if (observableCompound(right.operator)) {
+                            ref = scope.resolve(node.left);
+                            if (ref.isStatic()) {
+                                modified = true;
+                                node.operator = right.operator;
+                                node.right = right.right;
+                            }
+                        }
+                    }
+                }
+            },
+            leave: function leave(node) {
+                scope = manager.release(node) || scope;
+            }
+        });
+
+        manager.detach();
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformToCompoundAssignment.passName = Name;
+    module.exports = transformToCompoundAssignment;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"escope":75}],66:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'transform-to-sequence-expression';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function transform(node) {
+        var i, iz, expressions, stmt, prev, body;
+
+        function constructSeq(expressions, stmt) {
+            var seq;
+
+            if (expressions.length !== 1) {
+                modified = true;
+                seq = {
+                    type: Syntax.SequenceExpression,
+                    expressions: expressions
+                };
+
+                if (stmt.type === Syntax.ExpressionStatement) {
+                    stmt.expression = seq;
+                } else {
+                    stmt.argument = seq;
+                }
+            }
+
+            return stmt;
+        }
+
+        body = [];
+        expressions = [];
+
+        for (i = 0, iz = node.body.length; i < iz; ++i) {
+            prev = stmt;
+            stmt = node.body[i];
+
+            if (stmt.type === Syntax.ExpressionStatement) {
+                expressions.push(stmt.expression);
+            } else if ((stmt.type === Syntax.ReturnStatement && stmt.argument != null) || stmt.type === Syntax.ThrowStatement) {
+                // Not distinguishing between null or undefined in argument
+                expressions.push(stmt.argument);
+                body.push(constructSeq(expressions, stmt));
+                expressions = [];
+            } else if (stmt.type === Syntax.ForStatement && (!stmt.init || stmt.init.type !== Syntax.VariableDeclaration)) {
+                // insert expressions to for (<init>;;);
+                if (expressions.length) {
+                    modified = true;
+                    if (stmt.init) {
+                        expressions.push(stmt.init);
+                    }
+                    if (expressions.length === 1) {
+                        stmt.init = expressions[0];
+                    } else {
+                        stmt.init = {
+                            type: Syntax.SequenceExpression,
+                            expressions: expressions
+                        };
+                    }
+                    expressions = [];
+                }
+                body.push(stmt);
+            } else if (stmt.type === Syntax.IfStatement) {
+                if (expressions.length) {
+                    modified = true;
+                    expressions.push(stmt.test);
+                    stmt.test = {
+                        type: Syntax.SequenceExpression,
+                        expressions: expressions
+                    };
+                    expressions = [];
+                }
+                body.push(stmt);
+            } else {
+                if (expressions.length) {
+                    body.push(constructSeq(expressions, prev));
+                    expressions = [];
+                }
+                body.push(stmt);
+            }
+        }
+
+        if (expressions.length) {
+            body.push(constructSeq(expressions, stmt));
+        }
+
+        node.body = body;
+    }
+
+    function transformToSequenceExpression(tree, options) {
+        var result;
+
+        modified = false;
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                switch (node.type) {
+                case Syntax.BlockStatement:
+                case Syntax.Program:
+                    transform(node);
+                    break;
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformToSequenceExpression.passName = Name;
+    module.exports = transformToSequenceExpression;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],67:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, escope, modified;
+
+    Name = 'transform-typeof-undefined';
+    escope = require('escope');
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function isUndefinedStringLiteral(node) {
+        return node.type === Syntax.Literal && node.value === 'undefined';
+    }
+
+    function transformTypeofUndefined(tree, options) {
+        var result, manager, scope;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+        scope = null;
+
+        manager = escope.analyze(result, { directive: true });
+        manager.attach();
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                var target, undef, argument, ref;
+                scope = manager.acquire(node) || scope;
+                if (node.type === Syntax.BinaryExpression &&
+                    (node.operator === '===' || node.operator === '!==' || node.operator === '==' || node.operator === '!=')) {
+                    if (isUndefinedStringLiteral(node.left)) {
+                        undef = 'left';
+                        target = 'right';
+                    } else if (isUndefinedStringLiteral(node.right)) {
+                        undef = 'right';
+                        target = 'left';
+                    } else {
+                        return;
+                    }
+
+                    if (node[target].type === Syntax.UnaryExpression && node[target].operator === 'typeof') {
+                        argument = node[target].argument;
+                        if (argument.type === Syntax.Identifier) {
+                            ref = scope.resolve(argument);
+                            if (!ref || !ref.isStatic() || !ref.resolved) {
+                                // may raise ReferenceError
+                                return;
+                            }
+                        }
+                        modified = true;
+                        node[undef] = common.SpecialNode.generateUndefined();
+                        node[target] = argument;
+                        node.operator = node.operator.charAt(0) === '!' ? '!==' : '===';
+                    }
+                }
+            },
+            leave: function leave(node) {
+                scope = manager.release(node) || scope;
+            }
+        });
+
+        manager.detach();
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformTypeofUndefined.passName = Name;
+    module.exports = transformTypeofUndefined;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"escope":75}],68:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, evaluator, modified;
+
+    Name = 'tree-based-constant-folding';
+    common = require('../common');
+    evaluator = require('../evaluator');
+    Syntax = common.Syntax;
+
+
+    function isModifiedConstant(node) {
+        // consider
+        //   (undefined) `void 0`
+        //   (negative value) `-1`,
+        //   (NaN) `0/0`
+        if (common.SpecialNode.isUndefined(node)) {
+            return false;
+        }
+        if (common.SpecialNode.isNegative(node)) {
+            return false;
+        }
+        if (common.SpecialNode.isNaN(node)) {
+            return false;
+        }
+        return evaluator.constant.isConstant(node, false);
+    }
+
+    function isFoldableConditional(node) {
+        if (node.type !== Syntax.ConditionalExpression) {
+            return false;
+        }
+        return evaluator.constant.isConstant(node.consequent) || evaluator.constant.isConstant(node.alternate);
+    }
+
+    function foldConditional(node) {
+        var binary, unary, operator, left, right;
+        switch (node.type) {
+        case Syntax.BinaryExpression:
+            if (node.operator === 'in' || node.operator === 'instanceof') {
+                // cannot fold this
+                return node;
+            }
+
+            if (evaluator.constant.isConstant(node.left) && isFoldableConditional(node.right)) {
+                modified = true;
+                binary = node;
+                operator = binary.operator;
+                left = evaluator.constant.evaluate(binary.left);
+
+                node = node.right;
+                if (evaluator.constant.isConstant(node.consequent)) {
+                    node.consequent = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, left, evaluator.constant.evaluate(node.consequent)));
+                } else {
+                    // cannot fold left
+                    binary.right = node.consequent;
+                    node.consequent = binary;
+                }
+                if (evaluator.constant.isConstant(node.alternate)) {
+                    node.alternate = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, left, evaluator.constant.evaluate(node.alternate)));
+                } else {
+                    // cannot fold right
+                    binary.right = node.alternate;
+                    node.alternate = binary;
+                }
+            } else if (evaluator.constant.isConstant(node.right) && isFoldableConditional(node.left)) {
+                modified = true;
+                binary = node;
+                operator = binary.operator;
+                right = evaluator.constant.evaluate(binary.right);
+
+                node = node.left;
+                if (evaluator.constant.isConstant(node.consequent)) {
+                    node.consequent = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, evaluator.constant.evaluate(node.consequent), right));
+                } else {
+                    // cannot fold left
+                    binary.left = node.consequent;
+                    node.consequent = binary;
+                }
+                if (evaluator.constant.isConstant(node.alternate)) {
+                    node.alternate = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, evaluator.constant.evaluate(node.alternate), right));
+                } else {
+                    // cannot fold right
+                    binary.left = node.alternate;
+                    node.alternate = binary;
+                }
+            }
+            break;
+
+        case Syntax.LogicalExpression:
+            break;
+
+        case Syntax.UnaryExpression:
+            if (isFoldableConditional(node.argument)) {
+                modified = true;
+                unary = node;
+                operator = unary.operator;
+                node = unary.argument;
+                if (evaluator.constant.isConstant(node.consequent)) {
+                    node.consequent = common.SpecialNode.generateFromValue(evaluator.constant.doUnary(operator, evaluator.constant.evaluate(node.consequent)));
+                } else {
+                    // cannot fold left
+                    unary.argument = node.consequent;
+                    node.consequent = unary;
+                }
+                if (evaluator.constant.isConstant(node.alternate)) {
+                    node.alternate = common.SpecialNode.generateFromValue(evaluator.constant.doUnary(operator, evaluator.constant.evaluate(node.alternate)));
+                } else {
+                    // cannot fold right
+                    unary.argument = node.alternate;
+                    node.alternate = unary;
+                }
+            }
+            break;
+        }
+
+        return node;
+    }
+
+    function treeBasedConstantFolding(tree, options) {
+        var result;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        result = common.replace(result, {
+            leave: function leave(node) {
+                var con, alt;
+                switch (node.type) {
+                case Syntax.BinaryExpression:
+                case Syntax.LogicalExpression:
+                case Syntax.UnaryExpression:
+                    if (isModifiedConstant(node)) {
+                        modified = true;
+                        return common.moveLocation(node, common.SpecialNode.generateFromValue(evaluator.constant.evaluate(node)));
+                    }
+                    return foldConditional(node);
+
+                case Syntax.ConditionalExpression:
+                    if (evaluator.constant.isConstant(node.consequent) && evaluator.constant.isConstant(node.alternate)) {
+                        con = evaluator.constant.evaluate(node.consequent);
+                        alt = evaluator.constant.evaluate(node.alternate);
+                        if (common.sameValue(con, alt)) {
+                            modified = true;
+                            return common.moveLocation(node, {
+                                type: Syntax.SequenceExpression,
+                                expressions: [
+                                    node.test,
+                                    common.SpecialNode.generateFromValue(con)
+                                ]
+                            });
+                        }
+                    }
+                    break;
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    treeBasedConstantFolding.passName = Name;
+    module.exports = treeBasedConstantFolding;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39,"../evaluator":41}],69:[function(require,module,exports){
+/*
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'omit-parens-in-void-context-iife';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function isIIFE(node) {
+        var callee;
+
+        if (node.type !== Syntax.CallExpression) {
+            return false;
+        }
+
+        callee = node.callee;
+        return callee.type === Syntax.FunctionExpression;
+    }
+
+    function main(tree, options) {
+        var result, stackCount, preserveCompletionValue;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
+        modified = false;
+
+        result = common.replace(result, {
+            enter: function enter(node, parent) {
+                var ancestors, target;
+
+                if (!isIIFE(node)) {
+                    return;
+                }
+
+                target = parent;
+                if (target.type === Syntax.ExpressionStatement) {
+                    ancestors = this.parents();
+                    ancestors.pop();  // remove parent: ExpressionStatement
+                    if (preserveCompletionValue && common.mayBeCompletionValue(target, ancestors)) {
+                        return;
+                    }
+                } else if (target.type === Syntax.SequenceExpression && target.expressions.length >= 2 && target.expressions[0] === node) {
+                    ancestors = this.parents();
+                    ancestors.pop();  // remove parent: SequenceExpression
+                    target = ancestors.pop();  // remove parent: ExpressionStatement
+                    if (target.type !== Syntax.ExpressionStatement) {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+
+                // transform it
+                modified = true;
+                return {
+                    type: Syntax.UnaryExpression,
+                    operator: '!',
+                    argument: node
+                };
+            },
+            leave: function leave(node) {
+                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
+                    --stackCount;
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    main.passName = Name;
+    module.exports = main;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],70:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'rewrite-boolean';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function isBooleanLiteral(node) {
+        return node.type === Syntax.Literal && typeof node.value === 'boolean';
+    }
+
+    function rewrite(node) {
+        if (isBooleanLiteral(node)) {
+            modified = true;
+            return common.moveLocation(node, {
+                type: Syntax.UnaryExpression,
+                operator: '!',
+                argument: common.moveLocation(node, {
+                    type: Syntax.Literal,
+                    value: +!node.value
+                })
+            });
+        }
+
+        if (node.type === Syntax.BinaryExpression && node.operator === '==' || node.operator === '!=') {
+            if (isBooleanLiteral(node.left)) {
+                modified = true;
+                node.left = common.moveLocation(node.left, {
+                    type: Syntax.Literal,
+                    value: +node.left.value
+                });
+                return node;
+            }
+            if (isBooleanLiteral(node.right)) {
+                modified = true;
+                node.right = common.moveLocation(node.right, {
+                    type: Syntax.Literal,
+                    value: +node.right.value
+                });
+                return node;
+            }
+        }
+
+        return node;
+    }
+
+    function rewriteBoolean(tree, options) {
+        var result;
+
+        modified = false;
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+
+        result = common.replace(result, {
+            enter: rewrite
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    rewriteBoolean.passName = Name;
+    module.exports = rewriteBoolean;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],71:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common, modified;
+
+    Name = 'rewrite-conditional-expression';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function rewrite(node) {
+        var test, consequent, alternate;
+        test = node.test;
+        consequent = node.consequent;
+        alternate = node.alternate;
+        if (test.type === Syntax.UnaryExpression && test.operator === '!') {
+            modified = true;
+            node.consequent = alternate;
+            node.alternate = consequent;
+            node.test = test.argument;
+        }
+    }
+
+    function rewriteConditionalExpression(tree, options) {
+        var result;
+
+        modified = false;
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                if (node.type === Syntax.ConditionalExpression) {
+                    rewrite(node);
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    rewriteConditionalExpression.passName = Name;
+    module.exports = rewriteConditionalExpression;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],72:[function(require,module,exports){
+/*
+  Copyright (C) 2012 Michael Ficarra <esmangle.copyright@michael.ficarra.me>
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common;
+
+    Name = 'transform-infinity';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function transformInfinity(tree, options) {
+        var result, modified;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        result = common.replace(result, {
+            enter: function enter(node) {
+                if (node.type === Syntax.Literal && typeof node.value === 'number') {
+                    if (node.value === Infinity) {
+                        modified = true;
+                        return common.moveLocation(node, {
+                            type: Syntax.BinaryExpression,
+                            operator: '/',
+                            left: {type: Syntax.Literal, value: 1},
+                            right: {type: Syntax.Literal, value: 0}
+                        });
+                    }
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformInfinity.passName = Name;
+    module.exports = transformInfinity;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],73:[function(require,module,exports){
+/*
+  Copyright (C) 2012 Michael Ficarra <esmangle.copyright@michael.ficarra.me>
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global module:true, require:true*/
+(function () {
+    'use strict';
+
+    var Name, Syntax, common;
+
+    Name = 'transform-static-to-dynamic-property-access';
+    common = require('../common');
+    Syntax = common.Syntax;
+
+    function transformStaticToDynamicPropertyAccess(tree, options) {
+        var result, modified;
+
+        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        modified = false;
+
+        common.traverse(result, {
+            enter: function enter(node) {
+                var property;
+
+                if (node.type !== Syntax.MemberExpression || node.computed || node.property.type !== Syntax.Identifier) {
+                    return;
+                }
+
+                property = node.property;
+                switch (property.name) {
+                case 'undefined':
+                    modified = true;
+                    node.computed = true;
+                    node.property = common.moveLocation(property, {
+                        type: Syntax.UnaryExpression,
+                        operator: 'void',
+                        argument: {type: Syntax.Literal, value: 0}
+                    });
+                    break;
+                case 'true':
+                case 'false':
+                    modified = true;
+                    node.computed = true;
+                    node.property = common.moveLocation(property, {
+                        type: Syntax.Literal,
+                        value: property.name === 'true'
+                    });
+                    break;
+                case 'Infinity':
+                    modified = true;
+                    node.computed = true;
+                    node.property = common.moveLocation(property, {
+                        type: Syntax.BinaryExpression,
+                        operator: '/',
+                        left: {type: Syntax.Literal, value: 1},
+                        right: {type: Syntax.Literal, value: 0}
+                    });
+                    break;
+                }
+            }
+        });
+
+        return {
+            result: result,
+            modified: modified
+        };
+    }
+
+    transformStaticToDynamicPropertyAccess.passName = Name;
+    module.exports = transformStaticToDynamicPropertyAccess;
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"../common":39}],74:[function(require,module,exports){
+/*
+  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*jslint bitwise:true */
+/*global require:true*/
+(function () {
+    'use strict';
+
+    var common;
+
+    common = require('./common');
+
+    exports.get = function get(root, query) {
+        var i, iz, name, node;
+        node = root;
+        for (i = 0, iz = query.length; i < iz; ++i) {
+            name = query[i];
+            node = node[name];
+        }
+        return node;
+    };
+
+    exports.set = function set(root, query, value) {
+        var i, iz, name, node;
+        common.assert(query.length > 0);
+        node = root;
+        for (i = 0, iz = query.length - 1; i < iz; ++i) {
+            name = query[i];
+            node = node[name];
+        }
+        name = query[i];
+        node[name] = value;
+    };
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{"./common":39}],75:[function(require,module,exports){
 /*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2013 Alex Seville <hi@alexanderseville.com>
@@ -12574,7 +18458,7 @@ module.exports={
 }, this));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"estraverse":39}],39:[function(require,module,exports){
+},{"estraverse":76}],76:[function(require,module,exports){
 /*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
@@ -13415,46 +19299,26 @@ module.exports={
 }(exports));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"./package.json":40}],40:[function(require,module,exports){
+},{"./package.json":77}],77:[function(require,module,exports){
 module.exports={
-  "_args": [
-    [
-      "estraverse@^2.0.0",
-      "/Users/long/webppl/node_modules/escope"
-    ]
-  ],
-  "_from": "estraverse@>=2.0.0 <3.0.0",
-  "_id": "estraverse@2.0.0",
-  "_inCache": true,
-  "_installable": true,
-  "_location": "/escope/estraverse",
-  "_npmUser": {
-    "email": "utatane.tea@gmail.com",
-    "name": "constellation"
-  },
-  "_npmVersion": "2.0.0-alpha-5",
-  "_phantomChildren": {},
-  "_requested": {
-    "name": "estraverse",
-    "raw": "estraverse@^2.0.0",
-    "rawSpec": "^2.0.0",
-    "scope": null,
-    "spec": ">=2.0.0 <3.0.0",
-    "type": "range"
-  },
-  "_requiredBy": [
-    "/escope"
-  ],
-  "_resolved": "https://registry.npmjs.org/estraverse/-/estraverse-2.0.0.tgz",
-  "_shasum": "5ae46963243600206674ccb24a09e16674fcdca1",
-  "_shrinkwrap": null,
-  "_spec": "estraverse@^2.0.0",
-  "_where": "/Users/long/webppl/node_modules/escope",
-  "bugs": {
-    "url": "https://github.com/estools/estraverse/issues"
-  },
-  "dependencies": {},
+  "name": "estraverse",
   "description": "ECMAScript JS AST traversal functions",
+  "homepage": "https://github.com/estools/estraverse",
+  "main": "estraverse.js",
+  "version": "2.0.0",
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "maintainers": [
+    {
+      "name": "constellation",
+      "email": "utatane.tea@gmail.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/estools/estraverse.git"
+  },
   "devDependencies": {
     "chai": "^2.1.1",
     "coffee-script": "^1.8.0",
@@ -13467,47 +19331,41 @@ module.exports={
     "jshint": "^2.5.6",
     "mocha": "^2.1.0"
   },
-  "directories": {},
-  "dist": {
-    "shasum": "5ae46963243600206674ccb24a09e16674fcdca1",
-    "tarball": "http://registry.npmjs.org/estraverse/-/estraverse-2.0.0.tgz"
-  },
-  "engines": {
-    "node": ">=0.10.0"
-  },
-  "gitHead": "d8bc726f126817cc03c7a4e751528edb19db0ffb",
-  "homepage": "https://github.com/estools/estraverse",
   "licenses": [
     {
       "type": "BSD",
       "url": "http://github.com/estools/estraverse/raw/master/LICENSE.BSD"
     }
   ],
-  "main": "estraverse.js",
-  "maintainers": [
-    {
-      "name": "constellation",
-      "email": "utatane.tea@gmail.com"
-    }
-  ],
-  "name": "estraverse",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
-  "repository": {
-    "type": "git",
-    "url": "git+ssh://git@github.com/estools/estraverse.git"
-  },
   "scripts": {
-    "lint": "jshint estraverse.js",
     "test": "npm run-script lint && npm run-script unit-test",
+    "lint": "jshint estraverse.js",
     "unit-test": "mocha --compilers coffee:coffee-script/register"
   },
-  "version": "2.0.0"
+  "gitHead": "d8bc726f126817cc03c7a4e751528edb19db0ffb",
+  "bugs": {
+    "url": "https://github.com/estools/estraverse/issues"
+  },
+  "_id": "estraverse@2.0.0",
+  "_shasum": "5ae46963243600206674ccb24a09e16674fcdca1",
+  "_from": "estraverse@>=2.0.0 <3.0.0",
+  "_npmVersion": "2.0.0-alpha-5",
+  "_npmUser": {
+    "name": "constellation",
+    "email": "utatane.tea@gmail.com"
+  },
+  "dist": {
+    "shasum": "5ae46963243600206674ccb24a09e16674fcdca1",
+    "tarball": "http://registry.npmjs.org/estraverse/-/estraverse-2.0.0.tgz"
+  },
+  "directories": {},
+  "_resolved": "https://registry.npmjs.org/estraverse/-/estraverse-2.0.0.tgz",
+  "readme": "ERROR: No README data found!"
 }
 
-},{}],41:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 /*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
@@ -13530,154 +19388,278 @@ module.exports={
   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/*jslint bitwise:true */
-/*global module:true, require:true*/
+/*global exports:true*/
+
 (function () {
     'use strict';
 
-    var Name, Syntax, common;
+    var escope,
+        estraverse,
+        esutils,
+        utility,
+        version,
+        assert,
+        Syntax,
+        Map;
 
-    Name = 'annotate-directive';
-    common = require('./common');
-    Syntax = common.Syntax;
+    escope = require('escope');
+    estraverse = require('estraverse');
+    esutils = require('esutils');
+    utility = require('./utility');
+    Map = require('./map');
+    version = require('../package.json').version;
 
-    function isDirective(stmt) {
-        var expr;
-        if (stmt.type === Syntax.ExpressionStatement) {
-            expr = stmt.expression;
-            if (expr.type === Syntax.Literal && typeof expr.value === 'string') {
-                return true;
+    Syntax = estraverse.Syntax;
+
+    assert = function assert(cond, message) {
+        if (!cond) {
+            throw new Error(message);
+        }
+    };
+
+    if (version.indexOf('-dev', version.length - 4) === -1) {
+        assert = function () { };
+    }
+
+    function NameGenerator(scope, options) {
+        this._scope = scope;
+        this._functionName = '';
+        if (!options.distinguishFunctionExpressionScope &&
+                this._scope.upper &&
+                this._scope.upper.functionExpressionScope) {
+            this._functionName = this._scope.upper.block.id.name;
+        }
+    }
+
+    NameGenerator.prototype.passAsUnique = function passAsUnique(name) {
+        var i, iz;
+        if (this._functionName === name) {
+            return false;
+        }
+        if (esutils.keyword.isKeywordES5(name, true) || esutils.keyword.isRestrictedWord(name)) {
+            return false;
+        }
+        if (this._scope.taints.has(name)) {
+            return false;
+        }
+        for (i = 0, iz = this._scope.through.length; i < iz; ++i) {
+            if (this._scope.through[i].identifier.name === name) {
+                return false;
             }
         }
-        return false;
-    }
+        return true;
+    };
 
-    function escapeAllowedCharacter(ch, next) {
-        var code = ch.charCodeAt(0), hex = code.toString(16), result = '\\';
+    NameGenerator.prototype.generateName = function generateName(tip) {
+        do {
+            tip = utility.generateNextName(tip);
+        } while (!this.passAsUnique(tip));
+        return tip;
+    };
 
-        switch (ch) {
-        case '\b':
-            result += 'b';
-            break;
-        case '\f':
-            result += 'f';
-            break;
-        case '\t':
-            result += 't';
-            break;
-        default:
-            if (code > 0xff) {
-                result += 'u' + '0000'.slice(hex.length) + hex;
-            } else if (ch === '\u0000' && '0123456789'.indexOf(next) < 0) {
-                result += '0';
-            } else if (ch === '\v') {
-                result += 'v';
-            } else {
-                result += 'x' + '00'.slice(hex.length) + hex;
+    function run(scope, options) {
+        var i, iz, j, jz, variable, name, def, ref, generator;
+
+        generator = new NameGenerator(scope, options);
+
+        if (scope.isStatic()) {
+            name = '9';
+
+            scope.variables.sort(function (a, b) {
+                if (a.tainted) {
+                    return 1;
+                }
+                if (b.tainted) {
+                    return -1;
+                }
+                return (b.identifiers.length + b.references.length) - (a.identifiers.length + a.references.length);
+            });
+
+            for (i = 0, iz = scope.variables.length; i < iz; ++i) {
+                variable = scope.variables[i];
+
+                if (variable.tainted) {
+                    continue;
+                }
+
+                // Because `arguments` definition is nothing.
+                // But if `var arguments` is defined, identifiers.length !== 0
+                // and this doesn't indicate arguments.
+                if (variable.identifiers.length === 0) {
+                    // do not change names because this is special name
+                    continue;
+                }
+
+                name = generator.generateName(name);
+
+                for (j = 0, jz = variable.identifiers.length; j < jz; ++j) {
+                    def = variable.identifiers[j];
+                    // change definition's name
+                    def.name = name;
+                }
+
+                for (j = 0, jz = variable.references.length; j < jz; ++j) {
+                    ref = variable.references[j];
+                    // change reference's name
+                    ref.identifier.name = name;
+                }
             }
-            break;
         }
-
-        return result;
     }
 
-    function escapeDisallowedCharacter(ch) {
-        var result = '\\';
-        switch (ch) {
-        case '\\':
-            result += '\\';
-            break;
-        case '\n':
-            result += 'n';
-            break;
-        case '\r':
-            result += 'r';
-            break;
-        case '\u2028':
-            result += 'u2028';
-            break;
-        case '\u2029':
-            result += 'u2029';
-            break;
-        default:
-            throw new Error('Incorrectly classified character');
-        }
-
-        return result;
+    function Label(node, upper) {
+        this.node = node;
+        this.upper = upper;
+        this.users = [];
+        this.names = new Map();
+        this.name = null;
     }
 
-    function escapeString(str) {
-        var result = '', i, len, ch;
+    Label.prototype.mangle = function () {
+        var tip, current, i, iz;
+        tip = '9';
 
-        if (typeof str[0] === 'undefined') {
-            str = common.stringToArray(str);
-        }
-
-        for (i = 0, len = str.length; i < len; i += 1) {
-            ch = str[i];
-            if (ch === '\'') {
-                result += '\\\'';
-                continue;
-            } else if ('\\\n\r\u2028\u2029'.indexOf(ch) >= 0) {
-                result += escapeDisallowedCharacter(ch);
-                continue;
-            } else if (!(ch >= ' ' && ch <= '~')) {
-                result += escapeAllowedCharacter(ch, str[i + 1]);
-                continue;
+        // merge already used names
+        for (current = this.upper; current; current = current.upper) {
+            if (current.name !== null) {
+                this.names.set(current.name, true);
             }
-            result += ch;
         }
 
-        return result;
+        do {
+            tip = utility.generateNextName(tip);
+        } while (this.names.has(tip));
+
+        this.name = tip;
+
+        for (current = this.upper; current; current = current.upper) {
+            current.names.set(tip, true);
+        }
+
+        this.node.label.name = tip;
+        for (i = 0, iz = this.users.length; i < iz; ++i) {
+            this.users[i].label.name = tip;
+        }
+    };
+
+    function LabelScope(upper) {
+        this.map = new Map();
+        this.upper = upper;
+        this.label = null;
+        this.labels = [];
     }
 
-    function annotateDirective(tree, options) {
-        var result;
+    LabelScope.prototype.register = function register(node) {
+        var name;
 
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
+        assert(node.type === Syntax.LabeledStatement, 'node should be LabeledStatement');
 
-        common.traverse(result, {
-            enter: function enter(node, parent) {
-                var stmt, i, iz;
+        this.label = new Label(node, this.label);
+        this.labels.push(this.label);
 
-                if (!(node.type === Syntax.Program ||
-                        (node.type === Syntax.BlockStatement && (parent.type === Syntax.FunctionExpression || parent.type === Syntax.FunctionDeclaration)))) {
+        name = node.label.name;
+        assert(!this.map.has(name), 'duplicate label is found');
+        this.map.set(name, this.label);
+    };
+
+    LabelScope.prototype.unregister = function unregister(node) {
+        var name, ref;
+        if (node.type !== Syntax.LabeledStatement) {
+            return;
+        }
+
+        name = node.label.name;
+        ref = this.map.get(name);
+        this.map['delete'](name);
+
+        this.label = ref.upper;
+    };
+
+    LabelScope.prototype.resolve = function resolve(node) {
+        var name;
+        if (node.label) {
+            name = node.label.name;
+            assert(this.map.has(name), 'unresolved label');
+            this.map.get(name).users.push(node);
+        }
+    };
+
+    LabelScope.prototype.close = function close() {
+        var i, iz, label;
+        this.labels.sort(function (lhs, rhs) {
+            return rhs.users.length - lhs.users.length;
+        });
+
+        for (i = 0, iz = this.labels.length; i < iz; ++i) {
+            label = this.labels[i];
+            label.mangle();
+        }
+
+        return this.upper;
+    };
+
+    function mangleLabels(tree) {
+        var labelScope;
+
+        estraverse.traverse(tree, {
+            enter: function (node) {
+                if (escope.Scope.isVariableScopeRequired(node)) {
+                    labelScope = new LabelScope(labelScope);
                     return;
                 }
 
-                for (i = 0, iz = node.body.length; i < iz; ++i) {
-                    stmt = node.body[i];
-                    if (isDirective(stmt)) {
-                        stmt.type = Syntax.DirectiveStatement;
-                        if (stmt.expression.raw) {
-                            stmt.directive = stmt.expression.raw.substring(1, stmt.expression.raw.length - 1);
-                            stmt.value = stmt.expression.value;
-                            stmt.raw = stmt.expression.raw;
-                        } else {
-                            stmt.directive = escapeString(stmt.expression.value);
-                            stmt.value = stmt.expression.value;
-                            stmt.raw = '\'' + stmt.directive + '\'';
-                        }
-                        delete stmt.expression;
-                    } else {
-                        return;
-                    }
+                switch (node.type) {
+                case Syntax.LabeledStatement:
+                    labelScope.register(node);
+                    break;
+
+                case Syntax.BreakStatement:
+                case Syntax.ContinueStatement:
+                    labelScope.resolve(node);
+                    break;
+                }
+            },
+            leave: function (node) {
+                labelScope.unregister(node);
+                if (escope.Scope.isVariableScopeRequired(node)) {
+                    labelScope = labelScope.close();
                 }
             }
         });
 
-        return result;
+        return tree;
     }
 
-    annotateDirective.passName = Name;
-    module.exports = annotateDirective;
+    function mangle(tree, options) {
+        var result, manager, i, iz;
+
+        if (options == null) {
+            options = { destructive: true };
+        }
+
+        result = (options.destructive == null || options.destructive) ? tree : utility.deepCopy(tree);
+        manager = escope.analyze(result, { directive: true });
+
+        // mangling names
+        for (i = 0, iz = manager.scopes.length; i < iz; ++i) {
+            run(manager.scopes[i], options);
+        }
+
+        // mangling labels
+        return mangleLabels(result);
+    }
+
+    exports.mangle = mangle;
+    exports.version = version;
+    exports.generateNextName = utility.generateNextName;
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"./common":42}],42:[function(require,module,exports){
+},{"../package.json":87,"./map":79,"./utility":80,"escope":75,"estraverse":81,"esutils":86}],79:[function(require,module,exports){
+arguments[4][42][0].apply(exports,arguments)
+},{"dup":42}],80:[function(require,module,exports){
 /*
-  Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
-  Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
+  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
@@ -13700,97 +19682,17 @@ module.exports={
   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/*jslint bitwise:true */
+/*global exports:true*/
+
 (function () {
     'use strict';
 
-    var Syntax,
-        isArray,
-        arrayFrom,
-        arrayOf,
-        has,
-        sameValue,
-        estraverse,
-        escope,
-        esutils;
-
-    estraverse = require('estraverse');
-    escope = require('escope');
-    esutils = require('esutils');
-
-    Syntax = estraverse.Syntax;
+    var isArray, NameSequence, ZeroSequenceCache;
 
     isArray = Array.isArray;
     if (!isArray) {
         isArray = function isArray(array) {
             return Object.prototype.toString.call(array) === '[object Array]';
-        };
-    }
-
-    function isObject(obj) {
-        return typeof obj === 'object' && obj !== null;
-    }
-
-    has = (function () {
-        var method = {}.hasOwnProperty;
-        return function has(obj, prop) {
-            return method.call(obj, prop);
-        };
-    }());
-
-    // ES6 Array.from
-    arrayFrom = (function () {
-        var slice = Array.prototype.slice;
-        return function arrayFrom(array) {
-            return slice.call(array);
-        };
-    }());
-
-    // ES6 Array.of
-    arrayOf = (function () {
-        var slice = Array.prototype.slice;
-        return function arrayOf() {
-            return slice.call(arguments);
-        };
-    }());
-
-    function arrayLast(array) {
-        return array[array.length - 1];
-    }
-
-    function arrayEmpty(array) {
-        return array.length === 0;
-    }
-
-    function stringRepeat(str, num) {
-        var result = '';
-
-        for (num |= 0; num > 0; num >>>= 1, str += str) {
-            if (num & 1) {
-                result += str;
-            }
-        }
-
-        return result;
-    }
-
-    // see http://wiki.ecmascript.org/doku.php?id=harmony:egal
-    // ECMA262 SameValue algorithm
-    if (Object.is) {
-        sameValue = Object.is;
-    } else {
-        sameValue = function sameValue(x, y) {
-            if (x === y) {
-                // 0 === -0, but they are not identical
-                return x !== 0 || 1 / x === 1 / y;
-            }
-
-            // NaN !== NaN, but they are identical.
-            // NaNs are the only non-reflexive value, i.e., if x !== x,
-            // then x is a NaN.
-            // isNaN is broken: it converts its argument to number, so
-            // isNaN("foo") => true
-            return x !== x && y !== y;
         };
     }
 
@@ -13818,335 +19720,58 @@ module.exports={
         return deepCopyInternal(obj, isArray(obj) ? [] : {});
     }
 
-    function assert(cond, text) {
-        if (!cond) {
-            throw new Error(text);
-        }
-    }
+    function stringRepeat(str, num) {
+        var result = '';
 
-    function unreachable() {
-        throw new Error('Unreachable point. logically broken.');
-    }
-
-    function isIdentifier(name) {
-        // fallback for ES3
-        if (esutils.keyword.isKeywordES5(name, true) || esutils.keyword.isRestrictedWord(name)) {
-            return false;
-        }
-
-        return esutils.keyword.isIdentifierName(name);
-    }
-
-    function mayBeCompletionValue(node, ancestors) {
-        var i, ancestor;
-
-        if (node.type !== Syntax.ExpressionStatement) {
-            return true;
-        }
-
-        for (i = ancestors.length - 1; i >= 0; --i, node = ancestor) {
-            ancestor = ancestors[i];
-
-            switch (ancestor.type) {
-            case Syntax.FunctionExpression:
-            case Syntax.FunctionDeclaration:
-                return false;
-
-            case Syntax.BlockStatement:
-            case Syntax.Program:
-                if (arrayLast(ancestor.body) !== node) {
-                    return false;
-                }
-                break;
-
-            case Syntax.SwitchCase:
-                if (arrayLast(ancestor.consequent) !== node) {
-                    return false;
-                }
-                break;
+        for (num |= 0; num > 0; num >>>= 1, str += str) {
+            if (num & 1) {
+                result += str;
             }
         }
 
-        return true;
+        return result;
     }
 
-    function moveLocation(from, to) {
-        if (from.loc == null) {
-            return to;
+    // generateNextName
+
+    ZeroSequenceCache = [];
+
+    function zeroSequence(num) {
+        var res = ZeroSequenceCache[num];
+        if (res !== undefined) {
+            return res;
         }
-        to.loc = deepCopy(from.loc);
-        return to;
+        res = stringRepeat('0', num);
+        ZeroSequenceCache[num] = res;
+        return res;
     }
 
-    function deleteLocation(node) {
-        if (node.hasOwnProperty('loc')) {
-            return delete node.loc;
-        }
-        return false;
-    }
+    NameSequence = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$'.split('');
 
-    function convertToEmptyStatement(node) {
-        var i, iz, keys;
-        keys = estraverse.VisitorKeys[node.type];
-        for (i = 0, iz = keys.length; i < iz; ++i) {
-            delete node[keys[i]];
-        }
-        node.type = Syntax.EmptyStatement;
-        return node;
-    }
+    function generateNextName(name) {
+        var ch, index, cur;
 
-    function isNegative(value) {
-        return value === value && (value < 0 || (value === 0 && 1 / value < 0));
-    }
-
-    function isFunctionBody(node, parent) {
-        return node.type === Syntax.BlockStatement && (parent.type === Syntax.FunctionDeclaration || parent.type === Syntax.FunctionExpression);
-    }
-
-    function isNumberLiteral(node) {
-        return node.type === Syntax.Literal && typeof node.value === 'number';
-    }
-
-    function isOptimizedArgument(argument) {
-        return isNumberLiteral(argument) && String(argument.value).length === 1;
-    }
-
-    function generateNegativeNode(value, node) {
-        var result;
-        result = {
-            type: Syntax.UnaryExpression,
-            operator: '-',
-            argument: {
-                type: Syntax.Literal,
-                value: -value
+        cur = name.length - 1;
+        do {
+            ch = name.charAt(cur);
+            index = NameSequence.indexOf(ch);
+            if (index !== (NameSequence.length - 1)) {
+                return name.substring(0, cur) + NameSequence[index + 1] + zeroSequence(name.length - (cur + 1));
             }
-        };
-        return (node) ? moveLocation(node, result) : result;
+            --cur;
+        } while (cur >= 0);
+        return 'a' + zeroSequence(name.length);
     }
 
-    function isNegativeNode(node) {
-        return node.type === Syntax.UnaryExpression && node.operator === '-' && isNumberLiteral(node.argument);
-    }
-
-    function generateUndefined(node) {
-        var result = {
-            type: Syntax.UnaryExpression,
-            operator: 'void',
-            argument: {
-                type: Syntax.Literal,
-                value: 0
-            }
-        };
-        return (node) ? moveLocation(node, result) : result;
-    }
-
-    function isUndefined(node) {
-        return node.type === Syntax.UnaryExpression && node.operator === 'void' && isOptimizedArgument(node.argument);
-    }
-
-    function generateNaN(node) {
-        var result = {
-            type: Syntax.BinaryExpression,
-            operator: '/',
-            left: {
-                type: Syntax.Literal,
-                value: 0
-            },
-            right: {
-                type: Syntax.Literal,
-                value: 0
-            }
-        };
-        return (node) ? moveLocation(node, result) : result;
-    }
-
-    function isNaNNode(node) {
-        if (node.type === Syntax.BinaryExpression) {
-            if (isOptimizedArgument(node.left) && isOptimizedArgument(node.right)) {
-                return node.left.value === 0 && node.right.value === 0;
-            }
-        }
-        return false;
-    }
-
-    function generateFromValue(value) {
-        if (typeof value === 'number') {
-            if (isNaN(value)) {
-                return generateNaN();
-            }
-            if (isNegative(value)) {
-                return generateNegativeNode(value);
-            }
-        }
-        if (value === undefined) {
-            return generateUndefined();
-        }
-        return {
-            type: Syntax.Literal,
-            value: value
-        };
-    }
-
-    function isReference(node) {
-        var type = node.type;
-        return type === Syntax.Identifier || type === Syntax.MemberExpression;
-    }
-
-    // @param last last element of SequenceExpression
-    // @param parent parent element of SequenceExpression
-    // @param scope scope
-    function canExtractSequence(last, parent, scope) {
-        var ref;
-        if (parent.type === Syntax.CallExpression) {
-            if (last.type === Syntax.Identifier) {
-                if (last.name === 'eval') {
-                    // This becomes direct call to eval.
-                    return false;
-                }
-                ref = scope.resolve(last);
-                return ref && ref.isStatic();
-            }
-            return last.type !== Syntax.MemberExpression;
-        } else if (parent.type === Syntax.UnaryExpression) {
-            if (parent.operator === 'delete') {
-                return !isReference(last);
-            } else if (parent.operator === 'typeof') {
-                if (last.type === Syntax.Identifier) {
-                    ref = scope.resolve(last);
-                    return ref && ref.isStatic();
-                }
-            }
-        } else if (parent.type === Syntax.UpdateExpression) {
-            return !isReference(last);
-        }
-        return true;
-    }
-
-    function delegateVariableDeclarations(stmt, func) {
-        var decls, target;
-
-        decls = [];
-
-        estraverse.traverse(stmt, {
-            enter: function (node) {
-                var i, iz, decl;
-                if (node.type === Syntax.VariableDeclaration) {
-                    if (node.kind === 'let' || node.kind === 'const') {
-                        return;
-                    }
-                    for (i = 0, iz = node.declarations.length; i < iz; ++i) {
-                        decl = node.declarations[i];
-                        delete decl.init;
-                        decls.push(decl);
-                    }
-                    return estraverse.VisitorOption.Skip;
-                } else if (escope.Scope.isVariableScopeRequired(node)) {
-                    return estraverse.VisitorOption.Skip;
-                }
-            }
-        });
-
-        if (!decls.length) {
-            return null;
-        }
-
-        target = null;
-
-        estraverse.traverse(func.body, {
-            enter: function (node, parent) {
-                if (node === stmt) {
-                    return estraverse.VisitorOption.Skip;
-                } else if (escope.Scope.isVariableScopeRequired(node)) {
-                    return estraverse.VisitorOption.Skip;
-                } else if (node.type === Syntax.VariableDeclaration && node.kind === 'var') {
-                    // list is not allowed
-                    if (parent.type !== Syntax.ForInStatement) {
-                        target = node;
-                        return estraverse.VisitorOption.Break;
-                    }
-                }
-            }
-        });
-
-        if (target) {
-            target.declarations = target.declarations.concat(decls);
-            return null;
-        } else {
-            return {
-                type: Syntax.VariableDeclaration,
-                kind: 'var',
-                declarations: decls
-            };
-        }
-    }
-
-    function isScopedDeclaration(node) {
-        if (node.type === Syntax.VariableDeclaration && (node.kind === 'let' || node.kind === 'const')) {
-            return true;
-        } else if (node.type === Syntax.FunctionDeclaration) {
-            return true;
-        }
-        return false;
-    }
-
+    exports.generateNextName = generateNextName;
     exports.deepCopy = deepCopy;
-    exports.stringRepeat = stringRepeat;
-    exports.sameValue = sameValue;
-
-    exports.Array = {
-        isArray: isArray,
-        from: arrayFrom,
-        of: arrayOf,
-        last: arrayLast,
-        empty: arrayEmpty
-    };
-
-    exports.Object = {
-        isObject: isObject,
-        has: has
-    };
-
-    exports.Syntax = Syntax;
-    exports.traverse = estraverse.traverse;
-    exports.replace = estraverse.replace;
-    exports.VisitorKeys = estraverse.VisitorKeys;
-    exports.VisitorOption = estraverse.VisitorOption;
-
-    exports.assert = assert;
-    exports.unreachable = unreachable;
-
-    exports.isIdentifier = isIdentifier;
-
-    exports.moveLocation = moveLocation;
-    exports.deleteLocation = deleteLocation;
-    exports.convertToEmptyStatement = convertToEmptyStatement;
-
-    exports.mayBeCompletionValue = mayBeCompletionValue;
-
-    exports.isNegative = isNegative;
-
-    exports.isFunctionBody = isFunctionBody;
-    exports.SpecialNode = {
-        generateNegative: generateNegativeNode,
-        isNegative: isNegativeNode,
-        generateUndefined: generateUndefined,
-        isUndefined: isUndefined,
-        generateNaN: generateNaN,
-        isNaN: isNaNNode,
-        isReference: isReference,
-        canExtractSequence: canExtractSequence,
-        generateFromValue: generateFromValue
-    };
-
-    exports.delegateVariableDeclarations = delegateVariableDeclarations;
-
-    exports.isScopedDeclaration = isScopedDeclaration;
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"escope":38,"estraverse":78,"esutils":81}],43:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
 /*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
+  Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
@@ -14168,75 +19793,805 @@ module.exports={
   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-
-/*jslint bitwise:true */
+/*jslint vars:false, bitwise:true*/
+/*jshint indent:4*/
 /*global exports:true*/
-
-(function () {
+(function clone(exports) {
     'use strict';
 
-    var esshorten,
-        common,
-        Options,
-        Syntax,
-        Pass,
-        annotateDirective;
+    var Syntax,
+        isArray,
+        VisitorOption,
+        VisitorKeys,
+        objectCreate,
+        objectKeys,
+        BREAK,
+        SKIP,
+        REMOVE;
 
-    esshorten = require('esshorten');
-    common = require('./common');
-    Options = require('./options');
-    Pass = require('./pass');
-    annotateDirective = require('./annotate-directive');
-    Syntax = common.Syntax;
+    function ignoreJSHintError() { }
 
-    // recover some broken AST
+    isArray = Array.isArray;
+    if (!isArray) {
+        isArray = function isArray(array) {
+            return Object.prototype.toString.call(array) === '[object Array]';
+        };
+    }
 
-    function recover(tree, useDirectiveStatement) {
-        function trailingIf(node) {
-            while (true) {
-                switch (node.type) {
-                case Syntax.IfStatement:
-                    if (!node.alternate) {
-                        return true;
-                    }
-                    node = node.alternate;
-                    continue;
-
-                case Syntax.LabeledStatement:
-                case Syntax.ForStatement:
-                case Syntax.ForInStatement:
-                case Syntax.WhileStatement:
-                case Syntax.WithStatement:
-                    node = node.body;
-                    continue;
+    function deepCopy(obj) {
+        var ret = {}, key, val;
+        for (key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                val = obj[key];
+                if (typeof val === 'object' && val !== null) {
+                    ret[key] = deepCopy(val);
+                } else {
+                    ret[key] = val;
                 }
-                return false;
+            }
+        }
+        return ret;
+    }
+
+    function shallowCopy(obj) {
+        var ret = {}, key;
+        for (key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                ret[key] = obj[key];
+            }
+        }
+        return ret;
+    }
+    ignoreJSHintError(shallowCopy);
+
+    // based on LLVM libc++ upper_bound / lower_bound
+    // MIT License
+
+    function upperBound(array, func) {
+        var diff, len, i, current;
+
+        len = array.length;
+        i = 0;
+
+        while (len) {
+            diff = len >>> 1;
+            current = i + diff;
+            if (func(array[current])) {
+                len = diff;
+            } else {
+                i = current + 1;
+                len -= diff + 1;
+            }
+        }
+        return i;
+    }
+
+    function lowerBound(array, func) {
+        var diff, len, i, current;
+
+        len = array.length;
+        i = 0;
+
+        while (len) {
+            diff = len >>> 1;
+            current = i + diff;
+            if (func(array[current])) {
+                i = current + 1;
+                len -= diff + 1;
+            } else {
+                len = diff;
+            }
+        }
+        return i;
+    }
+    ignoreJSHintError(lowerBound);
+
+    objectCreate = Object.create || (function () {
+        function F() { }
+
+        return function (o) {
+            F.prototype = o;
+            return new F();
+        };
+    })();
+
+    objectKeys = Object.keys || function (o) {
+        var keys = [], key;
+        for (key in o) {
+            keys.push(key);
+        }
+        return keys;
+    };
+
+    function extend(to, from) {
+        var keys = objectKeys(from), key, i, len;
+        for (i = 0, len = keys.length; i < len; i += 1) {
+            key = keys[i];
+            to[key] = from[key];
+        }
+        return to;
+    }
+
+    Syntax = {
+        AssignmentExpression: 'AssignmentExpression',
+        AssignmentPattern: 'AssignmentPattern',
+        ArrayExpression: 'ArrayExpression',
+        ArrayPattern: 'ArrayPattern',
+        ArrowFunctionExpression: 'ArrowFunctionExpression',
+        AwaitExpression: 'AwaitExpression', // CAUTION: It's deferred to ES7.
+        BlockStatement: 'BlockStatement',
+        BinaryExpression: 'BinaryExpression',
+        BreakStatement: 'BreakStatement',
+        CallExpression: 'CallExpression',
+        CatchClause: 'CatchClause',
+        ClassBody: 'ClassBody',
+        ClassDeclaration: 'ClassDeclaration',
+        ClassExpression: 'ClassExpression',
+        ComprehensionBlock: 'ComprehensionBlock',  // CAUTION: It's deferred to ES7.
+        ComprehensionExpression: 'ComprehensionExpression',  // CAUTION: It's deferred to ES7.
+        ConditionalExpression: 'ConditionalExpression',
+        ContinueStatement: 'ContinueStatement',
+        DebuggerStatement: 'DebuggerStatement',
+        DirectiveStatement: 'DirectiveStatement',
+        DoWhileStatement: 'DoWhileStatement',
+        EmptyStatement: 'EmptyStatement',
+        ExportAllDeclaration: 'ExportAllDeclaration',
+        ExportDefaultDeclaration: 'ExportDefaultDeclaration',
+        ExportNamedDeclaration: 'ExportNamedDeclaration',
+        ExportSpecifier: 'ExportSpecifier',
+        ExpressionStatement: 'ExpressionStatement',
+        ForStatement: 'ForStatement',
+        ForInStatement: 'ForInStatement',
+        ForOfStatement: 'ForOfStatement',
+        FunctionDeclaration: 'FunctionDeclaration',
+        FunctionExpression: 'FunctionExpression',
+        GeneratorExpression: 'GeneratorExpression',  // CAUTION: It's deferred to ES7.
+        Identifier: 'Identifier',
+        IfStatement: 'IfStatement',
+        ImportDeclaration: 'ImportDeclaration',
+        ImportDefaultSpecifier: 'ImportDefaultSpecifier',
+        ImportNamespaceSpecifier: 'ImportNamespaceSpecifier',
+        ImportSpecifier: 'ImportSpecifier',
+        Literal: 'Literal',
+        LabeledStatement: 'LabeledStatement',
+        LogicalExpression: 'LogicalExpression',
+        MemberExpression: 'MemberExpression',
+        MetaProperty: 'MetaProperty',
+        MethodDefinition: 'MethodDefinition',
+        ModuleSpecifier: 'ModuleSpecifier',
+        NewExpression: 'NewExpression',
+        ObjectExpression: 'ObjectExpression',
+        ObjectPattern: 'ObjectPattern',
+        Program: 'Program',
+        Property: 'Property',
+        RestElement: 'RestElement',
+        ReturnStatement: 'ReturnStatement',
+        SequenceExpression: 'SequenceExpression',
+        SpreadElement: 'SpreadElement',
+        Super: 'Super',
+        SwitchStatement: 'SwitchStatement',
+        SwitchCase: 'SwitchCase',
+        TaggedTemplateExpression: 'TaggedTemplateExpression',
+        TemplateElement: 'TemplateElement',
+        TemplateLiteral: 'TemplateLiteral',
+        ThisExpression: 'ThisExpression',
+        ThrowStatement: 'ThrowStatement',
+        TryStatement: 'TryStatement',
+        UnaryExpression: 'UnaryExpression',
+        UpdateExpression: 'UpdateExpression',
+        VariableDeclaration: 'VariableDeclaration',
+        VariableDeclarator: 'VariableDeclarator',
+        WhileStatement: 'WhileStatement',
+        WithStatement: 'WithStatement',
+        YieldExpression: 'YieldExpression'
+    };
+
+    VisitorKeys = {
+        AssignmentExpression: ['left', 'right'],
+        AssignmentPattern: ['left', 'right'],
+        ArrayExpression: ['elements'],
+        ArrayPattern: ['elements'],
+        ArrowFunctionExpression: ['params', 'body'],
+        AwaitExpression: ['argument'], // CAUTION: It's deferred to ES7.
+        BlockStatement: ['body'],
+        BinaryExpression: ['left', 'right'],
+        BreakStatement: ['label'],
+        CallExpression: ['callee', 'arguments'],
+        CatchClause: ['param', 'body'],
+        ClassBody: ['body'],
+        ClassDeclaration: ['id', 'superClass', 'body'],
+        ClassExpression: ['id', 'superClass', 'body'],
+        ComprehensionBlock: ['left', 'right'],  // CAUTION: It's deferred to ES7.
+        ComprehensionExpression: ['blocks', 'filter', 'body'],  // CAUTION: It's deferred to ES7.
+        ConditionalExpression: ['test', 'consequent', 'alternate'],
+        ContinueStatement: ['label'],
+        DebuggerStatement: [],
+        DirectiveStatement: [],
+        DoWhileStatement: ['body', 'test'],
+        EmptyStatement: [],
+        ExportAllDeclaration: ['source'],
+        ExportDefaultDeclaration: ['declaration'],
+        ExportNamedDeclaration: ['declaration', 'specifiers', 'source'],
+        ExportSpecifier: ['exported', 'local'],
+        ExpressionStatement: ['expression'],
+        ForStatement: ['init', 'test', 'update', 'body'],
+        ForInStatement: ['left', 'right', 'body'],
+        ForOfStatement: ['left', 'right', 'body'],
+        FunctionDeclaration: ['id', 'params', 'body'],
+        FunctionExpression: ['id', 'params', 'body'],
+        GeneratorExpression: ['blocks', 'filter', 'body'],  // CAUTION: It's deferred to ES7.
+        Identifier: [],
+        IfStatement: ['test', 'consequent', 'alternate'],
+        ImportDeclaration: ['specifiers', 'source'],
+        ImportDefaultSpecifier: ['local'],
+        ImportNamespaceSpecifier: ['local'],
+        ImportSpecifier: ['imported', 'local'],
+        Literal: [],
+        LabeledStatement: ['label', 'body'],
+        LogicalExpression: ['left', 'right'],
+        MemberExpression: ['object', 'property'],
+        MetaProperty: ['meta', 'property'],
+        MethodDefinition: ['key', 'value'],
+        ModuleSpecifier: [],
+        NewExpression: ['callee', 'arguments'],
+        ObjectExpression: ['properties'],
+        ObjectPattern: ['properties'],
+        Program: ['body'],
+        Property: ['key', 'value'],
+        RestElement: [ 'argument' ],
+        ReturnStatement: ['argument'],
+        SequenceExpression: ['expressions'],
+        SpreadElement: ['argument'],
+        Super: [],
+        SwitchStatement: ['discriminant', 'cases'],
+        SwitchCase: ['test', 'consequent'],
+        TaggedTemplateExpression: ['tag', 'quasi'],
+        TemplateElement: [],
+        TemplateLiteral: ['quasis', 'expressions'],
+        ThisExpression: [],
+        ThrowStatement: ['argument'],
+        TryStatement: ['block', 'handler', 'finalizer'],
+        UnaryExpression: ['argument'],
+        UpdateExpression: ['argument'],
+        VariableDeclaration: ['declarations'],
+        VariableDeclarator: ['id', 'init'],
+        WhileStatement: ['test', 'body'],
+        WithStatement: ['object', 'body'],
+        YieldExpression: ['argument']
+    };
+
+    // unique id
+    BREAK = {};
+    SKIP = {};
+    REMOVE = {};
+
+    VisitorOption = {
+        Break: BREAK,
+        Skip: SKIP,
+        Remove: REMOVE
+    };
+
+    function Reference(parent, key) {
+        this.parent = parent;
+        this.key = key;
+    }
+
+    Reference.prototype.replace = function replace(node) {
+        this.parent[this.key] = node;
+    };
+
+    Reference.prototype.remove = function remove() {
+        if (isArray(this.parent)) {
+            this.parent.splice(this.key, 1);
+            return true;
+        } else {
+            this.replace(null);
+            return false;
+        }
+    };
+
+    function Element(node, path, wrap, ref) {
+        this.node = node;
+        this.path = path;
+        this.wrap = wrap;
+        this.ref = ref;
+    }
+
+    function Controller() { }
+
+    // API:
+    // return property path array from root to current node
+    Controller.prototype.path = function path() {
+        var i, iz, j, jz, result, element;
+
+        function addToPath(result, path) {
+            if (isArray(path)) {
+                for (j = 0, jz = path.length; j < jz; ++j) {
+                    result.push(path[j]);
+                }
+            } else {
+                result.push(path);
             }
         }
 
-        common.traverse(tree, {
-            leave: function leave(node) {
-                if (node.type === Syntax.IfStatement && node.alternate) {
-                    // force wrap up or not
-                    if (node.consequent.type !== Syntax.BlockStatement) {
-                        if (trailingIf(node.consequent)) {
-                            node.consequent = {
-                                type: Syntax.BlockStatement,
-                                body: [ node.consequent ]
-                            };
-                        }
+        // root node
+        if (!this.__current.path) {
+            return null;
+        }
+
+        // first node is sentinel, second node is root element
+        result = [];
+        for (i = 2, iz = this.__leavelist.length; i < iz; ++i) {
+            element = this.__leavelist[i];
+            addToPath(result, element.path);
+        }
+        addToPath(result, this.__current.path);
+        return result;
+    };
+
+    // API:
+    // return type of current node
+    Controller.prototype.type = function () {
+        var node = this.current();
+        return node.type || this.__current.wrap;
+    };
+
+    // API:
+    // return array of parent elements
+    Controller.prototype.parents = function parents() {
+        var i, iz, result;
+
+        // first node is sentinel
+        result = [];
+        for (i = 1, iz = this.__leavelist.length; i < iz; ++i) {
+            result.push(this.__leavelist[i].node);
+        }
+
+        return result;
+    };
+
+    // API:
+    // return current node
+    Controller.prototype.current = function current() {
+        return this.__current.node;
+    };
+
+    Controller.prototype.__execute = function __execute(callback, element) {
+        var previous, result;
+
+        result = undefined;
+
+        previous  = this.__current;
+        this.__current = element;
+        this.__state = null;
+        if (callback) {
+            result = callback.call(this, element.node, this.__leavelist[this.__leavelist.length - 1].node);
+        }
+        this.__current = previous;
+
+        return result;
+    };
+
+    // API:
+    // notify control skip / break
+    Controller.prototype.notify = function notify(flag) {
+        this.__state = flag;
+    };
+
+    // API:
+    // skip child nodes of current node
+    Controller.prototype.skip = function () {
+        this.notify(SKIP);
+    };
+
+    // API:
+    // break traversals
+    Controller.prototype['break'] = function () {
+        this.notify(BREAK);
+    };
+
+    // API:
+    // remove node
+    Controller.prototype.remove = function () {
+        this.notify(REMOVE);
+    };
+
+    Controller.prototype.__initialize = function(root, visitor) {
+        this.visitor = visitor;
+        this.root = root;
+        this.__worklist = [];
+        this.__leavelist = [];
+        this.__current = null;
+        this.__state = null;
+        this.__fallback = visitor.fallback === 'iteration';
+        this.__keys = VisitorKeys;
+        if (visitor.keys) {
+            this.__keys = extend(objectCreate(this.__keys), visitor.keys);
+        }
+    };
+
+    function isNode(node) {
+        if (node == null) {
+            return false;
+        }
+        return typeof node === 'object' && typeof node.type === 'string';
+    }
+
+    function isProperty(nodeType, key) {
+        return (nodeType === Syntax.ObjectExpression || nodeType === Syntax.ObjectPattern) && 'properties' === key;
+    }
+
+    Controller.prototype.traverse = function traverse(root, visitor) {
+        var worklist,
+            leavelist,
+            element,
+            node,
+            nodeType,
+            ret,
+            key,
+            current,
+            current2,
+            candidates,
+            candidate,
+            sentinel;
+
+        this.__initialize(root, visitor);
+
+        sentinel = {};
+
+        // reference
+        worklist = this.__worklist;
+        leavelist = this.__leavelist;
+
+        // initialize
+        worklist.push(new Element(root, null, null, null));
+        leavelist.push(new Element(null, null, null, null));
+
+        while (worklist.length) {
+            element = worklist.pop();
+
+            if (element === sentinel) {
+                element = leavelist.pop();
+
+                ret = this.__execute(visitor.leave, element);
+
+                if (this.__state === BREAK || ret === BREAK) {
+                    return;
+                }
+                continue;
+            }
+
+            if (element.node) {
+
+                ret = this.__execute(visitor.enter, element);
+
+                if (this.__state === BREAK || ret === BREAK) {
+                    return;
+                }
+
+                worklist.push(sentinel);
+                leavelist.push(element);
+
+                if (this.__state === SKIP || ret === SKIP) {
+                    continue;
+                }
+
+                node = element.node;
+                nodeType = node.type || element.wrap;
+                candidates = this.__keys[nodeType];
+                if (!candidates) {
+                    if (this.__fallback) {
+                        candidates = objectKeys(node);
+                    } else {
+                        throw new Error('Unknown node type ' + nodeType + '.');
                     }
                 }
-                if (!useDirectiveStatement && node.type === Syntax.DirectiveStatement) {
-                    node.type = Syntax.ExpressionStatement;
-                    node.expression = common.moveLocation(node, {
-                        type: Syntax.Literal,
-                        value: node.value,
-                        raw: node.raw
-                    });
-                    delete node.directive;
-                    delete node.value;
-                    delete node.raw;
+
+                current = candidates.length;
+                while ((current -= 1) >= 0) {
+                    key = candidates[current];
+                    candidate = node[key];
+                    if (!candidate) {
+                        continue;
+                    }
+
+                    if (isArray(candidate)) {
+                        current2 = candidate.length;
+                        while ((current2 -= 1) >= 0) {
+                            if (!candidate[current2]) {
+                                continue;
+                            }
+                            if (isProperty(nodeType, candidates[current])) {
+                                element = new Element(candidate[current2], [key, current2], 'Property', null);
+                            } else if (isNode(candidate[current2])) {
+                                element = new Element(candidate[current2], [key, current2], null, null);
+                            } else {
+                                continue;
+                            }
+                            worklist.push(element);
+                        }
+                    } else if (isNode(candidate)) {
+                        worklist.push(new Element(candidate, key, null, null));
+                    }
+                }
+            }
+        }
+    };
+
+    Controller.prototype.replace = function replace(root, visitor) {
+        function removeElem(element) {
+            var i,
+                key,
+                nextElem,
+                parent;
+
+            if (element.ref.remove()) {
+                // When the reference is an element of an array.
+                key = element.ref.key;
+                parent = element.ref.parent;
+
+                // If removed from array, then decrease following items' keys.
+                i = worklist.length;
+                while (i--) {
+                    nextElem = worklist[i];
+                    if (nextElem.ref && nextElem.ref.parent === parent) {
+                        if  (nextElem.ref.key < key) {
+                            break;
+                        }
+                        --nextElem.ref.key;
+                    }
+                }
+            }
+        }
+
+        var worklist,
+            leavelist,
+            node,
+            nodeType,
+            target,
+            element,
+            current,
+            current2,
+            candidates,
+            candidate,
+            sentinel,
+            outer,
+            key;
+
+        this.__initialize(root, visitor);
+
+        sentinel = {};
+
+        // reference
+        worklist = this.__worklist;
+        leavelist = this.__leavelist;
+
+        // initialize
+        outer = {
+            root: root
+        };
+        element = new Element(root, null, null, new Reference(outer, 'root'));
+        worklist.push(element);
+        leavelist.push(element);
+
+        while (worklist.length) {
+            element = worklist.pop();
+
+            if (element === sentinel) {
+                element = leavelist.pop();
+
+                target = this.__execute(visitor.leave, element);
+
+                // node may be replaced with null,
+                // so distinguish between undefined and null in this place
+                if (target !== undefined && target !== BREAK && target !== SKIP && target !== REMOVE) {
+                    // replace
+                    element.ref.replace(target);
+                }
+
+                if (this.__state === REMOVE || target === REMOVE) {
+                    removeElem(element);
+                }
+
+                if (this.__state === BREAK || target === BREAK) {
+                    return outer.root;
+                }
+                continue;
+            }
+
+            target = this.__execute(visitor.enter, element);
+
+            // node may be replaced with null,
+            // so distinguish between undefined and null in this place
+            if (target !== undefined && target !== BREAK && target !== SKIP && target !== REMOVE) {
+                // replace
+                element.ref.replace(target);
+                element.node = target;
+            }
+
+            if (this.__state === REMOVE || target === REMOVE) {
+                removeElem(element);
+                element.node = null;
+            }
+
+            if (this.__state === BREAK || target === BREAK) {
+                return outer.root;
+            }
+
+            // node may be null
+            node = element.node;
+            if (!node) {
+                continue;
+            }
+
+            worklist.push(sentinel);
+            leavelist.push(element);
+
+            if (this.__state === SKIP || target === SKIP) {
+                continue;
+            }
+
+            nodeType = node.type || element.wrap;
+            candidates = this.__keys[nodeType];
+            if (!candidates) {
+                if (this.__fallback) {
+                    candidates = objectKeys(node);
+                } else {
+                    throw new Error('Unknown node type ' + nodeType + '.');
+                }
+            }
+
+            current = candidates.length;
+            while ((current -= 1) >= 0) {
+                key = candidates[current];
+                candidate = node[key];
+                if (!candidate) {
+                    continue;
+                }
+
+                if (isArray(candidate)) {
+                    current2 = candidate.length;
+                    while ((current2 -= 1) >= 0) {
+                        if (!candidate[current2]) {
+                            continue;
+                        }
+                        if (isProperty(nodeType, candidates[current])) {
+                            element = new Element(candidate[current2], [key, current2], 'Property', new Reference(candidate, current2));
+                        } else if (isNode(candidate[current2])) {
+                            element = new Element(candidate[current2], [key, current2], null, new Reference(candidate, current2));
+                        } else {
+                            continue;
+                        }
+                        worklist.push(element);
+                    }
+                } else if (isNode(candidate)) {
+                    worklist.push(new Element(candidate, key, null, new Reference(node, key)));
+                }
+            }
+        }
+
+        return outer.root;
+    };
+
+    function traverse(root, visitor) {
+        var controller = new Controller();
+        return controller.traverse(root, visitor);
+    }
+
+    function replace(root, visitor) {
+        var controller = new Controller();
+        return controller.replace(root, visitor);
+    }
+
+    function extendCommentRange(comment, tokens) {
+        var target;
+
+        target = upperBound(tokens, function search(token) {
+            return token.range[0] > comment.range[0];
+        });
+
+        comment.extendedRange = [comment.range[0], comment.range[1]];
+
+        if (target !== tokens.length) {
+            comment.extendedRange[1] = tokens[target].range[0];
+        }
+
+        target -= 1;
+        if (target >= 0) {
+            comment.extendedRange[0] = tokens[target].range[1];
+        }
+
+        return comment;
+    }
+
+    function attachComments(tree, providedComments, tokens) {
+        // At first, we should calculate extended comment ranges.
+        var comments = [], comment, len, i, cursor;
+
+        if (!tree.range) {
+            throw new Error('attachComments needs range information');
+        }
+
+        // tokens array is empty, we attach comments to tree as 'leadingComments'
+        if (!tokens.length) {
+            if (providedComments.length) {
+                for (i = 0, len = providedComments.length; i < len; i += 1) {
+                    comment = deepCopy(providedComments[i]);
+                    comment.extendedRange = [0, tree.range[0]];
+                    comments.push(comment);
+                }
+                tree.leadingComments = comments;
+            }
+            return tree;
+        }
+
+        for (i = 0, len = providedComments.length; i < len; i += 1) {
+            comments.push(extendCommentRange(deepCopy(providedComments[i]), tokens));
+        }
+
+        // This is based on John Freeman's implementation.
+        cursor = 0;
+        traverse(tree, {
+            enter: function (node) {
+                var comment;
+
+                while (cursor < comments.length) {
+                    comment = comments[cursor];
+                    if (comment.extendedRange[1] > node.range[0]) {
+                        break;
+                    }
+
+                    if (comment.extendedRange[1] === node.range[0]) {
+                        if (!node.leadingComments) {
+                            node.leadingComments = [];
+                        }
+                        node.leadingComments.push(comment);
+                        comments.splice(cursor, 1);
+                    } else {
+                        cursor += 1;
+                    }
+                }
+
+                // already out of owned node
+                if (cursor === comments.length) {
+                    return VisitorOption.Break;
+                }
+
+                if (comments[cursor].extendedRange[0] > node.range[1]) {
+                    return VisitorOption.Skip;
+                }
+            }
+        });
+
+        cursor = 0;
+        traverse(tree, {
+            leave: function (node) {
+                var comment;
+
+                while (cursor < comments.length) {
+                    comment = comments[cursor];
+                    if (node.range[1] < comment.extendedRange[0]) {
+                        break;
+                    }
+
+                    if (node.range[1] === comment.extendedRange[0]) {
+                        if (!node.trailingComments) {
+                            node.trailingComments = [];
+                        }
+                        node.trailingComments.push(comment);
+                        comments.splice(cursor, 1);
+                    } else {
+                        cursor += 1;
+                    }
+                }
+
+                // already out of owned node
+                if (cursor === comments.length) {
+                    return VisitorOption.Break;
+                }
+
+                if (comments[cursor].extendedRange[0] > node.range[1]) {
+                    return VisitorOption.Skip;
                 }
             }
         });
@@ -14244,578 +20599,89 @@ module.exports={
         return tree;
     }
 
-    function iteration(tree, p, options) {
-        var i, iz, pass, res, changed, statuses, passes, result;
+    exports.version = require('./package.json').version;
+    exports.Syntax = Syntax;
+    exports.traverse = traverse;
+    exports.replace = replace;
+    exports.attachComments = attachComments;
+    exports.VisitorKeys = VisitorKeys;
+    exports.VisitorOption = VisitorOption;
+    exports.Controller = Controller;
+    exports.cloneEnvironment = function () { return clone({}); };
 
-        function addPass(pass) {
-            var name;
-            if (typeof pass !== 'function') {
-                // automatic lookup pass (esmangle pass format)
-                name = Object.keys(pass)[0];
-                pass = pass[name];
-            }
-            if (pass.hasOwnProperty('passName')) {
-                name = pass.passName;
-            } else {
-                name = pass.name;
-            }
-            passes.push(pass);
-            statuses.push(true);
-        }
-
-        function fillStatuses(bool) {
-            var i, iz;
-            for (i = 0, iz = statuses.length; i < iz; ++i) {
-                statuses[i] = bool;
-            }
-        }
-
-        result = (options.get('destructive')) ? tree : common.deepCopy(tree);
-
-        statuses = [];
-        passes = [];
-
-
-        for (i = 0, iz = p.length; i < iz; ++i) {
-            addPass(p[i]);
-        }
-
-        do {
-            changed = false;
-            for (i = 0, iz = passes.length; i < iz; ++i) {
-                pass = passes[i];
-                if (statuses[i]) {
-                    res = pass(result, options);
-                    if (res.modified) {
-                        changed = true;
-                        fillStatuses(true);
-                    } else {
-                        statuses[i] = false;
-                    }
-                    result = res.result;
-                }
-            }
-        } while (changed);
-
-        return result;
-    }
-
-    function optimize(tree, pipeline, options) {
-        var i, iz, j, jz, section, pass;
-
-        tree = annotateDirective(tree, new Options({ destructive: false }));
-
-        if (null == pipeline) {
-            pipeline = Pass.__defaultPipeline;
-        }
-
-        options = new Options(options);
-
-        for (i = 0, iz = pipeline.length; i < iz; ++i) {
-            section = pipeline[i];
-            // simple iterative pass
-            if (common.Array.isArray(section)) {
-                tree = iteration(tree, section, options);
-            } else if (section.once) {
-                pass = section.pass;
-                for (j = 0, jz = pass.length; j < jz; ++j) {
-                    tree = pass[j](tree, options).result;
-                }
-            }
-        }
-
-        return recover(tree, options.get('directive'));
-    }
-
-    exports.version = require('../package.json').version;
-    exports.mangle = esshorten.mangle;
-    exports.optimize = optimize;
-    exports.pass = Pass;
-}());
+    return exports;
+}(exports));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"../package.json":82,"./annotate-directive":41,"./common":42,"./options":46,"./pass":47,"esshorten":84}],44:[function(require,module,exports){
-/*
-  Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jshint eqeqeq:false*/
-(function () {
-    'use strict';
-
-    var Syntax, common;
-
-    common = require('./common');
-    Syntax = common.Syntax;
-
-    // constant
-
-    function isConstant(node, allowRegExp) {
-        if (node.type === Syntax.Literal) {
-            if (typeof node.value === 'object' && node.value !== null) {
-                // This is RegExp
-                return allowRegExp;
-            }
-            return true;
-        }
-        if (node.type === Syntax.UnaryExpression) {
-            if (node.operator === 'void' || node.operator === 'delete' || node.operator === '!') {
-                return isConstant(node.argument, true);
-            }
-            return isConstant(node.argument, false);
-        }
-        if (node.type === Syntax.BinaryExpression) {
-            if (node.operator === 'in' || node.operator === 'instanceof') {
-                return false;
-            }
-            return isConstant(node.left, false) && isConstant(node.right, false);
-        }
-        if (node.type === Syntax.LogicalExpression) {
-            return isConstant(node.left, true) && isConstant(node.right, true);
-        }
-        return false;
+},{"./package.json":82}],82:[function(require,module,exports){
+module.exports={
+  "name": "estraverse",
+  "description": "ECMAScript JS AST traversal functions",
+  "homepage": "https://github.com/estools/estraverse",
+  "main": "estraverse.js",
+  "version": "4.1.1",
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "maintainers": [
+    {
+      "name": "constellation",
+      "email": "utatane.tea@gmail.com"
+    },
+    {
+      "name": "michaelficarra",
+      "email": "npm@michael.ficarra.me"
+    },
+    {
+      "name": "nzakas",
+      "email": "nicholas@nczconsulting.com"
     }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/estools/estraverse.git"
+  },
+  "devDependencies": {
+    "chai": "^2.1.1",
+    "coffee-script": "^1.8.0",
+    "espree": "^1.11.0",
+    "gulp": "^3.8.10",
+    "gulp-bump": "^0.2.2",
+    "gulp-filter": "^2.0.0",
+    "gulp-git": "^1.0.1",
+    "gulp-tag-version": "^1.2.1",
+    "jshint": "^2.5.6",
+    "mocha": "^2.1.0"
+  },
+  "license": "BSD-2-Clause",
+  "scripts": {
+    "test": "npm run-script lint && npm run-script unit-test",
+    "lint": "jshint estraverse.js",
+    "unit-test": "mocha --compilers coffee:coffee-script/register"
+  },
+  "gitHead": "bbcccbfe98296585e4311c8755e1d00dcd581e3c",
+  "bugs": {
+    "url": "https://github.com/estools/estraverse/issues"
+  },
+  "_id": "estraverse@4.1.1",
+  "_shasum": "f6caca728933a850ef90661d0e17982ba47111a2",
+  "_from": "estraverse@>=4.1.1 <4.2.0",
+  "_npmVersion": "2.14.4",
+  "_nodeVersion": "4.1.1",
+  "_npmUser": {
+    "name": "constellation",
+    "email": "utatane.tea@gmail.com"
+  },
+  "dist": {
+    "shasum": "f6caca728933a850ef90661d0e17982ba47111a2",
+    "tarball": "http://registry.npmjs.org/estraverse/-/estraverse-4.1.1.tgz"
+  },
+  "directories": {},
+  "_resolved": "https://registry.npmjs.org/estraverse/-/estraverse-4.1.1.tgz",
+  "readme": "ERROR: No README data found!"
+}
 
-    function getConstant(node) {
-        if (node.type === Syntax.Literal) {
-            return node.value;
-        }
-        if (node.type === Syntax.UnaryExpression) {
-            return doUnary(node.operator, getConstant(node.argument));
-        }
-        if (node.type === Syntax.BinaryExpression) {
-            return doBinary(node.operator, getConstant(node.left), getConstant(node.right));
-        }
-        if (node.type === Syntax.LogicalExpression) {
-            return doLogical(node.operator, getConstant(node.left), getConstant(node.right));
-        }
-        common.unreachable();
-    }
-
-    function doLogical(operator, left, right) {
-        if (operator === '||') {
-            return left || right;
-        }
-        if (operator === '&&') {
-            return left && right;
-        }
-        common.unreachable();
-    }
-
-    function doUnary(operator, argument) {
-        switch (operator) {
-        case '+':
-            return +argument;
-        case '-':
-            return -argument;
-        case '~':
-            return ~argument;
-        case '!':
-            return !argument;
-        case 'delete':
-            // do delete on constant value (not considering identifier in this tree based constant folding)
-            return true;
-        case 'void':
-            return undefined;
-        case 'typeof':
-            return typeof argument;
-        }
-        common.unreachable();
-    }
-
-    function doBinary(operator, left, right) {
-        switch (operator) {
-        case '|':
-            return left | right;
-        case '^':
-            return left ^ right;
-        case '&':
-            return left & right;
-        case '==':
-            return left == right;
-        case '!=':
-            return left != right;
-        case '===':
-            return left === right;
-        case '!==':
-            return left !== right;
-        case '<':
-            return left < right;
-        case '>':
-            return left > right;
-        case '<=':
-            return left <= right;
-        case '>=':
-            return left >= right;
-        // case 'in':
-        //    return left in right;
-        // case 'instanceof':
-        //    return left instanceof right;
-        case '<<':
-            return left << right;
-        case '>>':
-            return left >> right;
-        case '>>>':
-            return left >>> right;
-        case '+':
-            return left + right;
-        case '-':
-            return left - right;
-        case '*':
-            return left * right;
-        case '/':
-            return left / right;
-        case '%':
-            return left % right;
-        }
-        common.unreachable();
-    }
-
-    exports.constant = {
-        doBinary: doBinary,
-        doUnary: doUnary,
-        doLogical: doLogical,
-        evaluate: getConstant,
-        isConstant: isConstant
-    };
-
-    // has side effect
-    function hasSideEffect(expr, scope) {
-        function visit(expr) {
-            var i, iz, ref;
-            switch (expr.type) {
-            case Syntax.AssignmentExpression:
-                return true;
-
-            case Syntax.ArrayExpression:
-                for (i = 0, iz = expr.elements.length; i < iz; ++i) {
-                    if (expr.elements[i] !== null && visit(expr.elements[i])) {
-                        return true;
-                    }
-                }
-                return false;
-
-            case Syntax.BinaryExpression:
-                return !isConstant(expr);
-
-            case Syntax.CallExpression:
-                return true;
-
-            case Syntax.ConditionalExpression:
-                return visit(expr.test) || visit(expr.consequent) || visit(expr.alternate);
-
-            case Syntax.FunctionExpression:
-                return false;
-
-            case Syntax.Identifier:
-                ref = scope.resolve(expr);
-                if (ref && ref.isStatic()) {
-                    return false;
-                }
-                return true;
-
-            case Syntax.Literal:
-                return false;
-
-            case Syntax.LogicalExpression:
-                return visit(expr.left) || visit(expr.right);
-
-            case Syntax.MemberExpression:
-                return true;
-
-            case Syntax.NewExpression:
-                return true;
-
-            case Syntax.ObjectExpression:
-                for (i = 0, iz = expr.properties.length; i < iz; ++i) {
-                    if (visit(expr.properties[i])) {
-                        return true;
-                    }
-                }
-                return false;
-
-            case Syntax.Property:
-                return visit(expr.value);
-
-            case Syntax.SequenceExpression:
-                for (i = 0, iz = expr.expressions.length; i < iz; ++i) {
-                    if (visit(expr.expressions[i])) {
-                        return true;
-                    }
-                }
-                return false;
-
-            case Syntax.ThisExpression:
-                return false;
-
-            case Syntax.UnaryExpression:
-                if (expr.operator === 'void' || expr.operator === 'delete' || expr.operator === 'typeof' || expr.operator === '!') {
-                    return visit(expr.argument);
-                }
-                return !isConstant(expr);
-
-            case Syntax.UpdateExpression:
-                return true;
-            }
-            return true;
-        }
-
-        return visit(expr);
-    }
-
-    exports.hasSideEffect = hasSideEffect;
-
-    // boolean decision
-    // @return {boolean|null} when indeterminate value comes, returns null
-    function booleanCondition(expr) {
-        var ret;
-        switch (expr.type) {
-        case Syntax.AssignmentExpression:
-            return booleanCondition(expr.right);
-
-        case Syntax.ArrayExpression:
-            return true;
-
-        case Syntax.BinaryExpression:
-            if (isConstant(expr)) {
-                return !!getConstant(expr);
-            }
-            return null;
-
-        case Syntax.CallExpression:
-            return null;
-
-        case Syntax.ConditionalExpression:
-            ret = booleanCondition(expr.test);
-            if (ret === true) {
-                return booleanCondition(expr.consequent);
-            }
-            if (ret === false) {
-                return booleanCondition(expr.alternate);
-            }
-            ret = booleanCondition(expr.consequent);
-            if (ret === booleanCondition(expr.alternate)) {
-                return ret;
-            }
-            return null;
-
-        case Syntax.FunctionExpression:
-            return true;
-
-        case Syntax.Identifier:
-            return null;
-
-        case Syntax.Literal:
-            return !!getConstant(expr);
-
-        case Syntax.LogicalExpression:
-            if (expr.operator === '&&') {
-                ret = booleanCondition(expr.left);
-                if (ret === null) {
-                    return null;
-                }
-                if (!ret) {
-                    return false;
-                }
-                return booleanCondition(expr.right);
-            } else {
-                ret = booleanCondition(expr.left);
-                if (ret === null) {
-                    return null;
-                }
-                if (ret) {
-                    return true;
-                }
-                return booleanCondition(expr.right);
-            }
-            return null;
-
-        case Syntax.MemberExpression:
-            return null;
-
-        case Syntax.NewExpression:
-            // always return object
-            return true;
-
-        case Syntax.ObjectExpression:
-            return true;
-
-        case Syntax.Property:
-            common.unreachable();
-            return null;
-
-        case Syntax.SequenceExpression:
-            return booleanCondition(common.Array.last(expr.expressions));
-
-        case Syntax.ThisExpression:
-            // in strict mode, this may be null / undefined
-            return null;
-
-        case Syntax.UnaryExpression:
-            if (expr.operator === 'void') {
-                return false;
-            }
-            if (expr.operator === 'typeof') {
-                return true;
-            }
-            if (expr.operator === '!') {
-                ret = booleanCondition(expr.argument);
-                if (ret === null) {
-                    return null;
-                }
-                return !ret;
-            }
-            if (isConstant(expr)) {
-                return !!getConstant(expr);
-            }
-            return null;
-
-        case Syntax.UpdateExpression:
-            return null;
-        }
-
-        return null;
-    }
-
-    exports.booleanCondition = booleanCondition;
-}());
-
-},{"./common":42}],45:[function(require,module,exports){
-(function (global){
-/*
-  Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*global module:true*/
-(function () {
-    'use strict';
-
-    var Map;
-
-    if (typeof global.Map !== 'undefined') {
-        // ES6 Map
-        Map = global.Map;
-    } else {
-        Map = function Map() {
-            this.__data = {};
-        };
-
-        Map.prototype.get = function MapGet(key) {
-            key = '$' + key;
-            if (this.__data.hasOwnProperty(key)) {
-                return this.__data[key];
-            }
-        };
-
-        Map.prototype.has = function MapHas(key) {
-            key = '$' + key;
-            return this.__data.hasOwnProperty(key);
-        };
-
-        Map.prototype.set = function MapSet(key, val) {
-            key = '$' + key;
-            this.__data[key] = val;
-        };
-
-        Map.prototype['delete'] = function MapDelete(key) {
-            key = '$' + key;
-            return delete this.__data[key];
-        };
-
-        Map.prototype.clear = function MapClear() {
-            this.__data = {};
-        };
-
-        Map.prototype.forEach = function MapForEach(callback, thisArg) {
-            var real, key;
-            for (real in this.__data) {
-                if (this.__data.hasOwnProperty(real)) {
-                    key = real.substring(1);
-                    callback.call(thisArg, this.__data[real], key, this);
-                }
-            }
-        };
-
-        Map.prototype.keys = function MapKeys() {
-            var real, result;
-            result = [];
-            for (real in this.__data) {
-                if (this.__data.hasOwnProperty(real)) {
-                    result.push(real.substring(1));
-                }
-            }
-            return result;
-        };
-
-        Map.prototype.values = function MapValues() {
-            var real, result;
-            result = [];
-            for (real in this.__data) {
-                if (this.__data.hasOwnProperty(real)) {
-                    result.push(this.__data[real]);
-                }
-            }
-            return result;
-        };
-
-        Map.prototype.items = function MapItems() {
-            var real, result;
-            result = [];
-            for (real in this.__data) {
-                if (this.__data.hasOwnProperty(real)) {
-                    result.push([real.substring(1), this.__data[real]]);
-                }
-            }
-            return result;
-        };
-    }
-
-    module.exports = Map;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],46:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
 /*
   Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
@@ -14828,7 +20694,7 @@ module.exports={
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
 
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 'AS IS'
   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
   ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
@@ -14840,4087 +20706,265 @@ module.exports={
   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/*jslint bitwise:true */
 (function () {
     'use strict';
 
-    var common;
-
-    common = require('./common');
-
-    function extend(result, update) {
-        var prop, lhs, rhs;
-
-        for (prop in update) {
-            if (!common.Object.has(update, prop)) {
-                continue;
-            }
-
-            if (prop in result) {
-                lhs = result[prop];
-                rhs = update[prop];
-                if (common.Object.isObject(rhs) && common.Object.isObject(lhs)) {
-                    result[prop] = extend(lhs, rhs);
-                } else {
-                    result[prop] = update[prop];
-                }
-            } else {
-                result[prop] = update[prop];
-            }
-        }
-
-        return result;
-    }
-
-    function Options(override) {
-        var defaults = {
-            destructive: true,
-            preserveCompletionValue: false
-        };
-
-        if (override == null) {
-            this.data = defaults;
-            return;
-        }
-
-        this.data = extend(defaults, override);
-    }
-
-    // options.get(name, {
-    //   pathName: pathName
-    // });
-    Options.prototype.get = function get(name, details) {
-        var local;
-        if (details != null) {
-            if (common.Object.has(details, 'pathName')) {
-                local = this.data[details.pathName];
-                if (local != null && common.Object.has(local, name)) {
-                    return local[name];
-                }
-            }
-        }
-        return this.data[name];
-    };
-
-    module.exports = Options;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"./common":42}],47:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global exports:true*/
-
-(function () {
-    'use strict';
-
-    var query, Registry, pass, post, common;
-
-    common = require('./common');
-    query = require('./query');
-
-    Registry = {};
-    Registry.__direct = {};
-
-    // initialization
-
-    function initialize(kind, passes) {
-        var i, iz, pass;
-        Registry[kind] = {};
-        for (i = 0, iz = passes.length; i < iz; ++i) {
-            pass = passes[i];
-            common.assert(Registry[kind][pass.passName] == null, 'don\'t create duplicate pass names');
-            Registry[kind][pass.passName] = pass;
-        }
-        common.assert(Registry.__direct[pass.passName] == null, 'don\'t create duplicate pass names');
-        Registry.__direct[pass.passName] = pass;
-    }
-
-    pass = [
-        require('./pass/hoist-variable-to-arguments'),
-        require('./pass/transform-dynamic-to-static-property-access'),
-        require('./pass/transform-dynamic-to-static-property-definition'),
-        require('./pass/transform-immediate-function-call'),
-        require('./pass/transform-logical-association'),
-        require('./pass/reordering-function-declarations'),
-        require('./pass/remove-unused-label'),
-        require('./pass/remove-empty-statement'),
-        require('./pass/remove-wasted-blocks'),
-        require('./pass/transform-to-compound-assignment'),
-        require('./pass/transform-to-sequence-expression'),
-        require('./pass/transform-branch-to-expression'),
-        require('./pass/transform-typeof-undefined'),
-        require('./pass/reduce-sequence-expression'),
-        require('./pass/reduce-branch-jump'),
-        require('./pass/reduce-multiple-if-statements'),
-        require('./pass/dead-code-elimination'),
-        require('./pass/remove-side-effect-free-expressions'),
-        require('./pass/remove-context-sensitive-expressions'),
-        require('./pass/tree-based-constant-folding'),
-        require('./pass/concatenate-variable-definition'),
-        require('./pass/drop-variable-definition'),
-        require('./pass/remove-unreachable-branch'),
-        require('./pass/eliminate-duplicate-function-declarations')
-    ];
-
-    post = [
-        require('./post/transform-static-to-dynamic-property-access'),
-        require('./post/transform-infinity'),
-        require('./post/rewrite-boolean'),
-        require('./post/rewrite-conditional-expression'),
-        require('./post/omit-parens-in-void-context-iife')
-    ];
-
-    initialize('pass', pass);
-    initialize('post', post);
-
-    function passRequire(name) {
-        if (common.Object.has(Registry.__direct, name)) {
-            return Registry.__direct[name];
-        }
-        return query.get(Registry, name.split('/'));
-    }
-
-    exports.require = passRequire;
-    exports.Registry = Registry;
-
-    // CAUTION:(Constellation)
-    // This API would be cahnged
-    exports.__defaultPipeline = [
-        pass,
-        {
-            once: true,
-            pass: post
-        }
-    ];
-}());
-
-},{"./common":42,"./pass/concatenate-variable-definition":48,"./pass/dead-code-elimination":49,"./pass/drop-variable-definition":50,"./pass/eliminate-duplicate-function-declarations":51,"./pass/hoist-variable-to-arguments":52,"./pass/reduce-branch-jump":53,"./pass/reduce-multiple-if-statements":54,"./pass/reduce-sequence-expression":55,"./pass/remove-context-sensitive-expressions":56,"./pass/remove-empty-statement":57,"./pass/remove-side-effect-free-expressions":58,"./pass/remove-unreachable-branch":59,"./pass/remove-unused-label":60,"./pass/remove-wasted-blocks":61,"./pass/reordering-function-declarations":62,"./pass/transform-branch-to-expression":63,"./pass/transform-dynamic-to-static-property-access":64,"./pass/transform-dynamic-to-static-property-definition":65,"./pass/transform-immediate-function-call":66,"./pass/transform-logical-association":67,"./pass/transform-to-compound-assignment":68,"./pass/transform-to-sequence-expression":69,"./pass/transform-typeof-undefined":70,"./pass/tree-based-constant-folding":71,"./post/omit-parens-in-void-context-iife":72,"./post/rewrite-boolean":73,"./post/rewrite-conditional-expression":74,"./post/transform-infinity":75,"./post/transform-static-to-dynamic-property-access":76,"./query":77}],48:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'concatenate-variable-definition';
-
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function concatenateVariableDefinition(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        common.traverse(result, {
-            leave: function leave(node) {
-                var i, iz, j, jz, stmt, decl, target, body;
-                if (node.type !== Syntax.BlockStatement && node.type !== Syntax.Program) {
-                    return;
-                }
-
-                // concat sequencial variable definition to one
-                target = null;
-                body = [];
-
-                for (i = 0, iz = node.body.length; i < iz; ++i) {
-                    stmt = node.body[i];
-                    if (stmt.type === Syntax.VariableDeclaration && stmt.kind === 'var') {
-                        if (!target) {
-                            target = stmt;
-                            body.push(stmt);
-                            continue;
-                        }
-
-                        modified = true;
-                        for (j = 0, jz = stmt.declarations.length; j < jz; ++j) {
-                            decl = stmt.declarations[j];
-                            target.declarations.push(decl);
-                        }
-                    } else {
-                        target = null;
-                        body.push(stmt);
-                    }
-                }
-
-                node.body = body;
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    concatenateVariableDefinition.passName = Name;
-    module.exports = concatenateVariableDefinition;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],49:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name,
-        Syntax,
-        common,
-        status,
-        modified;
-
-    Name = 'dead-code-elimination';
-
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function JumpTarget(node, status, type) {
-        this.node = node;
-        this.type = type;
-        this.labels = status.labels || [];
-        status.labels = null;
-    }
-
-    JumpTarget.NAMED_ONLY = 0;  // (00)2
-    JumpTarget.ITERATION = 2;   // (10)2
-    JumpTarget.SWITCH = 3;      // (11)2
-
-    JumpTarget.prototype.isIteration = function isIteration() {
-        return this.type === JumpTarget.ITERATION;
-    };
-
-    JumpTarget.prototype.isAnonymous = function isAnonymous() {
-        return this.type & 2;
-    };
-
-    JumpTarget.prototype.contains = function contains(label) {
-        return this.labels.indexOf(label) !== -1;
-    };
-
-    function Jumps() {
-        this.targets = [];
-    }
-
-    Jumps.prototype.lookupContinuableTarget = function lookupContinuableTarget(label) {
-        var i, target;
-        for (i = this.targets.length - 1; i >= 0; --i) {
-            target = this.targets[i];
-            if (target.isIteration() && (!label || target.contains(label.name))) {
-                return target.node;
-            }
-        }
-        common.unreachable();
-    };
-
-    Jumps.prototype.lookupBreakableTarget = function lookupBreakableTarget(label) {
-        var i, target;
-        for (i = this.targets.length - 1; i >= 0; --i) {
-            target = this.targets[i];
-            if (label) {
-                if (target.contains(label.name)) {
-                    return target.node;
-                }
-            } else {
-                if (target.isAnonymous()) {
-                    return target.node;
-                }
-            }
-        }
-        common.unreachable();
-    };
-
-    Jumps.prototype.push = function push(target) {
-        this.targets.push(target);
-    };
-
-    Jumps.prototype.pop = function pop() {
-        this.targets.pop();
-    };
-
-    // Status implementation
-    //
-    // This is based on Constellation/iv lv5 railgun compiler continuation_status.h
-
-    function Status(upper) {
-        this.current = [];
-        this.upper = upper;
-        this.jumps = new Jumps();
-        this.labels = null;
-        this.next();
-    }
-
-    Status.NEXT = {};
-
-    Status.prototype.insert = function insert(stmt) {
-        this.current.push(stmt);
-    };
-
-    Status.prototype.erase = function erase(stmt) {
-        var index = this.current.indexOf(stmt);
-        if (index === -1) {
-            return false;
-        }
-        this.current.splice(index, 1);
-        return true;
-    };
-
-    Status.prototype.kill = function kill() {
-        return this.erase(Status.NEXT);
-    };
-
-    Status.prototype.has = function has(stmt) {
-        return this.current.indexOf(stmt) !== -1;
-    };
-
-    Status.prototype.jumpTo = function jumpTo(stmt) {
-        this.kill();
-        this.insert(stmt);
-    };
-
-    Status.prototype.resolveJump = function resolveJump(stmt) {
-        var index = this.current.indexOf(stmt);
-        if (index !== -1) {
-            this.current.splice(index, 1);
-            this.insert(Status.NEXT);
-        }
-    };
-
-    Status.prototype.clear = function clear() {
-        this.current.length = 0;
-    };
-
-    Status.prototype.next = function next() {
-        this.insert(Status.NEXT);
-    };
-
-    Status.prototype.isDead = function isDead() {
-        return !this.has(Status.NEXT);
-    };
-
-    Status.prototype.revive = function revive() {
-        if (this.isDead()) {
-            this.next();
-            return true;
-        }
-        return false;
-    };
-
-    Status.prototype.register = function register(node) {
-        if (!this.labels) {
-            this.labels = [];
-        }
-        this.labels.push(node.label.name);
-    };
-
-    Status.prototype.unregister = function unregister() {
-        this.labels = null;
-    };
-
-    Status.isRequired = function isRequired(node) {
-        var type = node.type;
-        common.assert(node, 'should be node');
-        return type === Syntax.Program || type === Syntax.FunctionExpression || type === Syntax.FunctionDeclaration;
-    };
-
-    function Context(node) {
-        node.__$context = this;
-        this.node = node;
-    }
-
-    Context.prototype.detach = function detach() {
-        delete this.node.__$context;
-    };
-
-    Context.lookup = function lookup(node) {
-        return node.__$context;
-    };
-
-    function getForwardLastNode(node) {
-        while (true) {
-            switch (node.type) {
-            case Syntax.IfStatement:
-                if (node.alternate) {
-                    return null;
-                }
-                node = node.consequent;
-                continue;
-
-            case Syntax.WithStatement:
-            case Syntax.LabeledStatement:
-                node = node.body;
-                continue;
-
-            case Syntax.BlockStatement:
-                if (node.body.length) {
-                    node = common.Array.last(node.body);
-                    continue;
-                }
-                break;
-            }
-            return node;
-        }
-    }
-
-    function visitLoopBody(loop, body) {
-        var jump, last;
-        last = getForwardLastNode(body);
-        if (last) {
-            if (last.type === Syntax.ContinueStatement) {
-                jump = status.jumps.lookupContinuableTarget(last.label);
-                if (jump === loop) {
-                    // this continue is dead code
-                    modified = true;
-                    common.convertToEmptyStatement(last);
-                }
-            }
-        }
-        return visit(body);
-    }
-
-    function visit(target) {
-        var live = false;
-
-        if (!target) {
-            return !status.isDead();
-        }
-
-        function eliminate(node, array) {
-            var i, iz, stmt, ret, info, result;
-            result = [];
-            for (i = 0, iz = array.length; i < iz; ++i) {
-                stmt = array[i];
-                if (stmt.type === Syntax.IfStatement) {
-                    info = new Context(stmt);
-                    ret = visit(stmt);
-                    info.detach();
-                } else {
-                    ret = visit(stmt);
-                }
-                if (ret) {
-                    live |= 1;
-                    result.push(stmt);
-
-                    // we transform
-                    //     if (cond) {
-                    //         #1
-                    //         return;
-                    //     } else
-                    //         #2;
-                    //     #3
-                    //  to
-                    //     if (cond) {
-                    //         #1
-                    //         return;
-                    //     }
-                    //     #2
-                    //     #3
-                    //
-                    // and
-                    //
-                    //     if (cond)
-                    //         #1;
-                    //     else {
-                    //         #2
-                    //         return;
-                    //     }
-                    //     #3
-                    //  to
-                    //     if (!cond) {
-                    //         #2
-                    //         return;
-                    //     }
-                    //     #1
-                    //     #3
-                    if (stmt.type === Syntax.IfStatement && stmt.alternate) {
-                        if ((!info.consequent || !info.alternate) && info.consequent !== info.alternate) {
-                            modified = true;
-                            if (info.consequent) {
-                                stmt.test = common.moveLocation(stmt.test, {
-                                    type: Syntax.UnaryExpression,
-                                    operator: '!',
-                                    argument: stmt.test
-                                });
-                                result.push(stmt.consequent);
-                                stmt.consequent = stmt.alternate;
-                                stmt.alternate = null;
-                            } else {  // info.alternate
-                                result.push(stmt.alternate);
-                                stmt.alternate = null;
-                            }
-                        }
-                    }
-                } else {
-                    // deleted
-                    modified = true;
-                }
-            }
-            return result;
-        }
-
-        common.traverse(target, {
-            enter: function enter(node) {
-                var i, iz, stmt, consequent, alternate, ctx, hasDefaultClause;
-                if (Status.isRequired(node)) {
-                    status = new Status(status);
-                }
-
-                live |= !status.isDead();
-
-                switch (node.type) {
-                case Syntax.Program:
-                    node.body = eliminate(node, node.body);
-                    return common.VisitorOption.Skip;
-
-                case Syntax.BlockStatement:
-                    status.jumps.push(new JumpTarget(node, status, JumpTarget.NAMED_ONLY));
-                    node.body = eliminate(node, node.body);
-                    status.jumps.pop();
-
-                    status.resolveJump(node);
-                    return common.VisitorOption.Skip;
-
-                case Syntax.BreakStatement:
-                    // like
-                    //   label: break label;
-                    // we treat as like empty statement
-                    if (node.label && status.labels && status.labels.indexOf(node.label)) {
-                        // change this statement to empty statement
-                        modified = true;
-                        common.convertToEmptyStatement(node);
-                    } else {
-                        status.jumpTo(status.jumps.lookupBreakableTarget(node.label));
-                    }
-                    return common.VisitorOption.Skip;
-
-                case Syntax.CatchClause:
-                    live |= visit(node.body);
-                    return common.VisitorOption.Skip;
-
-                case Syntax.ContinueStatement:
-                    status.jumpTo(status.jumps.lookupContinuableTarget(node.label));
-                    return common.VisitorOption.Skip;
-
-                case Syntax.DoWhileStatement:
-                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
-                    live |= visitLoopBody(node, node.body);
-                    status.jumps.pop();
-
-                    live |= visit(node.test);
-                    status.resolveJump(node);
-                    status.revive();
-                    return common.VisitorOption.Skip;
-
-                case Syntax.DebuggerStatement:
-                    return common.VisitorOption.Skip;
-
-                case Syntax.EmptyStatement:
-                    return common.VisitorOption.Skip;
-
-                case Syntax.ExpressionStatement:
-                    break;
-
-                case Syntax.ForStatement:
-                    live |= visit(node.init);
-                    live |= visit(node.test);
-
-                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
-                    live |= visitLoopBody(node, node.body);
-                    status.jumps.pop();
-
-                    live |= visit(node.update);
-                    status.resolveJump(node);
-                    status.revive();
-                    return common.VisitorOption.Skip;
-
-                case Syntax.ForInStatement:
-                    live |= visit(node.left);
-                    live |= visit(node.right);
-
-                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
-                    live |= visitLoopBody(node, node.body);
-                    status.jumps.pop();
-
-                    status.resolveJump(node);
-                    status.revive();
-                    return common.VisitorOption.Skip;
-
-                case Syntax.IfStatement:
-                    live |= visit(node.test);
-                    live |= visit(node.consequent);
-                    if (!node.alternate) {
-                        status.revive();
-                        return common.VisitorOption.Skip;
-                    }
-
-                    consequent = !status.isDead();
-                    if (!status.revive()) {
-                        status.insert(node);
-                    }
-
-                    live |= visit(node.alternate);
-                    alternate = !status.isDead();
-                    if (status.erase(node)) {
-                        status.revive();
-                    }
-                    if ((ctx = Context.lookup(node))) {
-                        ctx.consequent = consequent;
-                        ctx.alternate = alternate;
-                    }
-                    return common.VisitorOption.Skip;
-
-                case Syntax.LabeledStatement:
-                    status.register(node);
-                    break;
-
-                case Syntax.ReturnStatement:
-                    live |= visit(node.argument);
-                    status.kill();
-                    return common.VisitorOption.Skip;
-
-                case Syntax.SwitchStatement:
-                    visit(node.discriminant);
-
-                    status.jumps.push(new JumpTarget(node, status, JumpTarget.SWITCH));
-                    for (i = 0, iz = node.cases.length; i < iz; ++i) {
-                        stmt = node.cases[i];
-                        live |= visit(stmt);
-                        if (!stmt.test) {
-                            hasDefaultClause = true;
-                        }
-                        if (status.isDead() && (i + 1) < iz) {
-                            status.next();
-                        }
-                    }
-                    status.jumps.pop();
-
-                    status.resolveJump(node);
-                    if (status.isDead() && !hasDefaultClause) {
-                        status.next();
-                    }
-                    return common.VisitorOption.Skip;
-
-                case Syntax.SwitchCase:
-                    if (node.test) {
-                        live |= visit(node.test);
-                    }
-                    node.consequent = eliminate(node, node.consequent);
-                    return common.VisitorOption.Skip;
-
-                case Syntax.ThrowStatement:
-                    live |= visit(node.argument);
-                    status.kill();
-                    return common.VisitorOption.Skip;
-
-                case Syntax.TryStatement:
-                    live |= visit(node.block);
-
-                    if (node.handlers && node.handlers.length) {
-                        if (!status.revive()) {
-                            status.insert(node);
-                        }
-                        node.handlers = eliminate(node, node.handlers);
-                        if (status.erase(node)) {
-                            status.revive();
-                        }
-                    }
-
-                    if (node.finalizer) {
-                        if (!status.revive()) {
-                            status.insert(node);
-                        }
-                        live |= visit(node.finalizer);
-                        if (!status.erase(node)) {
-                            status.kill();
-                        }
-                    }
-                    return common.VisitorOption.Skip;
-
-                case Syntax.WhileStatement:
-                    live |= visit(node.test);
-
-                    status.jumps.push(new JumpTarget(node, status, JumpTarget.ITERATION));
-                    live |= visitLoopBody(node, node.body);
-                    status.jumps.pop();
-
-                    status.resolveJump(node);
-                    status.revive();
-                    return common.VisitorOption.Skip;
-
-                case Syntax.WithStatement:
-                    break;
-
-                case Syntax.VariableDeclaration:
-                case Syntax.FunctionDeclaration:
-                    live = true;
-                    break;
-                }
-            },
-
-            leave: function leave(node) {
-                if (Status.isRequired(node)) {
-                    status = status.upper;
-                    return;
-                }
-
-                if (node.type === Syntax.LabeledStatement) {
-                    status.unregister();
-                }
-            }
-        });
-
-        return live;
-    }
-
-    // This is iv / lv5 / railgun bytecode compiler dead code elimination algorithm
-    function deadCodeElimination(tree, options) {
-        var result;
-
-        result = (options.get('destructive', { pathName: Name })) ? tree : common.deepCopy(tree);
-
-        status = null;
-        modified = false;
-
-        visit(result);
-
-        common.assert(status === null, 'status should be null');
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    deadCodeElimination.passName = Name;
-    module.exports = deadCodeElimination;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],50:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified, escope, evaluator;
-
-    Name = 'drop-variable-definition';
-    common = require('../common');
-    escope = require('escope');
-    evaluator = require('../evaluator');
-    Syntax = common.Syntax;
-
-    function getCandidates(scope) {
-        var i, iz, j, jz, identifiers, slots, v;
-
-        if (!scope.candidates) {
-            slots = [];
-            identifiers = [];
-            for (i = 0, iz = scope.variables.length; i < iz; ++i) {
-                v = scope.variables[i];
-                for (j = 0, jz = v.identifiers.length; j < jz; ++j) {
-                    identifiers.push(v.identifiers[j]);
-                    slots.push(v);
-                }
-            }
-
-            scope.candidates = {
-                slots: slots,
-                identifiers: identifiers
-            };
-        }
-
-        return scope.candidates;
-    }
-
-    function isRemovableDefinition(slot) {
-        var i, iz, ref, parent;
-        if (slot.identifiers.length !== 1) {
-            return false;
-        }
-
-        if (slot.references.length === 0) {
-            return true;
-        }
-
-        for (i = 0, iz = slot.references.length; i < iz; ++i) {
-            ref = slot.references[i];
-            if (ref.isRead()) {
-                return false;
-            }
-            if (ref.isWrite()) {
-                if (!ref.writeExpr) {
-                    return false;
-                }
-                parent = ref.writeExpr.__$parent$__;
-                if (!parent) {
-                    return false;
-                }
-                if (parent.type !== Syntax.AssignmentExpression &&
-                    parent.type !== Syntax.VariableDeclarator) {
-                    return false;
-                }
-                if (evaluator.hasSideEffect(ref.writeExpr, ref.from)) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    function overrideExpression(from, to) {
-        var key;
-        for (key in from) {
-            delete from[key];
-        }
-        for (key in to) {
-            from[key] = to[key];
-        }
-        return from;
-    }
-
-    function removeDefinition(node, index, slot) {
-        var i, iz, ref, parent;
-
-        // remove from declaration list
-        node.declarations.splice(index, 1);
-        for (i = 0, iz = slot.references.length; i < iz; ++i) {
-            ref = slot.references[i];
-            common.assert(!ref.isRead());
-            if (ref.isWrite()) {
-                parent = ref.writeExpr.__$parent$__;
-                if (parent.type === Syntax.AssignmentExpression) {
-                    overrideExpression(ref.writeExpr.__$parent$__, ref.writeExpr);
-                }
-            }
-        }
-    }
-
-    function attachParent(tree) {
-        return common.traverse(tree, {
-            enter: function (node, parent) {
-                node.__$parent$__ = parent;
-            }
-        });
-    }
-
-    function removeParent(tree) {
-        return common.traverse(tree, {
-            enter: function (node) {
-                delete node.__$parent$__;
-                delete node.__$escope$__;
-            }
-        });
-    }
-
-    function dropVariableDefinition(tree, options) {
-        var result, manager, scope;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        scope = null;
-
-        manager = escope.analyze(result, { directive: true });
-        manager.attach();
-        attachParent(result);
-
-        result = common.replace(result, {
-            enter: function enter(node, parent) {
-                var i, decl, cand, index, slot, ret;
-                ret = node;
-                if (scope) {
-                    if (scope.variableScope.isStatic()) {
-                        cand = getCandidates(scope.variableScope);
-
-                        // remove unused variable
-                        if (node.type === Syntax.VariableDeclaration && node.kind === 'var') {
-                            i = node.declarations.length;
-                            while (i--) {
-                                decl = node.declarations[i];
-                                index = cand.identifiers.indexOf(decl.id);
-                                if (index !== -1) {
-                                    slot = cand.slots[index];
-                                    if (isRemovableDefinition(slot)) {
-                                        // ok, remove this variable
-                                        modified = true;
-                                        removeDefinition(node, i, slot);
-                                        continue;
-                                    }
-                                }
-                            }
-                            if (node.declarations.length === 0) {
-                                if (parent.type === Syntax.ForStatement) {
-                                    ret = null;
-                                } else {
-                                    ret = common.moveLocation(node, {
-                                        type: Syntax.EmptyStatement
-                                    });
-                                }
-                            }
-                        }
-
-                        // remove unused function declaration
-                        if (node.type === Syntax.FunctionDeclaration) {
-                            index = cand.identifiers.indexOf(node.id);
-                            if (index !== -1) {
-                                slot = cand.slots[index];
-                                if (slot.identifiers.length === 1 && slot.references.length === 0) {
-                                    // ok, remove this function declaration
-                                    modified = true;
-                                    ret = common.moveLocation(node, {
-                                        type: Syntax.EmptyStatement
-                                    });
-                                    return ret;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                scope = manager.acquire(node) || scope;
-                return ret;
-            },
-            leave: function leave(node) {
-                scope = manager.release(node) || scope;
-            }
-        });
-
-        manager.detach();
-        removeParent(result);
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    dropVariableDefinition.passName = Name;
-    module.exports = dropVariableDefinition;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"../evaluator":44,"escope":38}],51:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, Map, common, modified;
-
-    Name = 'eliminate-duplicate-function-declarations';
-    common = require('../common');
-    Map = require ('../map');
-
-    Syntax = common.Syntax;
-
-    function unique(map, root) {
-        return common.replace(root, {
-            enter: function (node) {
-                var name, info;
-                if (node.type === Syntax.FunctionDeclaration) {
-                    name = node.id.name;
-                    info = map.get(name);
-                    --info.count;
-                    if (info.count !== 0) {
-                        // Duplicate function declaration.
-                        modified = true;
-                        return common.moveLocation(node, { type: Syntax.EmptyStatement });
-                    }
-                }
-
-                if (node !== root && node.type === Syntax.BlockStatement) {
-                    return this.skip();
-                }
-            }
-        });
-    }
-
-    function uniqueInGlobal(map, root) {
-        return common.replace(root, {
-            enter: function (node) {
-                var name, info, first;
-                if (node.type === Syntax.FunctionDeclaration) {
-                    name = node.id.name;
-                    info = map.get(name);
-                    first = info.count === info.declarations.length;
-                    --info.count;
-                    if (info.declarations.length > 1) {
-                        if (first) {
-                            // replace the first declaration with the last declaration
-                            modified = true;
-                            return common.Array.last(info.declarations);
-                        } else {
-                            modified = true;
-                            return common.moveLocation(node, { type: Syntax.EmptyStatement });
-                        }
-                    }
-                }
-
-                if (node !== root && node.type === Syntax.BlockStatement) {
-                    return this.skip();
-                }
-            }
-        });
-    }
-
-    function main(tree, options) {
-        var result, stack, functionDepth, globalBlockFound;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        functionDepth = 0;
-        globalBlockFound = false;
-
-        stack = [ new Map() ];
-
-        result = common.replace(result, {
-            enter: function enter(node) {
-                var map, name, info;
-                if (node.type === Syntax.FunctionDeclaration) {
-                    name = node.id.name;
-                    map = common.Array.last(stack);
-                    if (map.has(name)) {
-                        info = map.get(name);
-                        info.declarations.push(node);
-                        ++info.count;
-                    } else {
-                        info = {
-                            declarations: [ node ],
-                            count: 1
-                        };
-                        map.set(name, info);
-                    }
-                }
-
-                // To support Block scoped FunctionDeclaration (ES6)
-                // Syntax.FunctionExpression and Syntax.FunctionDeclaration also hold block.
-                if (node.type === Syntax.BlockStatement) {
-                    stack.push(new Map());
-                }
-                if (node.type === Syntax.FunctionDeclaration || node.type === Syntax.FunctionExpression) {
-                    ++functionDepth;
-                }
-            },
-            leave: function leave(node) {
-                var map, ret;
-                if (node.type === Syntax.BlockStatement) {
-                    map = stack.pop();
-                    if (functionDepth === 0) {
-                        if (map.keys().length !== 0) {
-                            globalBlockFound = true;
-                        }
-                    } else {
-                        ret = unique(map, node);
-                    }
-                }
-                if (node.type === Syntax.FunctionDeclaration || node.type === Syntax.FunctionExpression) {
-                    --functionDepth;
-                }
-                return ret;
-            }
-        });
-
-        // If we had global block that contains function declaration, we
-        // suppress this optimization on global code.
-        common.assert(stack.length === 1, 'global map remains');
-        if (!globalBlockFound) {
-            result = uniqueInGlobal(stack[0], result);
-        }
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    main.passName = Name;
-    module.exports = main;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"../map":45}],52:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, escope, modified;
-
-    Name = 'hoist-variable-to-arguments';
-    escope = require('escope');
-    common = require('../common');
-
-    Syntax = common.Syntax;
-
-    function hoist(callee) {
-        function hoisting(ident) {
-            var hoisted, i, iz;
-            hoisted = false;
-            for (i = 0, iz = callee.params.length; i < iz; ++i) {
-                if (ident.name === callee.params[i].name) {
-                    // already hoisted name
-                    hoisted = true;
-                    break;
-                }
-            }
-            if (!hoisted) {
-                callee.params.push(ident);
-            }
-        }
-
-        callee.body = common.replace(callee.body, {
-            enter: function (node, parent) {
-                var i, iz, expressions, declaration, forstmt, expr;
-
-                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
-                    this.skip();
-                    return;
-                }
-
-                if (node.type === Syntax.VariableDeclaration && node.kind === 'var') {
-                    // We should consider following pattern
-                    //
-                    //   for (var i = 0;;);
-                    // or
-                    //   for (var i in []);
-                    // specialize pass for `for-in`
-                    if (parent.type === Syntax.ForInStatement) {
-                        common.assert(node.declarations.length === 1, 'for-in declaration length should be 1');
-                        declaration = node.declarations[0];
-                        // not optimize
-                        //   for (var i = 1 in []);
-                        if (declaration.init) {
-                            return;
-                        }
-
-                        // TODO(Constellation)
-                        // in the future, destructuring pattern may come
-                        if (declaration.id.type !== Syntax.Identifier) {
-                            return;
-                        }
-                        hoisting(declaration.id);
-                        modified = true;
-                        return declaration.id;
-                    }
-
-                    forstmt = parent.type === Syntax.ForStatement;
-
-                    expressions = [];
-                    for (i = 0, iz = node.declarations.length; i < iz; ++i) {
-                        declaration = node.declarations[i];
-
-                        // TODO(Constellation)
-                        // in the future, destructuring pattern may come
-                        if (declaration.id.type !== Syntax.Identifier) {
-                            return;
-                        }
-                        hoisting(declaration.id);
-                        if (declaration.init) {
-                            expressions.push(common.moveLocation(declaration, {
-                                type: Syntax.AssignmentExpression,
-                                operator: '=',
-                                left: declaration.id,
-                                right: declaration.init
-                            }));
-                        }
-                    }
-
-                    modified = true;
-                    if (expressions.length === 0) {
-                        if (forstmt) {
-                            return null;
-                        }
-                        return common.moveLocation(node, {
-                            type: Syntax.EmptyStatement
-                        });
-                    }
-
-                    if (expressions.length === 1) {
-                        expr = expressions[0];
-                    } else {
-                        expr = common.moveLocation(node, {
-                            type: Syntax.SequenceExpression,
-                            expressions: expressions
-                        });
-                    }
-
-                    if (forstmt) {
-                        return expr;
-                    }
-
-                    return common.moveLocation(node, {
-                        type: Syntax.ExpressionStatement,
-                        expression: expr
-                    });
-                }
-            }
-        });
-    }
-
-    function hoistVariableToArguments(tree, options) {
-        var result, scope, manager;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        scope = null;
-
-        manager = escope.analyze(result, { directive: true });
-        manager.attach();
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                var callee;
-                if (node.type === Syntax.CallExpression || node.type === Syntax.NewExpression) {
-                    callee = node.callee;
-                    if (callee.type === Syntax.FunctionExpression && !callee.id) {
-                        if (callee.params.length === node['arguments'].length) {
-                            scope = manager.acquire(callee);
-                            if (!scope.isArgumentsMaterialized() && (node.type !== Syntax.NewExpression || !scope.isThisMaterialized())) {
-                                // ok, arguments is not used
-                                hoist(callee);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        manager.detach();
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    hoistVariableToArguments.passName = Name;
-    module.exports = hoistVariableToArguments;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"escope":38}],53:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'reduce-branch-jump';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function reduceLast(ary, index) {
-        var node, left;
-        node = ary[index];
-        if (node.type === Syntax.IfStatement) {
-            if (!node.alternate) {
-                if (node.consequent.type === Syntax.ReturnStatement) {
-                    modified = true;
-                    left = node.consequent.argument;
-                    if (!left) {
-                        ary[index] = common.moveLocation(node, {
-                            type: Syntax.ReturnStatement,
-                            argument: {
-                                type: Syntax.SequenceExpression,
-                                expressions: [
-                                    node.test,
-                                    common.SpecialNode.generateUndefined()
-                                ]
-                            }
-                        });
-                        return true;
-                    }
-                    ary[index] = common.moveLocation(node, {
-                        type: Syntax.ReturnStatement,
-                        argument: {
-                            type: Syntax.ConditionalExpression,
-                            test: node.test,
-                            consequent: left,
-                            alternate: common.SpecialNode.generateUndefined()
-                        }
-                    });
-                    return true;
-                }
-            }
-        }
-    }
-
-    function reduce(ary, index) {
-        var node, sibling, left, right;
-        node = ary[index];
-        sibling = ary[index + 1];
-        if (node.type === Syntax.IfStatement) {
-            if (!node.alternate) {
-                if (node.consequent.type === Syntax.ReturnStatement && sibling.type === Syntax.ReturnStatement) {
-                    // pattern:
-                    //     if (cond) return v;
-                    //     return v2;
-                    modified = true;
-                    ary.splice(index, 1);
-                    left = node.consequent.argument;
-                    right = sibling.argument;
-                    if (!left && !right) {
-                        ary[index] = common.moveLocation(node, {
-                            type: Syntax.ReturnStatement,
-                            argument: {
-                                type: Syntax.SequenceExpression,
-                                expressions: [
-                                    node.test,
-                                    common.SpecialNode.generateUndefined()
-                                ]
-                            }
-                        });
-                        return true;
-                    }
-                    if (!left) {
-                        left = common.SpecialNode.generateUndefined();
-                    }
-                    if (!right) {
-                        right = common.SpecialNode.generateUndefined();
-                    }
-                    ary[index] = common.moveLocation(node, {
-                        type: Syntax.ReturnStatement,
-                        argument: {
-                            type: Syntax.ConditionalExpression,
-                            test: node.test,
-                            consequent: left,
-                            alternate: right
-                        }
-                    });
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    function reduceBranchJump(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        common.traverse(result, {
-            leave: function leave(node, parent) {
-                var i;
-                switch (node.type) {
-                case Syntax.BlockStatement:
-                case Syntax.Program:
-                    i = 0;
-                    while (i < (node.body.length - 1)) {
-                        if (!reduce(node.body, i)) {
-                            ++i;
-                        }
-                    }
-
-                    if (common.isFunctionBody(node, parent)) {
-                        if (node.body.length > 0) {
-                            i = node.body.length - 1;
-                            reduceLast(node.body, i);
-                        }
-                    }
-                    break;
-
-                case Syntax.SwitchCase:
-                    i = 0;
-                    while (i < (node.consequent.length - 1)) {
-                        if (!reduce(node.consequent, i)) {
-                            ++i;
-                        }
-                    }
-                    break;
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    reduceBranchJump.passName = Name;
-    module.exports = reduceBranchJump;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],54:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'reduce-multiple-if-statements';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function reduceMultipleIfStatements(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        common.traverse(result, {
-            leave: function leave(node) {
-                // reduce
-                //     if (cond) {
-                //         if (cond2) {
-                //             ...
-                //         }
-                //     }
-                // to
-                //     if (cond && cond2) {
-                //         ...
-                //     }
-                if (node.type === Syntax.IfStatement && !node.alternate &&
-                    node.consequent.type === Syntax.IfStatement && !node.consequent.alternate) {
-                    modified = true;
-                    node.test = {
-                        type: Syntax.LogicalExpression,
-                        operator: '&&',
-                        left: node.test,
-                        right: node.consequent.test
-                    };
-                    node.consequent = node.consequent.consequent;
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    reduceMultipleIfStatements.passName = Name;
-    module.exports = reduceMultipleIfStatements;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],55:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, evaluator, escope, modified;
-
-    Name = 'reduce-sequence-expression';
-    escope = require('escope');
-    common = require('../common');
-    evaluator = require('../evaluator');
-    Syntax = common.Syntax;
-
-    function reduce(node) {
-        var i, iz, j, jz, expr, result;
-        result = [];
-        for (i = 0, iz = node.expressions.length; i < iz; ++i) {
-            expr = node.expressions[i];
-            if (expr.type === Syntax.SequenceExpression) {
-                modified = true;
-                // delete SequenceExpression location information,
-                // because information of SequenceExpression is not used effectively in source-map.
-                common.deleteLocation(node);
-                for (j = 0, jz = expr.expressions.length; j < jz; ++j) {
-                    result.push(expr.expressions[j]);
-                }
-            } else {
-                result.push(expr);
-            }
-        }
-        node.expressions = result;
-    }
-
-    function isLoadSideEffectFree(node, scope) {
-        var ref, value;
-        if (evaluator.constant.isConstant(node)) {
-            value = evaluator.constant.evaluate(node);
-            if (value === null || typeof value !== 'object') {
-                return true;
-            }
-        }
-        if (node.type === Syntax.Identifier) {
-            ref = scope.resolve(node);
-            return ref && ref.isStatic();
-        }
-        return false;
-    }
-
-    function isStoreSideEffectFree(node, scope) {
-        if (!evaluator.hasSideEffect(node, scope)) {
-            return true;
-        }
-        if (node.type === Syntax.Identifier) {
-            return true;
-        }
-        if (node.type === Syntax.MemberExpression) {
-            if (!evaluator.hasSideEffect(node.object, scope)) {
-                // Because of toString operation
-                if (!node.computed || isLoadSideEffectFree(node.property, scope)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        return false;
-    }
-
-    function reduceSequenceExpression(tree, options) {
-        var result, scope, manager;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        scope = null;
-
-        manager = escope.analyze(result, { directive: true });
-        manager.attach();
-
-        result = common.replace(result, {
-            enter: function enter(node) {
-                scope = manager.acquire(node) || scope;
-            },
-            leave: function leave(node) {
-                var result, last;
-                switch (node.type) {
-                case Syntax.SequenceExpression:
-                    reduce(node);
-                    break;
-
-                case Syntax.ConditionalExpression:
-                    if (node.test.type === Syntax.SequenceExpression) {
-                        modified = true;
-                        result = node.test;
-                        node.test = common.Array.last(result.expressions);
-                        result.expressions[result.expressions.length - 1] = node;
-                    }
-                    break;
-
-                case Syntax.LogicalExpression:
-                    if (node.left.type === Syntax.SequenceExpression) {
-                        modified = true;
-                        result = node.left;
-                        node.left = common.Array.last(result.expressions);
-                        result.expressions[result.expressions.length - 1] = node;
-                    }
-                    break;
-
-                case Syntax.BinaryExpression:
-                    if (node.left.type === Syntax.SequenceExpression) {
-                        modified = true;
-                        result = node.left;
-                        node.left = common.Array.last(result.expressions);
-                        result.expressions[result.expressions.length - 1] = node;
-                    } else if (node.right.type === Syntax.SequenceExpression && !evaluator.hasSideEffect(node.left, scope)) {
-                        modified = true;
-                        result = node.right;
-                        node.right = common.Array.last(result.expressions);
-                        result.expressions[result.expressions.length - 1] = node;
-                    }
-                    break;
-
-                case Syntax.UpdateExpression:
-                case Syntax.UnaryExpression:
-                    if (node.argument.type === Syntax.SequenceExpression) {
-                        // Don't transform
-                        //   typeof (0, ident)
-                        // to
-                        //   0, typeof ident
-                        //
-                        //   delete (0, 1, t.t)
-                        // to
-                        //   delete t.t
-                        last = common.Array.last(node.argument.expressions);
-                        if (!common.SpecialNode.canExtractSequence(last, node, scope)) {
-                            break;
-                        }
-                        modified = true;
-                        result = node.argument;
-                        node.argument = common.Array.last(result.expressions);
-                        result.expressions[result.expressions.length - 1] = node;
-                    }
-                    break;
-
-                case Syntax.AssignmentExpression:
-                    if (node.operator === '=' && node.right.type === Syntax.SequenceExpression && isStoreSideEffectFree(node.left, scope)) {
-                        modified = true;
-                        result = node.right;
-                        node.right = common.Array.last(result.expressions);
-                        result.expressions[result.expressions.length - 1] = node;
-                    }
-                    break;
-                }
-                scope = manager.release(node) || scope;
-                return result;
-            }
-        });
-
-        manager.detach();
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    reduceSequenceExpression.passName = Name;
-    module.exports = reduceSequenceExpression;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"../evaluator":44,"escope":38}],56:[function(require,module,exports){
-/*
-  Copyright (C) 2012 Mihai Bazon <mihai.bazon@gmail.com>
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, evaluator, escope, modified;
-
-    Name = 'remove-context-sensitive-expressions';
-    common = require('../common');
-    evaluator = require('../evaluator');
-    escope = require('escope');
-    Syntax = common.Syntax;
-
-
-    function Transformer(trans, booleanFunction, voidFunction, scope) {
-        this.transform = trans;
-        this.booleanFunction = booleanFunction;
-        this.voidFunction = voidFunction;
-        this.scope = scope;
-    }
-
-    Transformer.prototype.booleanTransformation = function (expr) {
-        var consequent;
-        do {
-            if (expr.type === Syntax.UnaryExpression) {
-                if (expr.operator === '!' &&
-                    expr.argument.type === Syntax.UnaryExpression && expr.argument.operator === '!') {
-                    modified = true;
-                    expr = expr.argument.argument;
-                    continue;
-                }
-            } else if (expr.type === Syntax.LogicalExpression) {
-                if (expr.left.type === Syntax.UnaryExpression && expr.left.operator === '!' &&
-                    expr.right.type === Syntax.UnaryExpression && expr.right.operator === '!') {
-                    // !cond && !ok() => !(cond || ok())
-                    // this introduces more optimizations
-                    modified = true;
-                    expr.left = expr.left.argument;
-                    expr.right = expr.right.argument;
-                    expr.operator = (expr.operator === '||') ? '&&' : '||';
-                    expr = common.moveLocation(expr, {
-                        type: Syntax.UnaryExpression,
-                        operator: '!',
-                        argument: expr
-                    });
-                    continue;
-                }
-            } else if (expr.type === Syntax.ConditionalExpression) {
-                if (expr.test.type === Syntax.UnaryExpression && expr.test.operator === '!') {
-                    modified = true;
-                    expr.test = expr.test.argument;
-                    consequent = expr.consequent;
-                    expr.consequent = expr.alternate;
-                    expr.alternate = consequent;
-                }
-            }
-            break;
-        } while (true);
-        return expr;
-    };
-
-    Transformer.prototype.voidTransformation = function (expr) {
-        var leftHasSideEffect, rightHasSideEffect;
-        do {
-            expr = this.booleanTransformation(expr);
-            if (expr.type === Syntax.UnaryExpression) {
-                if (expr.operator === '!' || expr.operator === 'void') {
-                    modified = true;
-                    expr = expr.argument;
-                    continue;
-                }
-            } else if (expr.type === Syntax.LogicalExpression) {
-                if (expr.left.type === Syntax.UnaryExpression && expr.left.operator === '!') {
-                    // !cond && ok() => cond || ok()
-                    modified = true;
-                    expr.left = expr.left.argument;
-                    expr.operator = (expr.operator === '||') ? '&&' : '||';
-                }
-            } else if (expr.type === Syntax.ConditionalExpression) {
-                // a?0:1 => a
-                // a?0:b => a||b
-                // a?b:0 => a&&b
-                leftHasSideEffect = evaluator.hasSideEffect(expr.consequent, this.scope);
-                rightHasSideEffect = evaluator.hasSideEffect(expr.alternate, this.scope);
-                if (!leftHasSideEffect && !rightHasSideEffect) {
-                    modified = true;
-                    expr = expr.test;
-                } else if (!leftHasSideEffect) {
-                    modified = true;
-                    expr = common.moveLocation(expr, {
-                        type: Syntax.LogicalExpression,
-                        operator: '||',
-                        left: expr.test,
-                        right: expr.alternate
-                    });
-                } else if (!rightHasSideEffect) {
-                    modified = true;
-                    expr = common.moveLocation(expr, {
-                        type: Syntax.LogicalExpression,
-                        operator: '&&',
-                        left: expr.test,
-                        right: expr.consequent
-                    });
-                }
-            }
-            break;
-        } while (true);
-        return expr;
-    };
-
-    Transformer.prototype.apply = function (expr) {
-        var prev;
-        do {
-            prev = expr;
-            expr = this.transform(expr);
-            if (prev !== expr) {
-                continue;
-            }
-
-            if (expr.type === Syntax.LogicalExpression) {
-                expr.left = this.booleanFunction(expr.left, this.scope);
-                expr.right = this.voidFunction(expr.right, this.scope);
-            } else if (expr.type === Syntax.ConditionalExpression) {
-                expr.consequent = this.voidFunction(expr.consequent, this.scope);
-                expr.alternate = this.voidFunction(expr.alternate, this.scope);
-            } else if (expr.type === Syntax.SequenceExpression) {
-                expr.expressions[expr.expressions.length - 1] = this.voidFunction(common.Array.last(expr.expressions), this.scope);
-            }
-            break;
-        } while (true);
-        return expr;
-    };
-
-    function voidContext(expr, scope) {
-        var trans = new Transformer(Transformer.prototype.voidTransformation, booleanContext, voidContext, scope);
-        return trans.apply(expr);
-    }
-
-    function booleanContext(expr, scope) {
-        var trans = new Transformer(Transformer.prototype.booleanTransformation, booleanContext, booleanContext, scope);
-        return trans.apply(expr);
-    }
-
-    function removeContextSensitiveExpressions(tree, options) {
-        var result, stackCount, preserveCompletionValue, scope, manager;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        stackCount = 0;
-        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
-
-        scope = null;
-        manager = escope.analyze(result, { directive: true });
-        manager.attach();
-
-        result = common.replace(result, {
-            enter: function enter(node) {
-                var i, iz;
-
-                scope = manager.acquire(node) || scope;
-
-                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
-                    ++stackCount;
-                }
-
-                switch (node.type) {
-                case Syntax.AssignmentExpression:
-                    break;
-
-                case Syntax.ArrayExpression:
-                    break;
-
-                case Syntax.BlockStatement:
-                    break;
-
-                case Syntax.BinaryExpression:
-                    break;
-
-                case Syntax.BreakStatement:
-                    break;
-
-                case Syntax.CallExpression:
-                    break;
-
-                case Syntax.CatchClause:
-                    break;
-
-                case Syntax.ConditionalExpression:
-                    node.test = booleanContext(node.test, scope);
-                    break;
-
-                case Syntax.ContinueStatement:
-                    break;
-
-                case Syntax.DoWhileStatement:
-                    node.test = booleanContext(node.test, scope);
-                    break;
-
-                case Syntax.DebuggerStatement:
-                    break;
-
-                case Syntax.EmptyStatement:
-                    break;
-
-                case Syntax.ExpressionStatement:
-                    if (!preserveCompletionValue || stackCount !== 0) {
-                        // not global context
-                        node.expression = voidContext(node.expression, scope);
-                    }
-                    break;
-
-                case Syntax.FunctionExpression:
-                    break;
-
-                case Syntax.ForInStatement:
-                    break;
-
-                case Syntax.FunctionDeclaration:
-                    break;
-
-                case Syntax.ForStatement:
-                    if (node.init && node.init.type !== Syntax.VariableDeclaration) {
-                        node.init = voidContext(node.init, scope);
-                    }
-                    if (node.test) {
-                        node.test = booleanContext(node.test, scope);
-                    }
-                    if (node.update) {
-                        node.update = voidContext(node.update, scope);
-                    }
-                    break;
-
-                case Syntax.Identifier:
-                    break;
-
-                case Syntax.IfStatement:
-                    node.test = booleanContext(node.test, scope);
-                    break;
-
-                case Syntax.Literal:
-                    break;
-
-                case Syntax.LabeledStatement:
-                    break;
-
-                case Syntax.LogicalExpression:
-                    break;
-
-                case Syntax.MemberExpression:
-                    break;
-
-                case Syntax.NewExpression:
-                    break;
-
-                case Syntax.ObjectExpression:
-                    break;
-
-                case Syntax.Program:
-                    break;
-
-                case Syntax.Property:
-                    break;
-
-                case Syntax.ReturnStatement:
-                    break;
-
-                case Syntax.SequenceExpression:
-                    for (i = 0, iz = node.expressions.length - 1; i < iz; ++i) {
-                        node.expressions[i] = voidContext(node.expressions[i], scope);
-                    }
-                    break;
-
-                case Syntax.SwitchStatement:
-                    break;
-
-                case Syntax.SwitchCase:
-                    break;
-
-                case Syntax.ThisExpression:
-                    break;
-
-                case Syntax.ThrowStatement:
-                    break;
-
-                case Syntax.TryStatement:
-                    break;
-
-                case Syntax.UnaryExpression:
-                    if (node.operator === '!') {
-                        node.argument = booleanContext(node.argument, scope);
-                    } else if (node.operator === 'void') {
-                        node.argument = voidContext(node.argument, scope);
-                    }
-                    break;
-
-                case Syntax.UpdateExpression:
-                    break;
-
-                case Syntax.VariableDeclaration:
-                    break;
-
-                case Syntax.VariableDeclarator:
-                    break;
-
-                case Syntax.WhileStatement:
-                    node.test = booleanContext(node.test, scope);
-                    break;
-
-                case Syntax.WithStatement:
-                    break;
-
-                }
-            },
-
-            leave: function leave(node) {
-                scope = manager.release(node) || scope;
-                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
-                    --stackCount;
-                }
-            }
-        });
-
-        manager.detach();
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    removeContextSensitiveExpressions.passName = Name;
-    module.exports = removeContextSensitiveExpressions;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"../evaluator":44,"escope":38}],57:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'remove-empty-statement';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function remove(array) {
-        var i, iz, node, result;
-        result = [];
-        for (i = 0, iz = array.length; i < iz; ++i) {
-            node = array[i];
-            if (node.type === Syntax.EmptyStatement) {
-                modified = true;
-            } else {
-                result.push(node);
-            }
-        }
-        return result;
-    }
-
-    function removeAlternate(node) {
-        if (node.alternate) {
-            if (node.alternate.type === Syntax.EmptyStatement) {
-                modified = true;
-                node.alternate = null;
-            } else if (node.consequent.type === Syntax.EmptyStatement) {
-                modified = true;
-                node.consequent = node.alternate;
-                node.alternate = null;
-                node.test = common.moveLocation(node.test, {
-                    type: Syntax.UnaryExpression,
-                    operator: '!',
-                    argument: node.test
-                });
-            }
-        }
-    }
-
-    function removeEmptyStatement(tree, options) {
-        var result;
-
-        modified = false;
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                var clause;
-                switch (node.type) {
-                case Syntax.BlockStatement:
-                case Syntax.Program:
-                    node.body = remove(node.body);
-                    break;
-
-                case Syntax.SwitchCase:
-                    node.consequent = remove(node.consequent);
-                    break;
-
-                case Syntax.IfStatement:
-                    removeAlternate(node);
-                    break;
-
-                // drop unused default block
-                case Syntax.SwitchStatement:
-                    if (node.cases.length) {
-                        clause = common.Array.last(node.cases);
-                        if (!clause.test && common.Array.empty(clause.consequent)) {
-                            // this is wasted default case
-                            modified = true;
-                            node.cases.pop();
-                        }
-                    }
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    removeEmptyStatement.passName = Name;
-    module.exports = removeEmptyStatement;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],58:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, escope, evaluator, modified;
-
-    Name = 'remove-side-effect-free-expressions';
-    escope = require('escope');
-    common = require('../common');
-    evaluator = require('../evaluator');
-    Syntax = common.Syntax;
-
-    function reduce(node, scope, parent, isResultNeeded) {
-        var i, iz, expr, result, prev;
-
-        common.assert(node.expressions.length > 1, 'expressions should be more than one');
-
-        result = [];
-        for (i = 0, iz = node.expressions.length; i < iz; ++i) {
-            prev = expr;
-            expr = node.expressions[i];
-            if (((i + 1) !== iz) || !isResultNeeded) {
-                if (!evaluator.hasSideEffect(expr, scope)) {
-                    continue;
-                }
-            }
-            result.push(expr);
-        }
-
-        if (!isResultNeeded && result.length === 0) {
-            modified = true;
-            return expr;
-        }
-
-        common.assert(result.length > 0, 'result should be more than zero');
-
-        // not changed
-        do {
-            if (iz === result.length) {
-                return node;
-            }
-
-            if (result.length === 1) {
-                if (!common.SpecialNode.canExtractSequence(result[0], parent, scope)) {
-                    result.unshift(prev);
-                    continue;
-                }
-                modified = true;
-                return result[0];
-            }
-            modified = true;
-            node.expressions = result;
-            return node;
-        } while (true);
-    }
-
-    function removeSideEffectFreeExpressions(tree, options) {
-        var result, scope, manager, preserveCompletionValue;
-
-        function isResultNeeded(parent, scope) {
-            if (parent.type === Syntax.ExpressionStatement && (!preserveCompletionValue || scope.type !== 'global')) {
-                return false;
-            }
-            return true;
-        }
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
-        modified = false;
-        scope = null;
-        manager = escope.analyze(result, { directive: true });
-        manager.attach();
-
-        result = common.replace(result, {
-            enter: function enter(node, parent) {
-                var res, unary, trans;
-
-                res = node;
-                scope = manager.acquire(node) || scope;
-                if (res.type === Syntax.SequenceExpression) {
-                    res = reduce(res, scope, parent, isResultNeeded(parent, scope));
-                }
-
-                if (res.type === Syntax.SequenceExpression) {
-                    common.assert(res.expressions.length > 1, 'sequences\' length should be more than 1');
-                    unary = common.Array.last(res.expressions);
-                    if (unary.type === Syntax.UnaryExpression && unary.operator === 'void' && !evaluator.hasSideEffect(unary.argument, scope)) {
-                        // (x, void sideEffectFree) => (void x)
-                        modified = true;
-                        res.expressions.pop();
-                        trans = common.moveLocation(unary, {
-                            type: Syntax.UnaryExpression,
-                            operator: 'void',
-                            argument: common.Array.last(res.expressions)
-                        });
-                        if (res.expressions.length === 1) {
-                            res = trans;
-                        } else {
-                            res.expressions[res.expressions.length - 1] = trans;
-                        }
-                    }
-                }
-
-                // Because eval code should return last evaluated value in
-                // ExpressionStatement, we should not remove.
-                if (!isResultNeeded(res, scope)) {
-                    if (!evaluator.hasSideEffect(res.expression, scope)) {
-                        modified = true;
-                        res = common.moveLocation(res, {
-                            type: Syntax.EmptyStatement
-                        });
-                    }
-                }
-                return res;
-            },
-            leave: function leave(node) {
-                scope = manager.release(node) || scope;
-            }
-        });
-
-        manager.detach();
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    removeSideEffectFreeExpressions.passName = Name;
-    module.exports = removeSideEffectFreeExpressions;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"../evaluator":44,"escope":38}],59:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, escope, evaluator, modified;
-
-    Name = 'remove-unreachable-branch';
-    escope = require('escope');
-    common = require('../common');
-    evaluator = require('../evaluator');
-    Syntax = common.Syntax;
-
-    function handleIfStatement(func, node) {
-        var test, body, decl;
-        test = evaluator.booleanCondition(node.test);
-        if (!node.alternate) {
-            if (typeof test === 'boolean') {
-                modified = true;
-                body = [];
-
-                if (test) {
-                    body.push(common.moveLocation(node.test, {
-                        type: Syntax.ExpressionStatement,
-                        expression: node.test
-                    }), node.consequent);
-                    return {
-                        type: Syntax.BlockStatement,
-                        body: body
-                    };
-                } else {
-                    decl = common.delegateVariableDeclarations(node.consequent, func);
-                    if (decl) {
-                        body.push(decl);
-                    }
-                    body.push(common.moveLocation(node.test, {
-                        type: Syntax.ExpressionStatement,
-                        expression: node.test
-                    }));
-                    return {
-                        type: Syntax.BlockStatement,
-                        body: body
-                    };
-                }
-            }
-        } else {
-            if (typeof test === 'boolean') {
-                modified = true;
-                body = [];
-
-                if (test) {
-                    decl = common.delegateVariableDeclarations(node.alternate, func);
-                    if (decl) {
-                        body.push(decl);
-                    }
-                    body.push(common.moveLocation(node.test, {
-                        type: Syntax.ExpressionStatement,
-                        expression: node.test
-                    }), node.consequent);
-                    return {
-                        type: Syntax.BlockStatement,
-                        body: body
-                    };
-                } else {
-                    decl = common.delegateVariableDeclarations(node.consequent, func);
-                    if (decl) {
-                        body.push(decl);
-                    }
-                    body.push(common.moveLocation(node.test, {
-                        type: Syntax.ExpressionStatement,
-                        expression: node.test
-                    }), node.alternate);
-                    return {
-                        type: Syntax.BlockStatement,
-                        body: body
-                    };
-                }
-            }
-        }
-    }
-
-    function handleLogicalExpression(func, node) {
-        var test;
-        test = evaluator.booleanCondition(node.left);
-        if (typeof test === 'boolean') {
-            modified = true;
-            if (test) {
-                if (node.operator === '&&') {
-                    return common.moveLocation(node, {
-                        type: Syntax.SequenceExpression,
-                        expressions: [ node.left, node.right ]
-                    });
-                } else {
-                    return node.left;
-                }
-            } else {
-                if (node.operator === '&&') {
-                    return node.left;
-                } else {
-                    return common.moveLocation(node, {
-                        type: Syntax.SequenceExpression,
-                        expressions: [ node.left, node.right ]
-                    });
-                }
-            }
-        }
-    }
-
-    function handleConditionalExpression(func, node) {
-        var test;
-        test = evaluator.booleanCondition(node.test);
-        if (typeof test === 'boolean') {
-            modified = true;
-            if (test) {
-                return common.moveLocation(node, {
-                    type: Syntax.SequenceExpression,
-                    expressions: [ node.test, node.consequent ]
-                });
-            } else {
-                return common.moveLocation(node, {
-                    type: Syntax.SequenceExpression,
-                    expressions: [ node.test, node.alternate ]
-                });
-            }
-        }
-    }
-
-    function removeUnreachableBranch(tree, options) {
-        var result, stack;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        stack = [];
-
-        result = common.replace(result, {
-            enter: function enter(node) {
-                var func;
-
-                if (escope.Scope.isVariableScopeRequired(node)) {
-                    stack.push(node);
-                    return;
-                }
-                func = common.Array.last(stack);
-
-                switch (node.type) {
-                case Syntax.IfStatement:
-                    return handleIfStatement(func, node);
-
-                case Syntax.LogicalExpression:
-                    return handleLogicalExpression(func, node);
-
-                case Syntax.ConditionalExpression:
-                    return handleConditionalExpression(func, node);
-                }
-            },
-            leave: function leave(node) {
-                if (escope.Scope.isVariableScopeRequired(node)) {
-                    stack.pop();
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    removeUnreachableBranch.passName = Name;
-    module.exports = removeUnreachableBranch;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"../evaluator":44,"escope":38}],60:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, Map, common, scope, modified;
-
-    Name = 'remove-unused-label';
-    common = require('../common');
-    Map = require('../map');
-    Syntax = common.Syntax;
-
-    function Scope(upper) {
-        this.set = new Map();
-        this.unused = [];
-        this.upper = upper;
-    }
-
-    Scope.prototype.register = function register(node) {
-        var name;
-
-        common.assert(node.type === Syntax.LabeledStatement);
-
-        name = node.label.name;
-        common.assert(!this.set.has(name), 'duplicate label is found');
-        this.set.set(name, {
-            used: false,
-            stmt: node
-        });
-    };
-
-    Scope.prototype.unregister = function unregister(node) {
-        var name, ref;
-        if (node.type === Syntax.LabeledStatement) {
-            name = node.label.name;
-            ref = this.set.get(name);
-            this.set['delete'](name);
-            if (!ref.used) {
-                modified = true;
-                return node.body;
-            }
-        }
-        return node;
-    };
-
-    Scope.prototype.resolve = function resolve(node) {
-        var name;
-        if (node.label) {
-            name = node.label.name;
-            common.assert(this.set.has(name), 'unresolved label');
-            this.set.get(name).used = true;
-        }
-    };
-
-    Scope.prototype.close = function close() {
-        return this.upper;
-    };
-
-    function removeUnusedLabel(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        scope = null;
-        modified = false;
-
-        result = common.replace(result, {
-            enter: function enter(node) {
-                switch (node.type) {
-                case Syntax.Program:
-                case Syntax.FunctionDeclaration:
-                case Syntax.FunctionExpression:
-                    scope = new Scope(scope);
-                    break;
-
-                case Syntax.LabeledStatement:
-                    scope.register(node);
-                    break;
-
-                case Syntax.BreakStatement:
-                case Syntax.ContinueStatement:
-                    scope.resolve(node);
-                    break;
-                }
-            },
-            leave: function leave(node) {
-                var ret;
-                ret = scope.unregister(node);
-                if (node.type === Syntax.Program || node.type === Syntax.FunctionDeclaration || node.type === Syntax.FunctionExpression) {
-                    scope = scope.close();
-                }
-                return ret;
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    removeUnusedLabel.passName = Name;
-    module.exports = removeUnusedLabel;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"../map":45}],61:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'remove-wasted-blocks';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function flattenBlockStatement(body) {
-        var i, iz, j, jz, result, stmt, inner, ok;
-        result = [];
-        for (i = 0, iz = body.length; i < iz; ++i) {
-            stmt = body[i];
-            if (stmt.type === Syntax.BlockStatement) {
-                ok = true;
-                for (j = 0, jz = stmt.body.length; j < jz; ++j) {
-                    inner = stmt.body[j];
-                    if (common.isScopedDeclaration(inner)) {
-                        // we cannot remove this block
-                        ok = false;
-                    }
-                }
-                if (ok) {
-                    modified = true;
-                    result = result.concat(stmt.body);
-                } else {
-                    result.push(stmt);
-                }
-            } else {
-                result.push(stmt);
-            }
-        }
-        return result;
-    }
-
-    function removeWastedBlocks(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        result = common.replace(result, {
-            leave: function leave(node, parent) {
-                var i, iz, stmt;
-                // remove nested blocks
-                if (node.type === Syntax.BlockStatement || node.type === Syntax.Program) {
-                    for (i = 0, iz = node.body.length; i < iz; ++i) {
-                        stmt = node.body[i];
-                        if (stmt.type === Syntax.BlockStatement) {
-                            node.body = flattenBlockStatement(node.body);
-                            break;
-                        }
-                    }
-                }
-
-                // These type needs BlockStatement
-                if (parent.type === Syntax.FunctionDeclaration || parent.type === Syntax.FunctionExpression || parent.type === Syntax.TryStatement || parent.type === Syntax.CatchClause) {
-                    return;
-                }
-
-                while (node.type === Syntax.BlockStatement && node.body.length === 1 && !common.isScopedDeclaration(node.body[0])) {
-                    modified = true;
-                    node = node.body[0];
-                }
-                // empty body
-                if (node.type === Syntax.BlockStatement && node.body.length === 0) {
-                    modified = true;
-                    return {
-                        type: Syntax.EmptyStatement
-                    };
-                }
-                return node;
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    removeWastedBlocks.passName = Name;
-    module.exports = removeWastedBlocks;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],62:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'reordering-function-declarations';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function reordering(array) {
-        var i, iz, node, directives, declarations, others;
-        directives = [];
-        declarations = [];
-        others = [];
-        for (i = 0, iz = array.length; i < iz; ++i) {
-            node = array[i];
-            if (node.type === Syntax.FunctionDeclaration) {
-                if ((declarations.length + directives.length) !== i) {
-                    modified = true;
-                }
-                declarations.push(node);
-            } else if (node.type === Syntax.DirectiveStatement) {
-                directives.push(node);
-            } else {
-                others.push(node);
-            }
-        }
-        return directives.concat(declarations, others);
-    }
-
-    function reorderingFunctionDeclarations(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        common.traverse(result, {
-            leave: function leave(node) {
-                switch (node.type) {
-                case Syntax.Program:
-                    node.body = reordering(node.body);
-                    break;
-
-                case Syntax.FunctionDeclaration:
-                case Syntax.FunctionExpression:
-                    node.body.body = reordering(node.body.body);
-                    break;
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    reorderingFunctionDeclarations.passName = Name;
-    module.exports = reorderingFunctionDeclarations;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],63:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'transform-branch-to-expression';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function transformBranchToExpression(tree, options) {
-        var result, preserveCompletionValue;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
-        modified = false;
-
-        result = common.replace(result, {
-            leave: function leave(node) {
-                var consequent, alternate, ancestors;
-                if (node.type === Syntax.IfStatement) {
-                    ancestors = this.parents();
-                    if (preserveCompletionValue && common.mayBeCompletionValue(node, ancestors)) {
-                        return;
-                    }
-
-                    if (node.alternate) {
-                        if (node.consequent.type === Syntax.ExpressionStatement && node.alternate.type === Syntax.ExpressionStatement) {
-                            // ok, we can reconstruct this to ConditionalExpression
-                            modified = true;
-                            return common.moveLocation(node, {
-                                type: Syntax.ExpressionStatement,
-                                expression: common.moveLocation(node, {
-                                    type: Syntax.ConditionalExpression,
-                                    test: node.test,
-                                    consequent: node.consequent.expression,
-                                    alternate: node.alternate.expression
-                                })
-                            });
-                        }
-                        if (node.consequent.type === Syntax.ReturnStatement && node.alternate.type === Syntax.ReturnStatement) {
-                            // pattern:
-                            //   if (cond) return a;
-                            //   else return b;
-                            modified = true;
-
-                            if (!node.consequent.argument && !node.alternate.argument) {
-                                // if (cond) return;
-                                // else return;
-                                return common.moveLocation(node, {
-                                    type: Syntax.ReturnStatement,
-                                    argument: common.moveLocation(node, {
-                                        type: Syntax.SequenceExpression,
-                                        expressions: [node.test, common.SpecialNode.generateUndefined() ]
-                                    })
-                                });
-                            }
-                            consequent = node.consequent.argument || common.SpecialNode.generateUndefined();
-                            alternate = node.alternate.argument || common.SpecialNode.generateUndefined();
-
-                            return common.moveLocation(node, {
-                                type: Syntax.ReturnStatement,
-                                argument: common.moveLocation(node, {
-                                    type: Syntax.ConditionalExpression,
-                                    test: node.test,
-                                    consequent: consequent,
-                                    alternate: alternate
-                                })
-                            });
-                        }
-                        if (node.consequent.type === Syntax.ThrowStatement && node.alternate.type === Syntax.ThrowStatement) {
-                            // pattern:
-                            //   if (cond) throw a;
-                            //   else throw b;
-                            modified = true;
-                            return common.moveLocation(node, {
-                                type: Syntax.ThrowStatement,
-                                argument: common.moveLocation(node, {
-                                    type: Syntax.ConditionalExpression,
-                                    test: node.test,
-                                    consequent: node.consequent.argument,
-                                    alternate: node.alternate.argument
-                                })
-                            });
-                        }
-                    } else {
-                        if (node.consequent.type === Syntax.ExpressionStatement) {
-                            // ok, we can reconstruct this to LogicalExpression
-                            modified = true;
-                            return common.moveLocation(node, {
-                                type: Syntax.ExpressionStatement,
-                                expression: common.moveLocation(node, {
-                                    type: Syntax.LogicalExpression,
-                                    operator: '&&',
-                                    left: node.test,
-                                    right: node.consequent.expression
-                                })
-                            });
-                        } else if (node.consequent.type === Syntax.EmptyStatement) {
-                            // ok, we can reconstruct this to expression statement
-                            modified = true;
-                            return common.moveLocation(node, {
-                                type: Syntax.ExpressionStatement,
-                                expression: node.test
-                            });
-                        }
-                    }
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformBranchToExpression.passName = Name;
-    module.exports = transformBranchToExpression;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],64:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'transform-dynamic-to-static-property-access';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function transformDynamicToStaticPropertyAccess(tree, options) {
-        var result;
-
-        modified = false;
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                var property;
-                if (node.type === Syntax.MemberExpression && node.computed) {
-                    property = node.property;
-                    if (property.type === Syntax.Literal && typeof property.value === 'string') {
-                        if (common.isIdentifier(property.value)) {
-                            modified = true;
-                            node.computed = false;
-                            node.property = common.moveLocation(property, {
-                                type: Syntax.Identifier,
-                                name: property.value
-                            });
-                        } else if (property.value === Number(property.value).toString()) {
-                            modified = true;
-                            node.computed = true;
-                            node.property = common.moveLocation(node.property, common.SpecialNode.generateFromValue(Number(node.property.value)));
-                        }
-                    }
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformDynamicToStaticPropertyAccess.passName = Name;
-    module.exports = transformDynamicToStaticPropertyAccess;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],65:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'transform-dynamic-to-static-property-definition';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function transformDynamicToStaticPropertyDefinition(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                var generated;
-                if (node.type === Syntax.Property) {
-                    if (node.key.type === Syntax.Literal && typeof node.key.value === 'string') {
-                        if (common.isIdentifier(node.key.value)) {
-                            modified = true;
-                            node.key = common.moveLocation(node.key, {
-                                type: Syntax.Identifier,
-                                name: node.key.value
-                            });
-                        } else if (node.key.value === Number(node.key.value).toString()) {
-                            // we should not generate
-                            // var obj = {
-                            //   -20: 20
-                            // };
-                            generated = common.SpecialNode.generateFromValue(Number(node.key.value));
-                            if (generated.type === Syntax.Literal) {
-                                modified = true;
-                                node.key = common.moveLocation(node.key, generated);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformDynamicToStaticPropertyDefinition.passName = Name;
-    module.exports = transformDynamicToStaticPropertyDefinition;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],66:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'transform-immediate-function-call';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function isEmptyFunctionCall(call) {
-        var callee, i, iz, stmt;
-        if (call.type !== Syntax.CallExpression) {
-            return false;
-        }
-
-        callee = call.callee;
-
-        if (callee.type !== Syntax.FunctionExpression) {
-            return false;
-        }
-
-        if (callee.body.type !== Syntax.BlockStatement) {
-            return false;
-        }
-
-        // see side effect
-        if (callee.body.body.length === 0) {
-            return true;
-        }
-
-        for (i = 0, iz = callee.body.body.length; i < iz; ++i) {
-            stmt = callee.body.body[i];
-            if (stmt.type !== Syntax.FunctionDeclaration) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    function callToSequence(call) {
-        var expressions;
-        expressions = common.Array.from(call['arguments']);
-
-        if (expressions.length === 0) {
-            return common.SpecialNode.generateUndefined(call);
-        }
-
-        expressions.push(common.SpecialNode.generateUndefined());
-        return common.moveLocation(call, {
-            type: Syntax.SequenceExpression,
-            expressions: expressions
-        });
-    }
-
-    function transformImmediateFunctionCall(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        result = common.replace(result, {
-            leave: function leave(node) {
-                if (isEmptyFunctionCall(node)) {
-                    modified = true;
-                    return callToSequence(node);
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformImmediateFunctionCall.passName = Name;
-    module.exports = transformImmediateFunctionCall;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],67:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'transform-logical-association';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function transformLogicalAssociation(tree, options) {
-        var result;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                if (node.type === Syntax.LogicalExpression) {
-                    // transform
-                    // a && (b && c) => (a && b) && c
-                    // a || (b || c) => (a || b) || c
-                    if (node.right.type === Syntax.LogicalExpression && node.operator === node.right.operator) {
-                        modified = true;
-                        node.left = {
-                            type: Syntax.LogicalExpression,
-                            operator: node.operator,
-                            left: node.left,
-                            right: node.right.left
-                        };
-                        node.right = node.right.right;
-                    }
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformLogicalAssociation.passName = Name;
-    module.exports = transformLogicalAssociation;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],68:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, escope, modified;
-
-    Name = 'transform-to-compound-assignment';
-    escope = require('escope');
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function equals(lhs, rhs) {
-        if (lhs.type !== rhs.type) {
-            return false;
-        }
-        if (lhs.type === Syntax.Identifier) {
-            return lhs.name === rhs.name;
-        }
-        return false;
-    }
-
-    function compound(operator) {
-        switch (operator) {
-        case '*':
-        case '/':
-        case '%':
-        case '+':
-        case '-':
-        case '<<':
-        case '>>':
-        case '>>>':
-        case '&':
-        case '^':
-        case '|':
-            return operator + '=';
-        }
-        return null;
-    }
-
-    function observableCompound(operator) {
-        switch (operator) {
-        case '*=':
-        case '/=':
-        case '%=':
-        case '+=':
-        case '-=':
-        case '<<=':
-        case '>>=':
-        case '>>>=':
-        case '&=':
-        case '^=':
-        case '|=':
-            return operator;
-        }
-        return null;
-    }
-
-    function transformToCompoundAssignment(tree, options) {
-        var result, scope, manager;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        scope = null;
-
-        manager = escope.analyze(result, { directive: true });
-        manager.attach();
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                var left, right, operator, ref;
-                scope = manager.acquire(node) || scope;
-                if (node.type === Syntax.AssignmentExpression && node.operator === '=') {
-                    left = node.left;
-                    right = node.right;
-                    if (right.type === Syntax.BinaryExpression && equals(right.left, left)) {
-                        operator = compound(right.operator);
-                        if (operator) {
-                            modified = true;
-                            node.operator = operator;
-                            node.right = right.right;
-                        }
-                    } else if (right.type === Syntax.AssignmentExpression && equals(right.left, left)) {
-                        if (observableCompound(right.operator)) {
-                            ref = scope.resolve(node.left);
-                            if (ref.isStatic()) {
-                                modified = true;
-                                node.operator = right.operator;
-                                node.right = right.right;
-                            }
-                        }
-                    }
-                }
-            },
-            leave: function leave(node) {
-                scope = manager.release(node) || scope;
-            }
-        });
-
-        manager.detach();
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformToCompoundAssignment.passName = Name;
-    module.exports = transformToCompoundAssignment;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"escope":38}],69:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'transform-to-sequence-expression';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function transform(node) {
-        var i, iz, expressions, stmt, prev, body;
-
-        function constructSeq(expressions, stmt) {
-            var seq;
-
-            if (expressions.length !== 1) {
-                modified = true;
-                seq = {
-                    type: Syntax.SequenceExpression,
-                    expressions: expressions
-                };
-
-                if (stmt.type === Syntax.ExpressionStatement) {
-                    stmt.expression = seq;
-                } else {
-                    stmt.argument = seq;
-                }
-            }
-
-            return stmt;
-        }
-
-        body = [];
-        expressions = [];
-
-        for (i = 0, iz = node.body.length; i < iz; ++i) {
-            prev = stmt;
-            stmt = node.body[i];
-
-            if (stmt.type === Syntax.ExpressionStatement) {
-                expressions.push(stmt.expression);
-            } else if ((stmt.type === Syntax.ReturnStatement && stmt.argument != null) || stmt.type === Syntax.ThrowStatement) {
-                // Not distinguishing between null or undefined in argument
-                expressions.push(stmt.argument);
-                body.push(constructSeq(expressions, stmt));
-                expressions = [];
-            } else if (stmt.type === Syntax.ForStatement && (!stmt.init || stmt.init.type !== Syntax.VariableDeclaration)) {
-                // insert expressions to for (<init>;;);
-                if (expressions.length) {
-                    modified = true;
-                    if (stmt.init) {
-                        expressions.push(stmt.init);
-                    }
-                    if (expressions.length === 1) {
-                        stmt.init = expressions[0];
-                    } else {
-                        stmt.init = {
-                            type: Syntax.SequenceExpression,
-                            expressions: expressions
-                        };
-                    }
-                    expressions = [];
-                }
-                body.push(stmt);
-            } else if (stmt.type === Syntax.IfStatement) {
-                if (expressions.length) {
-                    modified = true;
-                    expressions.push(stmt.test);
-                    stmt.test = {
-                        type: Syntax.SequenceExpression,
-                        expressions: expressions
-                    };
-                    expressions = [];
-                }
-                body.push(stmt);
-            } else {
-                if (expressions.length) {
-                    body.push(constructSeq(expressions, prev));
-                    expressions = [];
-                }
-                body.push(stmt);
-            }
-        }
-
-        if (expressions.length) {
-            body.push(constructSeq(expressions, stmt));
-        }
-
-        node.body = body;
-    }
-
-    function transformToSequenceExpression(tree, options) {
-        var result;
-
-        modified = false;
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                switch (node.type) {
-                case Syntax.BlockStatement:
-                case Syntax.Program:
-                    transform(node);
-                    break;
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformToSequenceExpression.passName = Name;
-    module.exports = transformToSequenceExpression;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],70:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, escope, modified;
-
-    Name = 'transform-typeof-undefined';
-    escope = require('escope');
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function isUndefinedStringLiteral(node) {
-        return node.type === Syntax.Literal && node.value === 'undefined';
-    }
-
-    function transformTypeofUndefined(tree, options) {
-        var result, manager, scope;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-        scope = null;
-
-        manager = escope.analyze(result, { directive: true });
-        manager.attach();
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                var target, undef, argument, ref;
-                scope = manager.acquire(node) || scope;
-                if (node.type === Syntax.BinaryExpression &&
-                    (node.operator === '===' || node.operator === '!==' || node.operator === '==' || node.operator === '!=')) {
-                    if (isUndefinedStringLiteral(node.left)) {
-                        undef = 'left';
-                        target = 'right';
-                    } else if (isUndefinedStringLiteral(node.right)) {
-                        undef = 'right';
-                        target = 'left';
-                    } else {
-                        return;
-                    }
-
-                    if (node[target].type === Syntax.UnaryExpression && node[target].operator === 'typeof') {
-                        argument = node[target].argument;
-                        if (argument.type === Syntax.Identifier) {
-                            ref = scope.resolve(argument);
-                            if (!ref || !ref.isStatic() || !ref.resolved) {
-                                // may raise ReferenceError
-                                return;
-                            }
-                        }
-                        modified = true;
-                        node[undef] = common.SpecialNode.generateUndefined();
-                        node[target] = argument;
-                        node.operator = node.operator.charAt(0) === '!' ? '!==' : '===';
-                    }
-                }
-            },
-            leave: function leave(node) {
-                scope = manager.release(node) || scope;
-            }
-        });
-
-        manager.detach();
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    transformTypeofUndefined.passName = Name;
-    module.exports = transformTypeofUndefined;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42,"escope":38}],71:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, evaluator, modified;
-
-    Name = 'tree-based-constant-folding';
-    common = require('../common');
-    evaluator = require('../evaluator');
-    Syntax = common.Syntax;
-
-
-    function isModifiedConstant(node) {
-        // consider
-        //   (undefined) `void 0`
-        //   (negative value) `-1`,
-        //   (NaN) `0/0`
-        if (common.SpecialNode.isUndefined(node)) {
-            return false;
-        }
-        if (common.SpecialNode.isNegative(node)) {
-            return false;
-        }
-        if (common.SpecialNode.isNaN(node)) {
-            return false;
-        }
-        return evaluator.constant.isConstant(node, false);
-    }
-
-    function isFoldableConditional(node) {
-        if (node.type !== Syntax.ConditionalExpression) {
-            return false;
-        }
-        return evaluator.constant.isConstant(node.consequent) || evaluator.constant.isConstant(node.alternate);
-    }
-
-    function foldConditional(node) {
-        var binary, unary, operator, left, right;
+    function isExpression(node) {
+        if (node == null) { return false; }
         switch (node.type) {
-        case Syntax.BinaryExpression:
-            if (node.operator === 'in' || node.operator === 'instanceof') {
-                // cannot fold this
-                return node;
-            }
-
-            if (evaluator.constant.isConstant(node.left) && isFoldableConditional(node.right)) {
-                modified = true;
-                binary = node;
-                operator = binary.operator;
-                left = evaluator.constant.evaluate(binary.left);
-
-                node = node.right;
-                if (evaluator.constant.isConstant(node.consequent)) {
-                    node.consequent = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, left, evaluator.constant.evaluate(node.consequent)));
-                } else {
-                    // cannot fold left
-                    binary.right = node.consequent;
-                    node.consequent = binary;
-                }
-                if (evaluator.constant.isConstant(node.alternate)) {
-                    node.alternate = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, left, evaluator.constant.evaluate(node.alternate)));
-                } else {
-                    // cannot fold right
-                    binary.right = node.alternate;
-                    node.alternate = binary;
-                }
-            } else if (evaluator.constant.isConstant(node.right) && isFoldableConditional(node.left)) {
-                modified = true;
-                binary = node;
-                operator = binary.operator;
-                right = evaluator.constant.evaluate(binary.right);
-
-                node = node.left;
-                if (evaluator.constant.isConstant(node.consequent)) {
-                    node.consequent = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, evaluator.constant.evaluate(node.consequent), right));
-                } else {
-                    // cannot fold left
-                    binary.left = node.consequent;
-                    node.consequent = binary;
-                }
-                if (evaluator.constant.isConstant(node.alternate)) {
-                    node.alternate = common.SpecialNode.generateFromValue(evaluator.constant.doBinary(operator, evaluator.constant.evaluate(node.alternate), right));
-                } else {
-                    // cannot fold right
-                    binary.left = node.alternate;
-                    node.alternate = binary;
-                }
-            }
-            break;
-
-        case Syntax.LogicalExpression:
-            break;
-
-        case Syntax.UnaryExpression:
-            if (isFoldableConditional(node.argument)) {
-                modified = true;
-                unary = node;
-                operator = unary.operator;
-                node = unary.argument;
-                if (evaluator.constant.isConstant(node.consequent)) {
-                    node.consequent = common.SpecialNode.generateFromValue(evaluator.constant.doUnary(operator, evaluator.constant.evaluate(node.consequent)));
-                } else {
-                    // cannot fold left
-                    unary.argument = node.consequent;
-                    node.consequent = unary;
-                }
-                if (evaluator.constant.isConstant(node.alternate)) {
-                    node.alternate = common.SpecialNode.generateFromValue(evaluator.constant.doUnary(operator, evaluator.constant.evaluate(node.alternate)));
-                } else {
-                    // cannot fold right
-                    unary.argument = node.alternate;
-                    node.alternate = unary;
-                }
-            }
-            break;
+            case 'ArrayExpression':
+            case 'AssignmentExpression':
+            case 'BinaryExpression':
+            case 'CallExpression':
+            case 'ConditionalExpression':
+            case 'FunctionExpression':
+            case 'Identifier':
+            case 'Literal':
+            case 'LogicalExpression':
+            case 'MemberExpression':
+            case 'NewExpression':
+            case 'ObjectExpression':
+            case 'SequenceExpression':
+            case 'ThisExpression':
+            case 'UnaryExpression':
+            case 'UpdateExpression':
+                return true;
         }
-
-        return node;
+        return false;
     }
 
-    function treeBasedConstantFolding(tree, options) {
-        var result;
+    function isIterationStatement(node) {
+        if (node == null) { return false; }
+        switch (node.type) {
+            case 'DoWhileStatement':
+            case 'ForInStatement':
+            case 'ForStatement':
+            case 'WhileStatement':
+                return true;
+        }
+        return false;
+    }
 
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
+    function isStatement(node) {
+        if (node == null) { return false; }
+        switch (node.type) {
+            case 'BlockStatement':
+            case 'BreakStatement':
+            case 'ContinueStatement':
+            case 'DebuggerStatement':
+            case 'DoWhileStatement':
+            case 'EmptyStatement':
+            case 'ExpressionStatement':
+            case 'ForInStatement':
+            case 'ForStatement':
+            case 'IfStatement':
+            case 'LabeledStatement':
+            case 'ReturnStatement':
+            case 'SwitchStatement':
+            case 'ThrowStatement':
+            case 'TryStatement':
+            case 'VariableDeclaration':
+            case 'WhileStatement':
+            case 'WithStatement':
+                return true;
+        }
+        return false;
+    }
 
-        result = common.replace(result, {
-            leave: function leave(node) {
-                var con, alt;
-                switch (node.type) {
-                case Syntax.BinaryExpression:
-                case Syntax.LogicalExpression:
-                case Syntax.UnaryExpression:
-                    if (isModifiedConstant(node)) {
-                        modified = true;
-                        return common.moveLocation(node, common.SpecialNode.generateFromValue(evaluator.constant.evaluate(node)));
-                    }
-                    return foldConditional(node);
+    function isSourceElement(node) {
+      return isStatement(node) || node != null && node.type === 'FunctionDeclaration';
+    }
 
-                case Syntax.ConditionalExpression:
-                    if (evaluator.constant.isConstant(node.consequent) && evaluator.constant.isConstant(node.alternate)) {
-                        con = evaluator.constant.evaluate(node.consequent);
-                        alt = evaluator.constant.evaluate(node.alternate);
-                        if (common.sameValue(con, alt)) {
-                            modified = true;
-                            return common.moveLocation(node, {
-                                type: Syntax.SequenceExpression,
-                                expressions: [
-                                    node.test,
-                                    common.SpecialNode.generateFromValue(con)
-                                ]
-                            });
-                        }
-                    }
-                    break;
+    function trailingStatement(node) {
+        switch (node.type) {
+        case 'IfStatement':
+            if (node.alternate != null) {
+                return node.alternate;
+            }
+            return node.consequent;
+
+        case 'LabeledStatement':
+        case 'ForStatement':
+        case 'ForInStatement':
+        case 'WhileStatement':
+        case 'WithStatement':
+            return node.body;
+        }
+        return null;
+    }
+
+    function isProblematicIfStatement(node) {
+        var current;
+
+        if (node.type !== 'IfStatement') {
+            return false;
+        }
+        if (node.alternate == null) {
+            return false;
+        }
+        current = node.consequent;
+        do {
+            if (current.type === 'IfStatement') {
+                if (current.alternate == null)  {
+                    return true;
                 }
             }
-        });
+            current = trailingStatement(current);
+        } while (current);
 
-        return {
-            result: result,
-            modified: modified
-        };
+        return false;
     }
 
-    treeBasedConstantFolding.passName = Name;
-    module.exports = treeBasedConstantFolding;
+    module.exports = {
+        isExpression: isExpression,
+        isStatement: isStatement,
+        isIterationStatement: isIterationStatement,
+        isSourceElement: isSourceElement,
+        isProblematicIfStatement: isProblematicIfStatement,
+
+        trailingStatement: trailingStatement
+    };
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"../common":42,"../evaluator":44}],72:[function(require,module,exports){
+},{}],84:[function(require,module,exports){
+/*
+  Copyright (C) 2013-2014 Yusuke Suzuki <utatane.tea@gmail.com>
+  Copyright (C) 2014 Ivan Nikulin <ifaaan@gmail.com>
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+(function () {
+    'use strict';
+
+    var ES6Regex, ES5Regex, NON_ASCII_WHITESPACES, IDENTIFIER_START, IDENTIFIER_PART, ch;
+
+    // See `tools/generate-identifier-regex.js`.
+    ES5Regex = {
+        // ECMAScript 5.1/Unicode v7.0.0 NonAsciiIdentifierStart:
+        NonAsciiIdentifierStart: /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u08A0-\u08B2\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58\u0C59\u0C60\u0C61\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D60\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1877\u1880-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19C1-\u19C7\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4B\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1CE9-\u1CEC\u1CEE-\u1CF1\u1CF5\u1CF6\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2E2F\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]/,
+        // ECMAScript 5.1/Unicode v7.0.0 NonAsciiIdentifierPart:
+        NonAsciiIdentifierPart: /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0300-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u0483-\u0487\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u05D0-\u05EA\u05F0-\u05F2\u0610-\u061A\u0620-\u0669\u066E-\u06D3\u06D5-\u06DC\u06DF-\u06E8\u06EA-\u06FC\u06FF\u0710-\u074A\u074D-\u07B1\u07C0-\u07F5\u07FA\u0800-\u082D\u0840-\u085B\u08A0-\u08B2\u08E4-\u0963\u0966-\u096F\u0971-\u0983\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BC-\u09C4\u09C7\u09C8\u09CB-\u09CE\u09D7\u09DC\u09DD\u09DF-\u09E3\u09E6-\u09F1\u0A01-\u0A03\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A59-\u0A5C\u0A5E\u0A66-\u0A75\u0A81-\u0A83\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABC-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AD0\u0AE0-\u0AE3\u0AE6-\u0AEF\u0B01-\u0B03\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3C-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B5C\u0B5D\u0B5F-\u0B63\u0B66-\u0B6F\u0B71\u0B82\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD0\u0BD7\u0BE6-\u0BEF\u0C00-\u0C03\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C58\u0C59\u0C60-\u0C63\u0C66-\u0C6F\u0C81-\u0C83\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBC-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CDE\u0CE0-\u0CE3\u0CE6-\u0CEF\u0CF1\u0CF2\u0D01-\u0D03\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D-\u0D44\u0D46-\u0D48\u0D4A-\u0D4E\u0D57\u0D60-\u0D63\u0D66-\u0D6F\u0D7A-\u0D7F\u0D82\u0D83\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E01-\u0E3A\u0E40-\u0E4E\u0E50-\u0E59\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB9\u0EBB-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECD\u0ED0-\u0ED9\u0EDC-\u0EDF\u0F00\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E-\u0F47\u0F49-\u0F6C\u0F71-\u0F84\u0F86-\u0F97\u0F99-\u0FBC\u0FC6\u1000-\u1049\u1050-\u109D\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u135D-\u135F\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1714\u1720-\u1734\u1740-\u1753\u1760-\u176C\u176E-\u1770\u1772\u1773\u1780-\u17D3\u17D7\u17DC\u17DD\u17E0-\u17E9\u180B-\u180D\u1810-\u1819\u1820-\u1877\u1880-\u18AA\u18B0-\u18F5\u1900-\u191E\u1920-\u192B\u1930-\u193B\u1946-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u19D0-\u19D9\u1A00-\u1A1B\u1A20-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AA7\u1AB0-\u1ABD\u1B00-\u1B4B\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1BF3\u1C00-\u1C37\u1C40-\u1C49\u1C4D-\u1C7D\u1CD0-\u1CD2\u1CD4-\u1CF6\u1CF8\u1CF9\u1D00-\u1DF5\u1DFC-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u200C\u200D\u203F\u2040\u2054\u2071\u207F\u2090-\u209C\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D7F-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2DE0-\u2DFF\u2E2F\u3005-\u3007\u3021-\u302F\u3031-\u3035\u3038-\u303C\u3041-\u3096\u3099\u309A\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA62B\uA640-\uA66F\uA674-\uA67D\uA67F-\uA69D\uA69F-\uA6F1\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA827\uA840-\uA873\uA880-\uA8C4\uA8D0-\uA8D9\uA8E0-\uA8F7\uA8FB\uA900-\uA92D\uA930-\uA953\uA960-\uA97C\uA980-\uA9C0\uA9CF-\uA9D9\uA9E0-\uA9FE\uAA00-\uAA36\uAA40-\uAA4D\uAA50-\uAA59\uAA60-\uAA76\uAA7A-\uAAC2\uAADB-\uAADD\uAAE0-\uAAEF\uAAF2-\uAAF6\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABEA\uABEC\uABED\uABF0-\uABF9\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE00-\uFE0F\uFE20-\uFE2D\uFE33\uFE34\uFE4D-\uFE4F\uFE70-\uFE74\uFE76-\uFEFC\uFF10-\uFF19\uFF21-\uFF3A\uFF3F\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]/
+    };
+
+    ES6Regex = {
+        // ECMAScript 6/Unicode v7.0.0 NonAsciiIdentifierStart:
+        NonAsciiIdentifierStart: /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u08A0-\u08B2\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58\u0C59\u0C60\u0C61\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D60\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1877\u1880-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19C1-\u19C7\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4B\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1CE9-\u1CEC\u1CEE-\u1CF1\u1CF5\u1CF6\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2118-\u211D\u2124\u2126\u2128\u212A-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309B-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDE80-\uDE9C\uDEA0-\uDED0\uDF00-\uDF1F\uDF30-\uDF4A\uDF50-\uDF75\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00\uDE10-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE4\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48]|\uD804[\uDC03-\uDC37\uDC83-\uDCAF\uDCD0-\uDCE8\uDD03-\uDD26\uDD50-\uDD72\uDD76\uDD83-\uDDB2\uDDC1-\uDDC4\uDDDA\uDE00-\uDE11\uDE13-\uDE2B\uDEB0-\uDEDE\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3D\uDF5D-\uDF61]|\uD805[\uDC80-\uDCAF\uDCC4\uDCC5\uDCC7\uDD80-\uDDAE\uDE00-\uDE2F\uDE44\uDE80-\uDEAA]|\uD806[\uDCA0-\uDCDF\uDCFF\uDEC0-\uDEF8]|\uD808[\uDC00-\uDF98]|\uD809[\uDC00-\uDC6E]|[\uD80C\uD840-\uD868\uD86A-\uD86C][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDED0-\uDEED\uDF00-\uDF2F\uDF40-\uDF43\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50\uDF93-\uDF9F]|\uD82C[\uDC00\uDC01]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB]|\uD83A[\uDC00-\uDCC4]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D]|\uD87E[\uDC00-\uDE1D]/,
+        // ECMAScript 6/Unicode v7.0.0 NonAsciiIdentifierPart:
+        NonAsciiIdentifierPart: /[\xAA\xB5\xB7\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0300-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u0483-\u0487\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u05D0-\u05EA\u05F0-\u05F2\u0610-\u061A\u0620-\u0669\u066E-\u06D3\u06D5-\u06DC\u06DF-\u06E8\u06EA-\u06FC\u06FF\u0710-\u074A\u074D-\u07B1\u07C0-\u07F5\u07FA\u0800-\u082D\u0840-\u085B\u08A0-\u08B2\u08E4-\u0963\u0966-\u096F\u0971-\u0983\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BC-\u09C4\u09C7\u09C8\u09CB-\u09CE\u09D7\u09DC\u09DD\u09DF-\u09E3\u09E6-\u09F1\u0A01-\u0A03\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A59-\u0A5C\u0A5E\u0A66-\u0A75\u0A81-\u0A83\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABC-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AD0\u0AE0-\u0AE3\u0AE6-\u0AEF\u0B01-\u0B03\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3C-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B5C\u0B5D\u0B5F-\u0B63\u0B66-\u0B6F\u0B71\u0B82\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD0\u0BD7\u0BE6-\u0BEF\u0C00-\u0C03\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C58\u0C59\u0C60-\u0C63\u0C66-\u0C6F\u0C81-\u0C83\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBC-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CDE\u0CE0-\u0CE3\u0CE6-\u0CEF\u0CF1\u0CF2\u0D01-\u0D03\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D-\u0D44\u0D46-\u0D48\u0D4A-\u0D4E\u0D57\u0D60-\u0D63\u0D66-\u0D6F\u0D7A-\u0D7F\u0D82\u0D83\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E01-\u0E3A\u0E40-\u0E4E\u0E50-\u0E59\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB9\u0EBB-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECD\u0ED0-\u0ED9\u0EDC-\u0EDF\u0F00\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E-\u0F47\u0F49-\u0F6C\u0F71-\u0F84\u0F86-\u0F97\u0F99-\u0FBC\u0FC6\u1000-\u1049\u1050-\u109D\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u135D-\u135F\u1369-\u1371\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1714\u1720-\u1734\u1740-\u1753\u1760-\u176C\u176E-\u1770\u1772\u1773\u1780-\u17D3\u17D7\u17DC\u17DD\u17E0-\u17E9\u180B-\u180D\u1810-\u1819\u1820-\u1877\u1880-\u18AA\u18B0-\u18F5\u1900-\u191E\u1920-\u192B\u1930-\u193B\u1946-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u19D0-\u19DA\u1A00-\u1A1B\u1A20-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AA7\u1AB0-\u1ABD\u1B00-\u1B4B\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1BF3\u1C00-\u1C37\u1C40-\u1C49\u1C4D-\u1C7D\u1CD0-\u1CD2\u1CD4-\u1CF6\u1CF8\u1CF9\u1D00-\u1DF5\u1DFC-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u200C\u200D\u203F\u2040\u2054\u2071\u207F\u2090-\u209C\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2102\u2107\u210A-\u2113\u2115\u2118-\u211D\u2124\u2126\u2128\u212A-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D7F-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2DE0-\u2DFF\u3005-\u3007\u3021-\u302F\u3031-\u3035\u3038-\u303C\u3041-\u3096\u3099-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA62B\uA640-\uA66F\uA674-\uA67D\uA67F-\uA69D\uA69F-\uA6F1\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA827\uA840-\uA873\uA880-\uA8C4\uA8D0-\uA8D9\uA8E0-\uA8F7\uA8FB\uA900-\uA92D\uA930-\uA953\uA960-\uA97C\uA980-\uA9C0\uA9CF-\uA9D9\uA9E0-\uA9FE\uAA00-\uAA36\uAA40-\uAA4D\uAA50-\uAA59\uAA60-\uAA76\uAA7A-\uAAC2\uAADB-\uAADD\uAAE0-\uAAEF\uAAF2-\uAAF6\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABEA\uABEC\uABED\uABF0-\uABF9\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE00-\uFE0F\uFE20-\uFE2D\uFE33\uFE34\uFE4D-\uFE4F\uFE70-\uFE74\uFE76-\uFEFC\uFF10-\uFF19\uFF21-\uFF3A\uFF3F\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDDFD\uDE80-\uDE9C\uDEA0-\uDED0\uDEE0\uDF00-\uDF1F\uDF30-\uDF4A\uDF50-\uDF7A\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCA0-\uDCA9\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00-\uDE03\uDE05\uDE06\uDE0C-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE38-\uDE3A\uDE3F\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE6\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48]|\uD804[\uDC00-\uDC46\uDC66-\uDC6F\uDC7F-\uDCBA\uDCD0-\uDCE8\uDCF0-\uDCF9\uDD00-\uDD34\uDD36-\uDD3F\uDD50-\uDD73\uDD76\uDD80-\uDDC4\uDDD0-\uDDDA\uDE00-\uDE11\uDE13-\uDE37\uDEB0-\uDEEA\uDEF0-\uDEF9\uDF01-\uDF03\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3C-\uDF44\uDF47\uDF48\uDF4B-\uDF4D\uDF57\uDF5D-\uDF63\uDF66-\uDF6C\uDF70-\uDF74]|\uD805[\uDC80-\uDCC5\uDCC7\uDCD0-\uDCD9\uDD80-\uDDB5\uDDB8-\uDDC0\uDE00-\uDE40\uDE44\uDE50-\uDE59\uDE80-\uDEB7\uDEC0-\uDEC9]|\uD806[\uDCA0-\uDCE9\uDCFF\uDEC0-\uDEF8]|\uD808[\uDC00-\uDF98]|\uD809[\uDC00-\uDC6E]|[\uD80C\uD840-\uD868\uD86A-\uD86C][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDE60-\uDE69\uDED0-\uDEED\uDEF0-\uDEF4\uDF00-\uDF36\uDF40-\uDF43\uDF50-\uDF59\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50-\uDF7E\uDF8F-\uDF9F]|\uD82C[\uDC00\uDC01]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99\uDC9D\uDC9E]|\uD834[\uDD65-\uDD69\uDD6D-\uDD72\uDD7B-\uDD82\uDD85-\uDD8B\uDDAA-\uDDAD\uDE42-\uDE44]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB\uDFCE-\uDFFF]|\uD83A[\uDC00-\uDCC4\uDCD0-\uDCD6]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D]|\uD87E[\uDC00-\uDE1D]|\uDB40[\uDD00-\uDDEF]/
+    };
+
+    function isDecimalDigit(ch) {
+        return 0x30 <= ch && ch <= 0x39;  // 0..9
+    }
+
+    function isHexDigit(ch) {
+        return 0x30 <= ch && ch <= 0x39 ||  // 0..9
+            0x61 <= ch && ch <= 0x66 ||     // a..f
+            0x41 <= ch && ch <= 0x46;       // A..F
+    }
+
+    function isOctalDigit(ch) {
+        return ch >= 0x30 && ch <= 0x37;  // 0..7
+    }
+
+    // 7.2 White Space
+
+    NON_ASCII_WHITESPACES = [
+        0x1680, 0x180E,
+        0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A,
+        0x202F, 0x205F,
+        0x3000,
+        0xFEFF
+    ];
+
+    function isWhiteSpace(ch) {
+        return ch === 0x20 || ch === 0x09 || ch === 0x0B || ch === 0x0C || ch === 0xA0 ||
+            ch >= 0x1680 && NON_ASCII_WHITESPACES.indexOf(ch) >= 0;
+    }
+
+    // 7.3 Line Terminators
+
+    function isLineTerminator(ch) {
+        return ch === 0x0A || ch === 0x0D || ch === 0x2028 || ch === 0x2029;
+    }
+
+    // 7.6 Identifier Names and Identifiers
+
+    function fromCodePoint(cp) {
+        if (cp <= 0xFFFF) { return String.fromCharCode(cp); }
+        var cu1 = String.fromCharCode(Math.floor((cp - 0x10000) / 0x400) + 0xD800);
+        var cu2 = String.fromCharCode(((cp - 0x10000) % 0x400) + 0xDC00);
+        return cu1 + cu2;
+    }
+
+    IDENTIFIER_START = new Array(0x80);
+    for(ch = 0; ch < 0x80; ++ch) {
+        IDENTIFIER_START[ch] =
+            ch >= 0x61 && ch <= 0x7A ||  // a..z
+            ch >= 0x41 && ch <= 0x5A ||  // A..Z
+            ch === 0x24 || ch === 0x5F;  // $ (dollar) and _ (underscore)
+    }
+
+    IDENTIFIER_PART = new Array(0x80);
+    for(ch = 0; ch < 0x80; ++ch) {
+        IDENTIFIER_PART[ch] =
+            ch >= 0x61 && ch <= 0x7A ||  // a..z
+            ch >= 0x41 && ch <= 0x5A ||  // A..Z
+            ch >= 0x30 && ch <= 0x39 ||  // 0..9
+            ch === 0x24 || ch === 0x5F;  // $ (dollar) and _ (underscore)
+    }
+
+    function isIdentifierStartES5(ch) {
+        return ch < 0x80 ? IDENTIFIER_START[ch] : ES5Regex.NonAsciiIdentifierStart.test(fromCodePoint(ch));
+    }
+
+    function isIdentifierPartES5(ch) {
+        return ch < 0x80 ? IDENTIFIER_PART[ch] : ES5Regex.NonAsciiIdentifierPart.test(fromCodePoint(ch));
+    }
+
+    function isIdentifierStartES6(ch) {
+        return ch < 0x80 ? IDENTIFIER_START[ch] : ES6Regex.NonAsciiIdentifierStart.test(fromCodePoint(ch));
+    }
+
+    function isIdentifierPartES6(ch) {
+        return ch < 0x80 ? IDENTIFIER_PART[ch] : ES6Regex.NonAsciiIdentifierPart.test(fromCodePoint(ch));
+    }
+
+    module.exports = {
+        isDecimalDigit: isDecimalDigit,
+        isHexDigit: isHexDigit,
+        isOctalDigit: isOctalDigit,
+        isWhiteSpace: isWhiteSpace,
+        isLineTerminator: isLineTerminator,
+        isIdentifierStartES5: isIdentifierStartES5,
+        isIdentifierPartES5: isIdentifierPartES5,
+        isIdentifierStartES6: isIdentifierStartES6,
+        isIdentifierPartES6: isIdentifierPartES6
+    };
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
+
+},{}],85:[function(require,module,exports){
 /*
   Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
@@ -18948,255 +20992,147 @@ module.exports={
 (function () {
     'use strict';
 
-    var Name, Syntax, common, modified;
+    var code = require('./code');
 
-    Name = 'omit-parens-in-void-context-iife';
-    common = require('../common');
-    Syntax = common.Syntax;
+    function isStrictModeReservedWordES6(id) {
+        switch (id) {
+        case 'implements':
+        case 'interface':
+        case 'package':
+        case 'private':
+        case 'protected':
+        case 'public':
+        case 'static':
+        case 'let':
+            return true;
+        default:
+            return false;
+        }
+    }
 
-    function isIIFE(node) {
-        var callee;
+    function isKeywordES5(id, strict) {
+        // yield should not be treated as keyword under non-strict mode.
+        if (!strict && id === 'yield') {
+            return false;
+        }
+        return isKeywordES6(id, strict);
+    }
 
-        if (node.type !== Syntax.CallExpression) {
+    function isKeywordES6(id, strict) {
+        if (strict && isStrictModeReservedWordES6(id)) {
+            return true;
+        }
+
+        switch (id.length) {
+        case 2:
+            return (id === 'if') || (id === 'in') || (id === 'do');
+        case 3:
+            return (id === 'var') || (id === 'for') || (id === 'new') || (id === 'try');
+        case 4:
+            return (id === 'this') || (id === 'else') || (id === 'case') ||
+                (id === 'void') || (id === 'with') || (id === 'enum');
+        case 5:
+            return (id === 'while') || (id === 'break') || (id === 'catch') ||
+                (id === 'throw') || (id === 'const') || (id === 'yield') ||
+                (id === 'class') || (id === 'super');
+        case 6:
+            return (id === 'return') || (id === 'typeof') || (id === 'delete') ||
+                (id === 'switch') || (id === 'export') || (id === 'import');
+        case 7:
+            return (id === 'default') || (id === 'finally') || (id === 'extends');
+        case 8:
+            return (id === 'function') || (id === 'continue') || (id === 'debugger');
+        case 10:
+            return (id === 'instanceof');
+        default:
+            return false;
+        }
+    }
+
+    function isReservedWordES5(id, strict) {
+        return id === 'null' || id === 'true' || id === 'false' || isKeywordES5(id, strict);
+    }
+
+    function isReservedWordES6(id, strict) {
+        return id === 'null' || id === 'true' || id === 'false' || isKeywordES6(id, strict);
+    }
+
+    function isRestrictedWord(id) {
+        return id === 'eval' || id === 'arguments';
+    }
+
+    function isIdentifierNameES5(id) {
+        var i, iz, ch;
+
+        if (id.length === 0) { return false; }
+
+        ch = id.charCodeAt(0);
+        if (!code.isIdentifierStartES5(ch)) {
             return false;
         }
 
-        callee = node.callee;
-        return callee.type === Syntax.FunctionExpression;
-    }
-
-    function main(tree, options) {
-        var result, stackCount, preserveCompletionValue;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        preserveCompletionValue = options.get('preserveCompletionValue', { pathName: Name });
-        modified = false;
-
-        result = common.replace(result, {
-            enter: function enter(node, parent) {
-                var ancestors, target;
-
-                if (!isIIFE(node)) {
-                    return;
-                }
-
-                target = parent;
-                if (target.type === Syntax.ExpressionStatement) {
-                    ancestors = this.parents();
-                    ancestors.pop();  // remove parent: ExpressionStatement
-                    if (preserveCompletionValue && common.mayBeCompletionValue(target, ancestors)) {
-                        return;
-                    }
-                } else if (target.type === Syntax.SequenceExpression && target.expressions.length >= 2 && target.expressions[0] === node) {
-                    ancestors = this.parents();
-                    ancestors.pop();  // remove parent: SequenceExpression
-                    target = ancestors.pop();  // remove parent: ExpressionStatement
-                    if (target.type !== Syntax.ExpressionStatement) {
-                        return;
-                    }
-                } else {
-                    return;
-                }
-
-                // transform it
-                modified = true;
-                return {
-                    type: Syntax.UnaryExpression,
-                    operator: '!',
-                    argument: node
-                };
-            },
-            leave: function leave(node) {
-                if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
-                    --stackCount;
-                }
+        for (i = 1, iz = id.length; i < iz; ++i) {
+            ch = id.charCodeAt(i);
+            if (!code.isIdentifierPartES5(ch)) {
+                return false;
             }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
+        }
+        return true;
     }
 
-    main.passName = Name;
-    module.exports = main;
+    function decodeUtf16(lead, trail) {
+        return (lead - 0xD800) * 0x400 + (trail - 0xDC00) + 0x10000;
+    }
+
+    function isIdentifierNameES6(id) {
+        var i, iz, ch, lowCh, check;
+
+        if (id.length === 0) { return false; }
+
+        check = code.isIdentifierStartES6;
+        for (i = 0, iz = id.length; i < iz; ++i) {
+            ch = id.charCodeAt(i);
+            if (0xD800 <= ch && ch <= 0xDBFF) {
+                ++i;
+                if (i >= iz) { return false; }
+                lowCh = id.charCodeAt(i);
+                if (!(0xDC00 <= lowCh && lowCh <= 0xDFFF)) {
+                    return false;
+                }
+                ch = decodeUtf16(ch, lowCh);
+            }
+            if (!check(ch)) {
+                return false;
+            }
+            check = code.isIdentifierPartES6;
+        }
+        return true;
+    }
+
+    function isIdentifierES5(id, strict) {
+        return isIdentifierNameES5(id) && !isReservedWordES5(id, strict);
+    }
+
+    function isIdentifierES6(id, strict) {
+        return isIdentifierNameES6(id) && !isReservedWordES6(id, strict);
+    }
+
+    module.exports = {
+        isKeywordES5: isKeywordES5,
+        isKeywordES6: isKeywordES6,
+        isReservedWordES5: isReservedWordES5,
+        isReservedWordES6: isReservedWordES6,
+        isRestrictedWord: isRestrictedWord,
+        isIdentifierNameES5: isIdentifierNameES5,
+        isIdentifierNameES6: isIdentifierNameES6,
+        isIdentifierES5: isIdentifierES5,
+        isIdentifierES6: isIdentifierES6
+    };
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"../common":42}],73:[function(require,module,exports){
+},{"./code":84}],86:[function(require,module,exports){
 /*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'rewrite-boolean';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function isBooleanLiteral(node) {
-        return node.type === Syntax.Literal && typeof node.value === 'boolean';
-    }
-
-    function rewrite(node) {
-        if (isBooleanLiteral(node)) {
-            modified = true;
-            return common.moveLocation(node, {
-                type: Syntax.UnaryExpression,
-                operator: '!',
-                argument: common.moveLocation(node, {
-                    type: Syntax.Literal,
-                    value: +!node.value
-                })
-            });
-        }
-
-        if (node.type === Syntax.BinaryExpression && node.operator === '==' || node.operator === '!=') {
-            if (isBooleanLiteral(node.left)) {
-                modified = true;
-                node.left = common.moveLocation(node.left, {
-                    type: Syntax.Literal,
-                    value: +node.left.value
-                });
-                return node;
-            }
-            if (isBooleanLiteral(node.right)) {
-                modified = true;
-                node.right = common.moveLocation(node.right, {
-                    type: Syntax.Literal,
-                    value: +node.right.value
-                });
-                return node;
-            }
-        }
-
-        return node;
-    }
-
-    function rewriteBoolean(tree, options) {
-        var result;
-
-        modified = false;
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-
-        result = common.replace(result, {
-            enter: rewrite
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    rewriteBoolean.passName = Name;
-    module.exports = rewriteBoolean;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],74:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common, modified;
-
-    Name = 'rewrite-conditional-expression';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function rewrite(node) {
-        var test, consequent, alternate;
-        test = node.test;
-        consequent = node.consequent;
-        alternate = node.alternate;
-        if (test.type === Syntax.UnaryExpression && test.operator === '!') {
-            modified = true;
-            node.consequent = alternate;
-            node.alternate = consequent;
-            node.test = test.argument;
-        }
-    }
-
-    function rewriteConditionalExpression(tree, options) {
-        var result;
-
-        modified = false;
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                if (node.type === Syntax.ConditionalExpression) {
-                    rewrite(node);
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
-    }
-
-    rewriteConditionalExpression.passName = Name;
-    module.exports = rewriteConditionalExpression;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],75:[function(require,module,exports){
-/*
-  Copyright (C) 2012 Michael Ficarra <esmangle.copyright@michael.ficarra.me>
   Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
   Redistribution and use in source and binary forms, with or without
@@ -19220,205 +21156,90 @@ module.exports={
   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-/*jslint bitwise:true */
-/*global module:true, require:true*/
+
 (function () {
     'use strict';
 
-    var Name, Syntax, common;
+    exports.ast = require('./ast');
+    exports.code = require('./code');
+    exports.keyword = require('./keyword');
+}());
+/* vim: set sw=4 ts=4 et tw=80 : */
 
-    Name = 'transform-infinity';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function transformInfinity(tree, options) {
-        var result, modified;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        result = common.replace(result, {
-            enter: function enter(node) {
-                if (node.type === Syntax.Literal && typeof node.value === 'number') {
-                    if (node.value === Infinity) {
-                        modified = true;
-                        return common.moveLocation(node, {
-                            type: Syntax.BinaryExpression,
-                            operator: '/',
-                            left: {type: Syntax.Literal, value: 1},
-                            right: {type: Syntax.Literal, value: 0}
-                        });
-                    }
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
+},{"./ast":83,"./code":84,"./keyword":85}],87:[function(require,module,exports){
+module.exports={
+  "name": "esshorten",
+  "description": "Shorten (mangle) names in JavaScript code",
+  "main": "lib/esshorten.js",
+  "version": "1.1.1",
+  "engines": {
+    "node": ">=0.6.0"
+  },
+  "directories": {
+    "lib": "./lib"
+  },
+  "maintainers": [
+    {
+      "name": "constellation",
+      "email": "utatane.tea@gmail.com"
+    },
+    {
+      "name": "michaelficarra",
+      "email": "npm@michael.ficarra.me"
     }
-
-    transformInfinity.passName = Name;
-    module.exports = transformInfinity;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],76:[function(require,module,exports){
-/*
-  Copyright (C) 2012 Michael Ficarra <esmangle.copyright@michael.ficarra.me>
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global module:true, require:true*/
-(function () {
-    'use strict';
-
-    var Name, Syntax, common;
-
-    Name = 'transform-static-to-dynamic-property-access';
-    common = require('../common');
-    Syntax = common.Syntax;
-
-    function transformStaticToDynamicPropertyAccess(tree, options) {
-        var result, modified;
-
-        result = options.get('destructive', { pathName: Name }) ? tree : common.deepCopy(tree);
-        modified = false;
-
-        common.traverse(result, {
-            enter: function enter(node) {
-                var property;
-
-                if (node.type !== Syntax.MemberExpression || node.computed || node.property.type !== Syntax.Identifier) {
-                    return;
-                }
-
-                property = node.property;
-                switch (property.name) {
-                case 'undefined':
-                    modified = true;
-                    node.computed = true;
-                    node.property = common.moveLocation(property, {
-                        type: Syntax.UnaryExpression,
-                        operator: 'void',
-                        argument: {type: Syntax.Literal, value: 0}
-                    });
-                    break;
-                case 'true':
-                case 'false':
-                    modified = true;
-                    node.computed = true;
-                    node.property = common.moveLocation(property, {
-                        type: Syntax.Literal,
-                        value: property.name === 'true'
-                    });
-                    break;
-                case 'Infinity':
-                    modified = true;
-                    node.computed = true;
-                    node.property = common.moveLocation(property, {
-                        type: Syntax.BinaryExpression,
-                        operator: '/',
-                        left: {type: Syntax.Literal, value: 1},
-                        right: {type: Syntax.Literal, value: 0}
-                    });
-                    break;
-                }
-            }
-        });
-
-        return {
-            result: result,
-            modified: modified
-        };
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/estools/esshorten.git"
+  },
+  "dependencies": {
+    "estraverse": "~4.1.1",
+    "escope": "~1.0.1",
+    "esutils": "~2.0.2"
+  },
+  "devDependencies": {
+    "chai": "*",
+    "commonjs-everywhere": "~0.9.7",
+    "jshint-stylish": "~2.0.1",
+    "gulp-mocha": "~2.1.3",
+    "gulp-jshint": "~1.11.2",
+    "gulp": "~3.9.0",
+    "coffee-script": "~1.10.0"
+  },
+  "licenses": [
+    {
+      "type": "BSD",
+      "url": "http://github.com/estools/esshorten/raw/master/LICENSE.BSD"
     }
+  ],
+  "scripts": {
+    "test": "gulp travis",
+    "lint": "gulp lint",
+    "unit-test": "gulp test"
+  },
+  "gitHead": "213bac0e0a321d4ab837d3ee7c93433c5cd67763",
+  "bugs": {
+    "url": "https://github.com/estools/esshorten/issues"
+  },
+  "homepage": "https://github.com/estools/esshorten#readme",
+  "_id": "esshorten@1.1.1",
+  "_shasum": "174f96b7cc267e46872d814e7db7c290bdff61a9",
+  "_from": "esshorten@>=1.1.0 <1.2.0",
+  "_npmVersion": "2.14.4",
+  "_nodeVersion": "4.1.1",
+  "_npmUser": {
+    "name": "constellation",
+    "email": "utatane.tea@gmail.com"
+  },
+  "dist": {
+    "shasum": "174f96b7cc267e46872d814e7db7c290bdff61a9",
+    "tarball": "http://registry.npmjs.org/esshorten/-/esshorten-1.1.1.tgz"
+  },
+  "_resolved": "https://registry.npmjs.org/esshorten/-/esshorten-1.1.1.tgz",
+  "readme": "ERROR: No README data found!"
+}
 
-    transformStaticToDynamicPropertyAccess.passName = Name;
-    module.exports = transformStaticToDynamicPropertyAccess;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../common":42}],77:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*jslint bitwise:true */
-/*global require:true*/
-(function () {
-    'use strict';
-
-    var common;
-
-    common = require('./common');
-
-    exports.get = function get(root, query) {
-        var i, iz, name, node;
-        node = root;
-        for (i = 0, iz = query.length; i < iz; ++i) {
-            name = query[i];
-            node = node[name];
-        }
-        return node;
-    };
-
-    exports.set = function set(root, query, value) {
-        var i, iz, name, node;
-        common.assert(query.length > 0);
-        node = root;
-        for (i = 0, iz = query.length - 1; i < iz; ++i) {
-            name = query[i];
-            node = node[name];
-        }
-        name = query[i];
-        node[name] = value;
-    };
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"./common":42}],78:[function(require,module,exports){
+},{}],88:[function(require,module,exports){
 /*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
@@ -20109,7 +21930,7 @@ module.exports={
 }));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{}],79:[function(require,module,exports){
+},{}],89:[function(require,module,exports){
 /*
   Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
@@ -20201,7 +22022,7 @@ module.exports={
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{}],80:[function(require,module,exports){
+},{}],90:[function(require,module,exports){
 /*
   Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
@@ -20320,7 +22141,7 @@ module.exports={
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"./code":79}],81:[function(require,module,exports){
+},{"./code":89}],91:[function(require,module,exports){
 /*
   Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
@@ -20354,123 +22175,90 @@ module.exports={
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"./code":79,"./keyword":80}],82:[function(require,module,exports){
+},{"./code":89,"./keyword":90}],92:[function(require,module,exports){
 module.exports={
-  "_args": [
-    [
-      "esmangle@^1.0.1",
-      "/Users/long/webppl"
-    ]
-  ],
-  "_from": "esmangle@>=1.0.1 <2.0.0",
-  "_id": "esmangle@1.0.1",
-  "_inCache": true,
-  "_installable": true,
-  "_location": "/esmangle",
-  "_npmUser": {
-    "email": "utatane.tea@gmail.com",
-    "name": "constellation"
-  },
-  "_npmVersion": "1.3.11",
-  "_phantomChildren": {
-    "deep-is": "0.1.3",
-    "fast-levenshtein": "1.0.7",
-    "levn": "0.2.5",
-    "prelude-ls": "1.1.2",
-    "source-map": "0.1.43",
-    "type-check": "0.3.2",
-    "wordwrap": "0.0.3"
-  },
-  "_requested": {
-    "name": "esmangle",
-    "raw": "esmangle@^1.0.1",
-    "rawSpec": "^1.0.1",
-    "scope": null,
-    "spec": ">=1.0.1 <2.0.0",
-    "type": "range"
-  },
-  "_requiredBy": [
-    "/"
-  ],
-  "_resolved": "https://registry.npmjs.org/esmangle/-/esmangle-1.0.1.tgz",
-  "_shasum": "d9bb37b8f8eafbf4e6d4ed6b7aa2956abbd3c4c2",
-  "_shrinkwrap": null,
-  "_spec": "esmangle@^1.0.1",
-  "_where": "/Users/long/webppl",
+  "name": "esmangle",
+  "description": "ECMAScript code mangler / minifier",
+  "homepage": "http://github.com/Constellation/esmangle.html",
+  "main": "lib/esmangle.js",
   "bin": {
     "esmangle": "./bin/esmangle.js"
   },
-  "bugs": {
-    "url": "https://github.com/Constellation/esmangle/issues"
-  },
-  "dependencies": {
-    "escodegen": "~1.3.2",
-    "escope": "~1.0.1",
-    "esprima": "~1.1.1",
-    "esshorten": "~1.1.0",
-    "estraverse": "~1.5.0",
-    "esutils": "~ 1.0.0",
-    "optionator": "~0.3.0",
-    "source-map": "~0.1.33"
-  },
-  "description": "ECMAScript code mangler / minifier",
-  "devDependencies": {
-    "async": "~0.2.9",
-    "chai": "*",
-    "clone": "~0.1.11",
-    "commonjs-everywhere": "~0.9.4",
-    "grunt": "~0.4.2",
-    "grunt-cli": "~0.1.11",
-    "grunt-contrib-clean": "~0.5.0",
-    "grunt-contrib-copy": "~0.5.0",
-    "grunt-contrib-jshint": "~0.8.0",
-    "grunt-mocha-test": "~0.8.1",
-    "grunt-shell": "~0.6.1",
-    "grunt-update-submodules": "~0.2.1",
-    "q": "~0.9.7"
+  "version": "1.0.1",
+  "engines": {
+    "node": ">=0.6.0"
   },
   "directories": {
     "lib": "./lib"
   },
-  "dist": {
-    "shasum": "d9bb37b8f8eafbf4e6d4ed6b7aa2956abbd3c4c2",
-    "tarball": "http://registry.npmjs.org/esmangle/-/esmangle-1.0.1.tgz"
-  },
-  "engines": {
-    "node": ">=0.6.0"
-  },
-  "homepage": "http://github.com/Constellation/esmangle.html",
-  "licenses": [
-    {
-      "type": "BSD",
-      "url": "http://github.com/Constellation/esmangle/raw/master/LICENSE.BSD"
-    }
-  ],
-  "main": "lib/esmangle.js",
   "maintainers": [
     {
       "name": "constellation",
       "email": "utatane.tea@gmail.com"
     }
   ],
-  "name": "esmangle",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/Constellation/esmangle.git"
   },
+  "dependencies": {
+    "esutils": "~ 1.0.0",
+    "esshorten": "~1.1.0",
+    "estraverse": "~1.5.0",
+    "escope": "~1.0.1",
+    "source-map": "~0.1.33",
+    "escodegen": "~1.3.2",
+    "optionator": "~0.3.0",
+    "esprima": "~1.1.1"
+  },
+  "devDependencies": {
+    "chai": "*",
+    "grunt-contrib-jshint": "~0.8.0",
+    "grunt-mocha-test": "~0.8.1",
+    "grunt-contrib-copy": "~0.5.0",
+    "grunt-contrib-clean": "~0.5.0",
+    "async": "~0.2.9",
+    "q": "~0.9.7",
+    "commonjs-everywhere": "~0.9.4",
+    "grunt-cli": "~0.1.11",
+    "grunt": "~0.4.2",
+    "grunt-update-submodules": "~0.2.1",
+    "grunt-shell": "~0.6.1",
+    "clone": "~0.1.11"
+  },
+  "licenses": [
+    {
+      "type": "BSD",
+      "url": "http://github.com/Constellation/esmangle/raw/master/LICENSE.BSD"
+    }
+  ],
   "scripts": {
-    "build": "grunt build",
+    "test": "grunt travis",
     "lint": "grunt lint",
     "regression-test": "grunt test:regression",
-    "test": "grunt travis",
-    "unit-test": "grunt test"
+    "unit-test": "grunt test",
+    "build": "grunt build"
   },
-  "version": "1.0.1"
+  "bugs": {
+    "url": "https://github.com/Constellation/esmangle/issues"
+  },
+  "_id": "esmangle@1.0.1",
+  "dist": {
+    "shasum": "d9bb37b8f8eafbf4e6d4ed6b7aa2956abbd3c4c2",
+    "tarball": "http://registry.npmjs.org/esmangle/-/esmangle-1.0.1.tgz"
+  },
+  "_from": "esmangle@>=1.0.1 <2.0.0",
+  "_npmVersion": "1.3.11",
+  "_npmUser": {
+    "name": "constellation",
+    "email": "utatane.tea@gmail.com"
+  },
+  "_shasum": "d9bb37b8f8eafbf4e6d4ed6b7aa2956abbd3c4c2",
+  "_resolved": "https://registry.npmjs.org/esmangle/-/esmangle-1.0.1.tgz",
+  "readme": "ERROR: No README data found!"
 }
 
-},{}],83:[function(require,module,exports){
+},{}],93:[function(require,module,exports){
 /*
   Copyright (c) jQuery Foundation, Inc. and Contributors, All Rights Reserved.
 
@@ -21609,6 +23397,7 @@ module.exports={
         }
 
         if (quote !== '') {
+            index = start;
             throwUnexpectedToken();
         }
 
@@ -23201,7 +24990,7 @@ module.exports={
 
                 return node.finishProperty(
                     'init', key, false,
-                    new WrappingNode(keyToken).finishAssignmentPattern(key, init), false, false);
+                    new WrappingNode(keyToken).finishAssignmentPattern(key, init), false, true);
             } else if (!match(':')) {
                 params.push(keyToken);
                 return node.finishProperty('init', key, false, key, false, true);
@@ -25293,7 +27082,7 @@ module.exports={
 
     function parseFunctionSourceElements() {
         var statement, body = [], token, directive, firstRestricted,
-            oldLabelSet, oldInIteration, oldInSwitch, oldInFunctionBody, oldParenthesisCount,
+            oldLabelSet, oldInIteration, oldInSwitch, oldInFunctionBody,
             node = new Node();
 
         expect('{');
@@ -25327,13 +27116,11 @@ module.exports={
         oldInIteration = state.inIteration;
         oldInSwitch = state.inSwitch;
         oldInFunctionBody = state.inFunctionBody;
-        oldParenthesisCount = state.parenthesizedCount;
 
         state.labelSet = {};
         state.inIteration = false;
         state.inSwitch = false;
         state.inFunctionBody = true;
-        state.parenthesizedCount = 0;
 
         while (startIndex < length) {
             if (match('}')) {
@@ -25348,7 +27135,6 @@ module.exports={
         state.inIteration = oldInIteration;
         state.inSwitch = oldInSwitch;
         state.inFunctionBody = oldInFunctionBody;
-        state.parenthesizedCount = oldParenthesisCount;
 
         return node.finishBlockStatement(body);
     }
@@ -26182,7 +27968,7 @@ module.exports={
     }
 
     // Sync with *.json manifests.
-    exports.version = '2.7.1';
+    exports.version = '2.7.2';
 
     exports.tokenize = tokenize;
 
@@ -26213,1420 +27999,18 @@ module.exports={
 }));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{}],84:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*global exports:true*/
-
-(function () {
-    'use strict';
-
-    var escope,
-        estraverse,
-        esutils,
-        utility,
-        version,
-        assert,
-        Syntax,
-        Map;
-
-    escope = require('escope');
-    estraverse = require('estraverse');
-    esutils = require('esutils');
-    utility = require('./utility');
-    Map = require('./map');
-    version = require('../package.json').version;
-
-    Syntax = estraverse.Syntax;
-
-    assert = function assert(cond, message) {
-        if (!cond) {
-            throw new Error(message);
-        }
-    };
-
-    if (version.indexOf('-dev', version.length - 4) === -1) {
-        assert = function () { };
-    }
-
-    function NameGenerator(scope, options) {
-        this._scope = scope;
-        this._functionName = '';
-        if (!options.distinguishFunctionExpressionScope &&
-                this._scope.upper &&
-                this._scope.upper.functionExpressionScope) {
-            this._functionName = this._scope.upper.block.id.name;
-        }
-    }
-
-    NameGenerator.prototype.passAsUnique = function passAsUnique(name) {
-        var i, iz;
-        if (this._functionName === name) {
-            return false;
-        }
-        if (esutils.keyword.isKeywordES5(name, true) || esutils.keyword.isRestrictedWord(name)) {
-            return false;
-        }
-        if (this._scope.taints.has(name)) {
-            return false;
-        }
-        for (i = 0, iz = this._scope.through.length; i < iz; ++i) {
-            if (this._scope.through[i].identifier.name === name) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    NameGenerator.prototype.generateName = function generateName(tip) {
-        do {
-            tip = utility.generateNextName(tip);
-        } while (!this.passAsUnique(tip));
-        return tip;
-    };
-
-    function run(scope, options) {
-        var i, iz, j, jz, variable, name, def, ref, generator;
-
-        generator = new NameGenerator(scope, options);
-
-        if (scope.isStatic()) {
-            name = '9';
-
-            scope.variables.sort(function (a, b) {
-                if (a.tainted) {
-                    return 1;
-                }
-                if (b.tainted) {
-                    return -1;
-                }
-                return (b.identifiers.length + b.references.length) - (a.identifiers.length + a.references.length);
-            });
-
-            for (i = 0, iz = scope.variables.length; i < iz; ++i) {
-                variable = scope.variables[i];
-
-                if (variable.tainted) {
-                    continue;
-                }
-
-                // Because `arguments` definition is nothing.
-                // But if `var arguments` is defined, identifiers.length !== 0
-                // and this doesn't indicate arguments.
-                if (variable.identifiers.length === 0) {
-                    // do not change names because this is special name
-                    continue;
-                }
-
-                name = generator.generateName(name);
-
-                for (j = 0, jz = variable.identifiers.length; j < jz; ++j) {
-                    def = variable.identifiers[j];
-                    // change definition's name
-                    def.name = name;
-                }
-
-                for (j = 0, jz = variable.references.length; j < jz; ++j) {
-                    ref = variable.references[j];
-                    // change reference's name
-                    ref.identifier.name = name;
-                }
-            }
-        }
-    }
-
-    function Label(node, upper) {
-        this.node = node;
-        this.upper = upper;
-        this.users = [];
-        this.names = new Map();
-        this.name = null;
-    }
-
-    Label.prototype.mangle = function () {
-        var tip, current, i, iz;
-        tip = '9';
-
-        // merge already used names
-        for (current = this.upper; current; current = current.upper) {
-            if (current.name !== null) {
-                this.names.set(current.name, true);
-            }
-        }
-
-        do {
-            tip = utility.generateNextName(tip);
-        } while (this.names.has(tip));
-
-        this.name = tip;
-
-        for (current = this.upper; current; current = current.upper) {
-            current.names.set(tip, true);
-        }
-
-        this.node.label.name = tip;
-        for (i = 0, iz = this.users.length; i < iz; ++i) {
-            this.users[i].label.name = tip;
-        }
-    };
-
-    function LabelScope(upper) {
-        this.map = new Map();
-        this.upper = upper;
-        this.label = null;
-        this.labels = [];
-    }
-
-    LabelScope.prototype.register = function register(node) {
-        var name;
-
-        assert(node.type === Syntax.LabeledStatement, 'node should be LabeledStatement');
-
-        this.label = new Label(node, this.label);
-        this.labels.push(this.label);
-
-        name = node.label.name;
-        assert(!this.map.has(name), 'duplicate label is found');
-        this.map.set(name, this.label);
-    };
-
-    LabelScope.prototype.unregister = function unregister(node) {
-        var name, ref;
-        if (node.type !== Syntax.LabeledStatement) {
-            return;
-        }
-
-        name = node.label.name;
-        ref = this.map.get(name);
-        this.map['delete'](name);
-
-        this.label = ref.upper;
-    };
-
-    LabelScope.prototype.resolve = function resolve(node) {
-        var name;
-        if (node.label) {
-            name = node.label.name;
-            assert(this.map.has(name), 'unresolved label');
-            this.map.get(name).users.push(node);
-        }
-    };
-
-    LabelScope.prototype.close = function close() {
-        var i, iz, label;
-        this.labels.sort(function (lhs, rhs) {
-            return rhs.users.length - lhs.users.length;
-        });
-
-        for (i = 0, iz = this.labels.length; i < iz; ++i) {
-            label = this.labels[i];
-            label.mangle();
-        }
-
-        return this.upper;
-    };
-
-    function mangleLabels(tree) {
-        var labelScope;
-
-        estraverse.traverse(tree, {
-            enter: function (node) {
-                if (escope.Scope.isVariableScopeRequired(node)) {
-                    labelScope = new LabelScope(labelScope);
-                    return;
-                }
-
-                switch (node.type) {
-                case Syntax.LabeledStatement:
-                    labelScope.register(node);
-                    break;
-
-                case Syntax.BreakStatement:
-                case Syntax.ContinueStatement:
-                    labelScope.resolve(node);
-                    break;
-                }
-            },
-            leave: function (node) {
-                labelScope.unregister(node);
-                if (escope.Scope.isVariableScopeRequired(node)) {
-                    labelScope = labelScope.close();
-                }
-            }
-        });
-
-        return tree;
-    }
-
-    function mangle(tree, options) {
-        var result, manager, i, iz;
-
-        if (options == null) {
-            options = { destructive: true };
-        }
-
-        result = (options.destructive == null || options.destructive) ? tree : utility.deepCopy(tree);
-        manager = escope.analyze(result, { directive: true });
-
-        // mangling names
-        for (i = 0, iz = manager.scopes.length; i < iz; ++i) {
-            run(manager.scopes[i], options);
-        }
-
-        // mangling labels
-        return mangleLabels(result);
-    }
-
-    exports.mangle = mangle;
-    exports.version = version;
-    exports.generateNextName = utility.generateNextName;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"../package.json":87,"./map":85,"./utility":86,"escope":38,"estraverse":88,"esutils":93}],85:[function(require,module,exports){
-arguments[4][45][0].apply(exports,arguments)
-},{"dup":45}],86:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*global exports:true*/
-
-(function () {
-    'use strict';
-
-    var isArray, NameSequence, ZeroSequenceCache;
-
-    isArray = Array.isArray;
-    if (!isArray) {
-        isArray = function isArray(array) {
-            return Object.prototype.toString.call(array) === '[object Array]';
-        };
-    }
-
-    function deepCopy(obj) {
-        function deepCopyInternal(obj, result) {
-            var key, val;
-            for (key in obj) {
-                if (key.lastIndexOf('__', 0) === 0) {
-                    continue;
-                }
-                if (obj.hasOwnProperty(key)) {
-                    val = obj[key];
-                    if (typeof val === 'object' && val !== null) {
-                        if (val instanceof RegExp) {
-                            val = new RegExp(val);
-                        } else {
-                            val = deepCopyInternal(val, isArray(val) ? [] : {});
-                        }
-                    }
-                    result[key] = val;
-                }
-            }
-            return result;
-        }
-        return deepCopyInternal(obj, isArray(obj) ? [] : {});
-    }
-
-    function stringRepeat(str, num) {
-        var result = '';
-
-        for (num |= 0; num > 0; num >>>= 1, str += str) {
-            if (num & 1) {
-                result += str;
-            }
-        }
-
-        return result;
-    }
-
-    // generateNextName
-
-    ZeroSequenceCache = [];
-
-    function zeroSequence(num) {
-        var res = ZeroSequenceCache[num];
-        if (res !== undefined) {
-            return res;
-        }
-        res = stringRepeat('0', num);
-        ZeroSequenceCache[num] = res;
-        return res;
-    }
-
-    NameSequence = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$'.split('');
-
-    function generateNextName(name) {
-        var ch, index, cur;
-
-        cur = name.length - 1;
-        do {
-            ch = name.charAt(cur);
-            index = NameSequence.indexOf(ch);
-            if (index !== (NameSequence.length - 1)) {
-                return name.substring(0, cur) + NameSequence[index + 1] + zeroSequence(name.length - (cur + 1));
-            }
-            --cur;
-        } while (cur >= 0);
-        return 'a' + zeroSequence(name.length);
-    }
-
-    exports.generateNextName = generateNextName;
-    exports.deepCopy = deepCopy;
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{}],87:[function(require,module,exports){
+},{}],94:[function(require,module,exports){
+arguments[4][81][0].apply(exports,arguments)
+},{"./package.json":95,"dup":81}],95:[function(require,module,exports){
 module.exports={
-  "_args": [
-    [
-      "esshorten@~1.1.0",
-      "/Users/long/webppl/node_modules/esmangle"
-    ]
-  ],
-  "_from": "esshorten@>=1.1.0 <1.2.0",
-  "_id": "esshorten@1.1.1",
-  "_inCache": true,
-  "_installable": true,
-  "_location": "/esshorten",
-  "_nodeVersion": "4.1.1",
-  "_npmUser": {
-    "email": "utatane.tea@gmail.com",
-    "name": "constellation"
-  },
-  "_npmVersion": "2.14.4",
-  "_phantomChildren": {},
-  "_requested": {
-    "name": "esshorten",
-    "raw": "esshorten@~1.1.0",
-    "rawSpec": "~1.1.0",
-    "scope": null,
-    "spec": ">=1.1.0 <1.2.0",
-    "type": "range"
-  },
-  "_requiredBy": [
-    "/esmangle"
-  ],
-  "_resolved": "https://registry.npmjs.org/esshorten/-/esshorten-1.1.1.tgz",
-  "_shasum": "174f96b7cc267e46872d814e7db7c290bdff61a9",
-  "_shrinkwrap": null,
-  "_spec": "esshorten@~1.1.0",
-  "_where": "/Users/long/webppl/node_modules/esmangle",
-  "bugs": {
-    "url": "https://github.com/estools/esshorten/issues"
-  },
-  "dependencies": {
-    "escope": "~1.0.1",
-    "estraverse": "~4.1.1",
-    "esutils": "~2.0.2"
-  },
-  "description": "Shorten (mangle) names in JavaScript code",
-  "devDependencies": {
-    "chai": "*",
-    "coffee-script": "~1.10.0",
-    "commonjs-everywhere": "~0.9.7",
-    "gulp": "~3.9.0",
-    "gulp-jshint": "~1.11.2",
-    "gulp-mocha": "~2.1.3",
-    "jshint-stylish": "~2.0.1"
-  },
-  "directories": {
-    "lib": "./lib"
-  },
-  "dist": {
-    "shasum": "174f96b7cc267e46872d814e7db7c290bdff61a9",
-    "tarball": "http://registry.npmjs.org/esshorten/-/esshorten-1.1.1.tgz"
-  },
-  "engines": {
-    "node": ">=0.6.0"
-  },
-  "gitHead": "213bac0e0a321d4ab837d3ee7c93433c5cd67763",
-  "homepage": "https://github.com/estools/esshorten#readme",
-  "licenses": [
-    {
-      "type": "BSD",
-      "url": "http://github.com/estools/esshorten/raw/master/LICENSE.BSD"
-    }
-  ],
-  "main": "lib/esshorten.js",
-  "maintainers": [
-    {
-      "name": "constellation",
-      "email": "utatane.tea@gmail.com"
-    },
-    {
-      "name": "michaelficarra",
-      "email": "npm@michael.ficarra.me"
-    }
-  ],
-  "name": "esshorten",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
-  "repository": {
-    "type": "git",
-    "url": "git+ssh://git@github.com/estools/esshorten.git"
-  },
-  "scripts": {
-    "lint": "gulp lint",
-    "test": "gulp travis",
-    "unit-test": "gulp test"
-  },
-  "version": "1.1.1"
-}
-
-},{}],88:[function(require,module,exports){
-/*
-  Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
-  Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-/*jslint vars:false, bitwise:true*/
-/*jshint indent:4*/
-/*global exports:true*/
-(function clone(exports) {
-    'use strict';
-
-    var Syntax,
-        isArray,
-        VisitorOption,
-        VisitorKeys,
-        objectCreate,
-        objectKeys,
-        BREAK,
-        SKIP,
-        REMOVE;
-
-    function ignoreJSHintError() { }
-
-    isArray = Array.isArray;
-    if (!isArray) {
-        isArray = function isArray(array) {
-            return Object.prototype.toString.call(array) === '[object Array]';
-        };
-    }
-
-    function deepCopy(obj) {
-        var ret = {}, key, val;
-        for (key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                val = obj[key];
-                if (typeof val === 'object' && val !== null) {
-                    ret[key] = deepCopy(val);
-                } else {
-                    ret[key] = val;
-                }
-            }
-        }
-        return ret;
-    }
-
-    function shallowCopy(obj) {
-        var ret = {}, key;
-        for (key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                ret[key] = obj[key];
-            }
-        }
-        return ret;
-    }
-    ignoreJSHintError(shallowCopy);
-
-    // based on LLVM libc++ upper_bound / lower_bound
-    // MIT License
-
-    function upperBound(array, func) {
-        var diff, len, i, current;
-
-        len = array.length;
-        i = 0;
-
-        while (len) {
-            diff = len >>> 1;
-            current = i + diff;
-            if (func(array[current])) {
-                len = diff;
-            } else {
-                i = current + 1;
-                len -= diff + 1;
-            }
-        }
-        return i;
-    }
-
-    function lowerBound(array, func) {
-        var diff, len, i, current;
-
-        len = array.length;
-        i = 0;
-
-        while (len) {
-            diff = len >>> 1;
-            current = i + diff;
-            if (func(array[current])) {
-                i = current + 1;
-                len -= diff + 1;
-            } else {
-                len = diff;
-            }
-        }
-        return i;
-    }
-    ignoreJSHintError(lowerBound);
-
-    objectCreate = Object.create || (function () {
-        function F() { }
-
-        return function (o) {
-            F.prototype = o;
-            return new F();
-        };
-    })();
-
-    objectKeys = Object.keys || function (o) {
-        var keys = [], key;
-        for (key in o) {
-            keys.push(key);
-        }
-        return keys;
-    };
-
-    function extend(to, from) {
-        var keys = objectKeys(from), key, i, len;
-        for (i = 0, len = keys.length; i < len; i += 1) {
-            key = keys[i];
-            to[key] = from[key];
-        }
-        return to;
-    }
-
-    Syntax = {
-        AssignmentExpression: 'AssignmentExpression',
-        AssignmentPattern: 'AssignmentPattern',
-        ArrayExpression: 'ArrayExpression',
-        ArrayPattern: 'ArrayPattern',
-        ArrowFunctionExpression: 'ArrowFunctionExpression',
-        AwaitExpression: 'AwaitExpression', // CAUTION: It's deferred to ES7.
-        BlockStatement: 'BlockStatement',
-        BinaryExpression: 'BinaryExpression',
-        BreakStatement: 'BreakStatement',
-        CallExpression: 'CallExpression',
-        CatchClause: 'CatchClause',
-        ClassBody: 'ClassBody',
-        ClassDeclaration: 'ClassDeclaration',
-        ClassExpression: 'ClassExpression',
-        ComprehensionBlock: 'ComprehensionBlock',  // CAUTION: It's deferred to ES7.
-        ComprehensionExpression: 'ComprehensionExpression',  // CAUTION: It's deferred to ES7.
-        ConditionalExpression: 'ConditionalExpression',
-        ContinueStatement: 'ContinueStatement',
-        DebuggerStatement: 'DebuggerStatement',
-        DirectiveStatement: 'DirectiveStatement',
-        DoWhileStatement: 'DoWhileStatement',
-        EmptyStatement: 'EmptyStatement',
-        ExportAllDeclaration: 'ExportAllDeclaration',
-        ExportDefaultDeclaration: 'ExportDefaultDeclaration',
-        ExportNamedDeclaration: 'ExportNamedDeclaration',
-        ExportSpecifier: 'ExportSpecifier',
-        ExpressionStatement: 'ExpressionStatement',
-        ForStatement: 'ForStatement',
-        ForInStatement: 'ForInStatement',
-        ForOfStatement: 'ForOfStatement',
-        FunctionDeclaration: 'FunctionDeclaration',
-        FunctionExpression: 'FunctionExpression',
-        GeneratorExpression: 'GeneratorExpression',  // CAUTION: It's deferred to ES7.
-        Identifier: 'Identifier',
-        IfStatement: 'IfStatement',
-        ImportDeclaration: 'ImportDeclaration',
-        ImportDefaultSpecifier: 'ImportDefaultSpecifier',
-        ImportNamespaceSpecifier: 'ImportNamespaceSpecifier',
-        ImportSpecifier: 'ImportSpecifier',
-        Literal: 'Literal',
-        LabeledStatement: 'LabeledStatement',
-        LogicalExpression: 'LogicalExpression',
-        MemberExpression: 'MemberExpression',
-        MetaProperty: 'MetaProperty',
-        MethodDefinition: 'MethodDefinition',
-        ModuleSpecifier: 'ModuleSpecifier',
-        NewExpression: 'NewExpression',
-        ObjectExpression: 'ObjectExpression',
-        ObjectPattern: 'ObjectPattern',
-        Program: 'Program',
-        Property: 'Property',
-        RestElement: 'RestElement',
-        ReturnStatement: 'ReturnStatement',
-        SequenceExpression: 'SequenceExpression',
-        SpreadElement: 'SpreadElement',
-        Super: 'Super',
-        SwitchStatement: 'SwitchStatement',
-        SwitchCase: 'SwitchCase',
-        TaggedTemplateExpression: 'TaggedTemplateExpression',
-        TemplateElement: 'TemplateElement',
-        TemplateLiteral: 'TemplateLiteral',
-        ThisExpression: 'ThisExpression',
-        ThrowStatement: 'ThrowStatement',
-        TryStatement: 'TryStatement',
-        UnaryExpression: 'UnaryExpression',
-        UpdateExpression: 'UpdateExpression',
-        VariableDeclaration: 'VariableDeclaration',
-        VariableDeclarator: 'VariableDeclarator',
-        WhileStatement: 'WhileStatement',
-        WithStatement: 'WithStatement',
-        YieldExpression: 'YieldExpression'
-    };
-
-    VisitorKeys = {
-        AssignmentExpression: ['left', 'right'],
-        AssignmentPattern: ['left', 'right'],
-        ArrayExpression: ['elements'],
-        ArrayPattern: ['elements'],
-        ArrowFunctionExpression: ['params', 'body'],
-        AwaitExpression: ['argument'], // CAUTION: It's deferred to ES7.
-        BlockStatement: ['body'],
-        BinaryExpression: ['left', 'right'],
-        BreakStatement: ['label'],
-        CallExpression: ['callee', 'arguments'],
-        CatchClause: ['param', 'body'],
-        ClassBody: ['body'],
-        ClassDeclaration: ['id', 'superClass', 'body'],
-        ClassExpression: ['id', 'superClass', 'body'],
-        ComprehensionBlock: ['left', 'right'],  // CAUTION: It's deferred to ES7.
-        ComprehensionExpression: ['blocks', 'filter', 'body'],  // CAUTION: It's deferred to ES7.
-        ConditionalExpression: ['test', 'consequent', 'alternate'],
-        ContinueStatement: ['label'],
-        DebuggerStatement: [],
-        DirectiveStatement: [],
-        DoWhileStatement: ['body', 'test'],
-        EmptyStatement: [],
-        ExportAllDeclaration: ['source'],
-        ExportDefaultDeclaration: ['declaration'],
-        ExportNamedDeclaration: ['declaration', 'specifiers', 'source'],
-        ExportSpecifier: ['exported', 'local'],
-        ExpressionStatement: ['expression'],
-        ForStatement: ['init', 'test', 'update', 'body'],
-        ForInStatement: ['left', 'right', 'body'],
-        ForOfStatement: ['left', 'right', 'body'],
-        FunctionDeclaration: ['id', 'params', 'body'],
-        FunctionExpression: ['id', 'params', 'body'],
-        GeneratorExpression: ['blocks', 'filter', 'body'],  // CAUTION: It's deferred to ES7.
-        Identifier: [],
-        IfStatement: ['test', 'consequent', 'alternate'],
-        ImportDeclaration: ['specifiers', 'source'],
-        ImportDefaultSpecifier: ['local'],
-        ImportNamespaceSpecifier: ['local'],
-        ImportSpecifier: ['imported', 'local'],
-        Literal: [],
-        LabeledStatement: ['label', 'body'],
-        LogicalExpression: ['left', 'right'],
-        MemberExpression: ['object', 'property'],
-        MetaProperty: ['meta', 'property'],
-        MethodDefinition: ['key', 'value'],
-        ModuleSpecifier: [],
-        NewExpression: ['callee', 'arguments'],
-        ObjectExpression: ['properties'],
-        ObjectPattern: ['properties'],
-        Program: ['body'],
-        Property: ['key', 'value'],
-        RestElement: [ 'argument' ],
-        ReturnStatement: ['argument'],
-        SequenceExpression: ['expressions'],
-        SpreadElement: ['argument'],
-        Super: [],
-        SwitchStatement: ['discriminant', 'cases'],
-        SwitchCase: ['test', 'consequent'],
-        TaggedTemplateExpression: ['tag', 'quasi'],
-        TemplateElement: [],
-        TemplateLiteral: ['quasis', 'expressions'],
-        ThisExpression: [],
-        ThrowStatement: ['argument'],
-        TryStatement: ['block', 'handler', 'finalizer'],
-        UnaryExpression: ['argument'],
-        UpdateExpression: ['argument'],
-        VariableDeclaration: ['declarations'],
-        VariableDeclarator: ['id', 'init'],
-        WhileStatement: ['test', 'body'],
-        WithStatement: ['object', 'body'],
-        YieldExpression: ['argument']
-    };
-
-    // unique id
-    BREAK = {};
-    SKIP = {};
-    REMOVE = {};
-
-    VisitorOption = {
-        Break: BREAK,
-        Skip: SKIP,
-        Remove: REMOVE
-    };
-
-    function Reference(parent, key) {
-        this.parent = parent;
-        this.key = key;
-    }
-
-    Reference.prototype.replace = function replace(node) {
-        this.parent[this.key] = node;
-    };
-
-    Reference.prototype.remove = function remove() {
-        if (isArray(this.parent)) {
-            this.parent.splice(this.key, 1);
-            return true;
-        } else {
-            this.replace(null);
-            return false;
-        }
-    };
-
-    function Element(node, path, wrap, ref) {
-        this.node = node;
-        this.path = path;
-        this.wrap = wrap;
-        this.ref = ref;
-    }
-
-    function Controller() { }
-
-    // API:
-    // return property path array from root to current node
-    Controller.prototype.path = function path() {
-        var i, iz, j, jz, result, element;
-
-        function addToPath(result, path) {
-            if (isArray(path)) {
-                for (j = 0, jz = path.length; j < jz; ++j) {
-                    result.push(path[j]);
-                }
-            } else {
-                result.push(path);
-            }
-        }
-
-        // root node
-        if (!this.__current.path) {
-            return null;
-        }
-
-        // first node is sentinel, second node is root element
-        result = [];
-        for (i = 2, iz = this.__leavelist.length; i < iz; ++i) {
-            element = this.__leavelist[i];
-            addToPath(result, element.path);
-        }
-        addToPath(result, this.__current.path);
-        return result;
-    };
-
-    // API:
-    // return type of current node
-    Controller.prototype.type = function () {
-        var node = this.current();
-        return node.type || this.__current.wrap;
-    };
-
-    // API:
-    // return array of parent elements
-    Controller.prototype.parents = function parents() {
-        var i, iz, result;
-
-        // first node is sentinel
-        result = [];
-        for (i = 1, iz = this.__leavelist.length; i < iz; ++i) {
-            result.push(this.__leavelist[i].node);
-        }
-
-        return result;
-    };
-
-    // API:
-    // return current node
-    Controller.prototype.current = function current() {
-        return this.__current.node;
-    };
-
-    Controller.prototype.__execute = function __execute(callback, element) {
-        var previous, result;
-
-        result = undefined;
-
-        previous  = this.__current;
-        this.__current = element;
-        this.__state = null;
-        if (callback) {
-            result = callback.call(this, element.node, this.__leavelist[this.__leavelist.length - 1].node);
-        }
-        this.__current = previous;
-
-        return result;
-    };
-
-    // API:
-    // notify control skip / break
-    Controller.prototype.notify = function notify(flag) {
-        this.__state = flag;
-    };
-
-    // API:
-    // skip child nodes of current node
-    Controller.prototype.skip = function () {
-        this.notify(SKIP);
-    };
-
-    // API:
-    // break traversals
-    Controller.prototype['break'] = function () {
-        this.notify(BREAK);
-    };
-
-    // API:
-    // remove node
-    Controller.prototype.remove = function () {
-        this.notify(REMOVE);
-    };
-
-    Controller.prototype.__initialize = function(root, visitor) {
-        this.visitor = visitor;
-        this.root = root;
-        this.__worklist = [];
-        this.__leavelist = [];
-        this.__current = null;
-        this.__state = null;
-        this.__fallback = visitor.fallback === 'iteration';
-        this.__keys = VisitorKeys;
-        if (visitor.keys) {
-            this.__keys = extend(objectCreate(this.__keys), visitor.keys);
-        }
-    };
-
-    function isNode(node) {
-        if (node == null) {
-            return false;
-        }
-        return typeof node === 'object' && typeof node.type === 'string';
-    }
-
-    function isProperty(nodeType, key) {
-        return (nodeType === Syntax.ObjectExpression || nodeType === Syntax.ObjectPattern) && 'properties' === key;
-    }
-
-    Controller.prototype.traverse = function traverse(root, visitor) {
-        var worklist,
-            leavelist,
-            element,
-            node,
-            nodeType,
-            ret,
-            key,
-            current,
-            current2,
-            candidates,
-            candidate,
-            sentinel;
-
-        this.__initialize(root, visitor);
-
-        sentinel = {};
-
-        // reference
-        worklist = this.__worklist;
-        leavelist = this.__leavelist;
-
-        // initialize
-        worklist.push(new Element(root, null, null, null));
-        leavelist.push(new Element(null, null, null, null));
-
-        while (worklist.length) {
-            element = worklist.pop();
-
-            if (element === sentinel) {
-                element = leavelist.pop();
-
-                ret = this.__execute(visitor.leave, element);
-
-                if (this.__state === BREAK || ret === BREAK) {
-                    return;
-                }
-                continue;
-            }
-
-            if (element.node) {
-
-                ret = this.__execute(visitor.enter, element);
-
-                if (this.__state === BREAK || ret === BREAK) {
-                    return;
-                }
-
-                worklist.push(sentinel);
-                leavelist.push(element);
-
-                if (this.__state === SKIP || ret === SKIP) {
-                    continue;
-                }
-
-                node = element.node;
-                nodeType = node.type || element.wrap;
-                candidates = this.__keys[nodeType];
-                if (!candidates) {
-                    if (this.__fallback) {
-                        candidates = objectKeys(node);
-                    } else {
-                        throw new Error('Unknown node type ' + nodeType + '.');
-                    }
-                }
-
-                current = candidates.length;
-                while ((current -= 1) >= 0) {
-                    key = candidates[current];
-                    candidate = node[key];
-                    if (!candidate) {
-                        continue;
-                    }
-
-                    if (isArray(candidate)) {
-                        current2 = candidate.length;
-                        while ((current2 -= 1) >= 0) {
-                            if (!candidate[current2]) {
-                                continue;
-                            }
-                            if (isProperty(nodeType, candidates[current])) {
-                                element = new Element(candidate[current2], [key, current2], 'Property', null);
-                            } else if (isNode(candidate[current2])) {
-                                element = new Element(candidate[current2], [key, current2], null, null);
-                            } else {
-                                continue;
-                            }
-                            worklist.push(element);
-                        }
-                    } else if (isNode(candidate)) {
-                        worklist.push(new Element(candidate, key, null, null));
-                    }
-                }
-            }
-        }
-    };
-
-    Controller.prototype.replace = function replace(root, visitor) {
-        function removeElem(element) {
-            var i,
-                key,
-                nextElem,
-                parent;
-
-            if (element.ref.remove()) {
-                // When the reference is an element of an array.
-                key = element.ref.key;
-                parent = element.ref.parent;
-
-                // If removed from array, then decrease following items' keys.
-                i = worklist.length;
-                while (i--) {
-                    nextElem = worklist[i];
-                    if (nextElem.ref && nextElem.ref.parent === parent) {
-                        if  (nextElem.ref.key < key) {
-                            break;
-                        }
-                        --nextElem.ref.key;
-                    }
-                }
-            }
-        }
-
-        var worklist,
-            leavelist,
-            node,
-            nodeType,
-            target,
-            element,
-            current,
-            current2,
-            candidates,
-            candidate,
-            sentinel,
-            outer,
-            key;
-
-        this.__initialize(root, visitor);
-
-        sentinel = {};
-
-        // reference
-        worklist = this.__worklist;
-        leavelist = this.__leavelist;
-
-        // initialize
-        outer = {
-            root: root
-        };
-        element = new Element(root, null, null, new Reference(outer, 'root'));
-        worklist.push(element);
-        leavelist.push(element);
-
-        while (worklist.length) {
-            element = worklist.pop();
-
-            if (element === sentinel) {
-                element = leavelist.pop();
-
-                target = this.__execute(visitor.leave, element);
-
-                // node may be replaced with null,
-                // so distinguish between undefined and null in this place
-                if (target !== undefined && target !== BREAK && target !== SKIP && target !== REMOVE) {
-                    // replace
-                    element.ref.replace(target);
-                }
-
-                if (this.__state === REMOVE || target === REMOVE) {
-                    removeElem(element);
-                }
-
-                if (this.__state === BREAK || target === BREAK) {
-                    return outer.root;
-                }
-                continue;
-            }
-
-            target = this.__execute(visitor.enter, element);
-
-            // node may be replaced with null,
-            // so distinguish between undefined and null in this place
-            if (target !== undefined && target !== BREAK && target !== SKIP && target !== REMOVE) {
-                // replace
-                element.ref.replace(target);
-                element.node = target;
-            }
-
-            if (this.__state === REMOVE || target === REMOVE) {
-                removeElem(element);
-                element.node = null;
-            }
-
-            if (this.__state === BREAK || target === BREAK) {
-                return outer.root;
-            }
-
-            // node may be null
-            node = element.node;
-            if (!node) {
-                continue;
-            }
-
-            worklist.push(sentinel);
-            leavelist.push(element);
-
-            if (this.__state === SKIP || target === SKIP) {
-                continue;
-            }
-
-            nodeType = node.type || element.wrap;
-            candidates = this.__keys[nodeType];
-            if (!candidates) {
-                if (this.__fallback) {
-                    candidates = objectKeys(node);
-                } else {
-                    throw new Error('Unknown node type ' + nodeType + '.');
-                }
-            }
-
-            current = candidates.length;
-            while ((current -= 1) >= 0) {
-                key = candidates[current];
-                candidate = node[key];
-                if (!candidate) {
-                    continue;
-                }
-
-                if (isArray(candidate)) {
-                    current2 = candidate.length;
-                    while ((current2 -= 1) >= 0) {
-                        if (!candidate[current2]) {
-                            continue;
-                        }
-                        if (isProperty(nodeType, candidates[current])) {
-                            element = new Element(candidate[current2], [key, current2], 'Property', new Reference(candidate, current2));
-                        } else if (isNode(candidate[current2])) {
-                            element = new Element(candidate[current2], [key, current2], null, new Reference(candidate, current2));
-                        } else {
-                            continue;
-                        }
-                        worklist.push(element);
-                    }
-                } else if (isNode(candidate)) {
-                    worklist.push(new Element(candidate, key, null, new Reference(node, key)));
-                }
-            }
-        }
-
-        return outer.root;
-    };
-
-    function traverse(root, visitor) {
-        var controller = new Controller();
-        return controller.traverse(root, visitor);
-    }
-
-    function replace(root, visitor) {
-        var controller = new Controller();
-        return controller.replace(root, visitor);
-    }
-
-    function extendCommentRange(comment, tokens) {
-        var target;
-
-        target = upperBound(tokens, function search(token) {
-            return token.range[0] > comment.range[0];
-        });
-
-        comment.extendedRange = [comment.range[0], comment.range[1]];
-
-        if (target !== tokens.length) {
-            comment.extendedRange[1] = tokens[target].range[0];
-        }
-
-        target -= 1;
-        if (target >= 0) {
-            comment.extendedRange[0] = tokens[target].range[1];
-        }
-
-        return comment;
-    }
-
-    function attachComments(tree, providedComments, tokens) {
-        // At first, we should calculate extended comment ranges.
-        var comments = [], comment, len, i, cursor;
-
-        if (!tree.range) {
-            throw new Error('attachComments needs range information');
-        }
-
-        // tokens array is empty, we attach comments to tree as 'leadingComments'
-        if (!tokens.length) {
-            if (providedComments.length) {
-                for (i = 0, len = providedComments.length; i < len; i += 1) {
-                    comment = deepCopy(providedComments[i]);
-                    comment.extendedRange = [0, tree.range[0]];
-                    comments.push(comment);
-                }
-                tree.leadingComments = comments;
-            }
-            return tree;
-        }
-
-        for (i = 0, len = providedComments.length; i < len; i += 1) {
-            comments.push(extendCommentRange(deepCopy(providedComments[i]), tokens));
-        }
-
-        // This is based on John Freeman's implementation.
-        cursor = 0;
-        traverse(tree, {
-            enter: function (node) {
-                var comment;
-
-                while (cursor < comments.length) {
-                    comment = comments[cursor];
-                    if (comment.extendedRange[1] > node.range[0]) {
-                        break;
-                    }
-
-                    if (comment.extendedRange[1] === node.range[0]) {
-                        if (!node.leadingComments) {
-                            node.leadingComments = [];
-                        }
-                        node.leadingComments.push(comment);
-                        comments.splice(cursor, 1);
-                    } else {
-                        cursor += 1;
-                    }
-                }
-
-                // already out of owned node
-                if (cursor === comments.length) {
-                    return VisitorOption.Break;
-                }
-
-                if (comments[cursor].extendedRange[0] > node.range[1]) {
-                    return VisitorOption.Skip;
-                }
-            }
-        });
-
-        cursor = 0;
-        traverse(tree, {
-            leave: function (node) {
-                var comment;
-
-                while (cursor < comments.length) {
-                    comment = comments[cursor];
-                    if (node.range[1] < comment.extendedRange[0]) {
-                        break;
-                    }
-
-                    if (node.range[1] === comment.extendedRange[0]) {
-                        if (!node.trailingComments) {
-                            node.trailingComments = [];
-                        }
-                        node.trailingComments.push(comment);
-                        comments.splice(cursor, 1);
-                    } else {
-                        cursor += 1;
-                    }
-                }
-
-                // already out of owned node
-                if (cursor === comments.length) {
-                    return VisitorOption.Break;
-                }
-
-                if (comments[cursor].extendedRange[0] > node.range[1]) {
-                    return VisitorOption.Skip;
-                }
-            }
-        });
-
-        return tree;
-    }
-
-    exports.version = require('./package.json').version;
-    exports.Syntax = Syntax;
-    exports.traverse = traverse;
-    exports.replace = replace;
-    exports.attachComments = attachComments;
-    exports.VisitorKeys = VisitorKeys;
-    exports.VisitorOption = VisitorOption;
-    exports.Controller = Controller;
-    exports.cloneEnvironment = function () { return clone({}); };
-
-    return exports;
-}(exports));
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"./package.json":89}],89:[function(require,module,exports){
-module.exports={
-  "_args": [
-    [
-      "estraverse@^4.1.0",
-      "/Users/long/webppl"
-    ]
-  ],
-  "_from": "estraverse@>=4.1.0 <5.0.0",
-  "_id": "estraverse@4.1.1",
-  "_inCache": true,
-  "_installable": true,
-  "_location": "/estraverse",
-  "_nodeVersion": "4.1.1",
-  "_npmUser": {
-    "email": "utatane.tea@gmail.com",
-    "name": "constellation"
-  },
-  "_npmVersion": "2.14.4",
-  "_phantomChildren": {},
-  "_requested": {
-    "name": "estraverse",
-    "raw": "estraverse@^4.1.0",
-    "rawSpec": "^4.1.0",
-    "scope": null,
-    "spec": ">=4.1.0 <5.0.0",
-    "type": "range"
-  },
-  "_requiredBy": [
-    "/",
-    "/esshorten"
-  ],
-  "_resolved": "https://registry.npmjs.org/estraverse/-/estraverse-4.1.1.tgz",
-  "_shasum": "f6caca728933a850ef90661d0e17982ba47111a2",
-  "_shrinkwrap": null,
-  "_spec": "estraverse@^4.1.0",
-  "_where": "/Users/long/webppl",
-  "bugs": {
-    "url": "https://github.com/estools/estraverse/issues"
-  },
-  "dependencies": {},
+  "name": "estraverse",
   "description": "ECMAScript JS AST traversal functions",
-  "devDependencies": {
-    "chai": "^2.1.1",
-    "coffee-script": "^1.8.0",
-    "espree": "^1.11.0",
-    "gulp": "^3.8.10",
-    "gulp-bump": "^0.2.2",
-    "gulp-filter": "^2.0.0",
-    "gulp-git": "^1.0.1",
-    "gulp-tag-version": "^1.2.1",
-    "jshint": "^2.5.6",
-    "mocha": "^2.1.0"
-  },
-  "directories": {},
-  "dist": {
-    "shasum": "f6caca728933a850ef90661d0e17982ba47111a2",
-    "tarball": "http://registry.npmjs.org/estraverse/-/estraverse-4.1.1.tgz"
-  },
+  "homepage": "https://github.com/estools/estraverse",
+  "main": "estraverse.js",
+  "version": "4.1.1",
   "engines": {
     "node": ">=0.10.0"
   },
-  "gitHead": "bbcccbfe98296585e4311c8755e1d00dcd581e3c",
-  "homepage": "https://github.com/estools/estraverse",
-  "license": "BSD-2-Clause",
-  "main": "estraverse.js",
   "maintainers": [
     {
       "name": "constellation",
@@ -27641,507 +28025,59 @@ module.exports={
       "email": "nicholas@nczconsulting.com"
     }
   ],
-  "name": "estraverse",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/estools/estraverse.git"
   },
+  "devDependencies": {
+    "chai": "^2.1.1",
+    "coffee-script": "^1.8.0",
+    "espree": "^1.11.0",
+    "gulp": "^3.8.10",
+    "gulp-bump": "^0.2.2",
+    "gulp-filter": "^2.0.0",
+    "gulp-git": "^1.0.1",
+    "gulp-tag-version": "^1.2.1",
+    "jshint": "^2.5.6",
+    "mocha": "^2.1.0"
+  },
+  "license": "BSD-2-Clause",
   "scripts": {
-    "lint": "jshint estraverse.js",
     "test": "npm run-script lint && npm run-script unit-test",
+    "lint": "jshint estraverse.js",
     "unit-test": "mocha --compilers coffee:coffee-script/register"
   },
-  "version": "4.1.1"
+  "gitHead": "bbcccbfe98296585e4311c8755e1d00dcd581e3c",
+  "bugs": {
+    "url": "https://github.com/estools/estraverse/issues"
+  },
+  "_id": "estraverse@4.1.1",
+  "_shasum": "f6caca728933a850ef90661d0e17982ba47111a2",
+  "_from": "estraverse@>=4.1.0 <5.0.0",
+  "_npmVersion": "2.14.4",
+  "_nodeVersion": "4.1.1",
+  "_npmUser": {
+    "name": "constellation",
+    "email": "utatane.tea@gmail.com"
+  },
+  "dist": {
+    "shasum": "f6caca728933a850ef90661d0e17982ba47111a2",
+    "tarball": "http://registry.npmjs.org/estraverse/-/estraverse-4.1.1.tgz"
+  },
+  "directories": {},
+  "_resolved": "https://registry.npmjs.org/estraverse/-/estraverse-4.1.1.tgz",
+  "readme": "ERROR: No README data found!"
 }
 
-},{}],90:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 'AS IS'
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-(function () {
-    'use strict';
-
-    function isExpression(node) {
-        if (node == null) { return false; }
-        switch (node.type) {
-            case 'ArrayExpression':
-            case 'AssignmentExpression':
-            case 'BinaryExpression':
-            case 'CallExpression':
-            case 'ConditionalExpression':
-            case 'FunctionExpression':
-            case 'Identifier':
-            case 'Literal':
-            case 'LogicalExpression':
-            case 'MemberExpression':
-            case 'NewExpression':
-            case 'ObjectExpression':
-            case 'SequenceExpression':
-            case 'ThisExpression':
-            case 'UnaryExpression':
-            case 'UpdateExpression':
-                return true;
-        }
-        return false;
-    }
-
-    function isIterationStatement(node) {
-        if (node == null) { return false; }
-        switch (node.type) {
-            case 'DoWhileStatement':
-            case 'ForInStatement':
-            case 'ForStatement':
-            case 'WhileStatement':
-                return true;
-        }
-        return false;
-    }
-
-    function isStatement(node) {
-        if (node == null) { return false; }
-        switch (node.type) {
-            case 'BlockStatement':
-            case 'BreakStatement':
-            case 'ContinueStatement':
-            case 'DebuggerStatement':
-            case 'DoWhileStatement':
-            case 'EmptyStatement':
-            case 'ExpressionStatement':
-            case 'ForInStatement':
-            case 'ForStatement':
-            case 'IfStatement':
-            case 'LabeledStatement':
-            case 'ReturnStatement':
-            case 'SwitchStatement':
-            case 'ThrowStatement':
-            case 'TryStatement':
-            case 'VariableDeclaration':
-            case 'WhileStatement':
-            case 'WithStatement':
-                return true;
-        }
-        return false;
-    }
-
-    function isSourceElement(node) {
-      return isStatement(node) || node != null && node.type === 'FunctionDeclaration';
-    }
-
-    function trailingStatement(node) {
-        switch (node.type) {
-        case 'IfStatement':
-            if (node.alternate != null) {
-                return node.alternate;
-            }
-            return node.consequent;
-
-        case 'LabeledStatement':
-        case 'ForStatement':
-        case 'ForInStatement':
-        case 'WhileStatement':
-        case 'WithStatement':
-            return node.body;
-        }
-        return null;
-    }
-
-    function isProblematicIfStatement(node) {
-        var current;
-
-        if (node.type !== 'IfStatement') {
-            return false;
-        }
-        if (node.alternate == null) {
-            return false;
-        }
-        current = node.consequent;
-        do {
-            if (current.type === 'IfStatement') {
-                if (current.alternate == null)  {
-                    return true;
-                }
-            }
-            current = trailingStatement(current);
-        } while (current);
-
-        return false;
-    }
-
-    module.exports = {
-        isExpression: isExpression,
-        isStatement: isStatement,
-        isIterationStatement: isIterationStatement,
-        isSourceElement: isSourceElement,
-        isProblematicIfStatement: isProblematicIfStatement,
-
-        trailingStatement: trailingStatement
-    };
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{}],91:[function(require,module,exports){
-/*
-  Copyright (C) 2013-2014 Yusuke Suzuki <utatane.tea@gmail.com>
-  Copyright (C) 2014 Ivan Nikulin <ifaaan@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-(function () {
-    'use strict';
-
-    var ES6Regex, ES5Regex, NON_ASCII_WHITESPACES, IDENTIFIER_START, IDENTIFIER_PART, ch;
-
-    // See `tools/generate-identifier-regex.js`.
-    ES5Regex = {
-        // ECMAScript 5.1/Unicode v7.0.0 NonAsciiIdentifierStart:
-        NonAsciiIdentifierStart: /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u08A0-\u08B2\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58\u0C59\u0C60\u0C61\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D60\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1877\u1880-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19C1-\u19C7\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4B\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1CE9-\u1CEC\u1CEE-\u1CF1\u1CF5\u1CF6\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2E2F\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]/,
-        // ECMAScript 5.1/Unicode v7.0.0 NonAsciiIdentifierPart:
-        NonAsciiIdentifierPart: /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0300-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u0483-\u0487\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u05D0-\u05EA\u05F0-\u05F2\u0610-\u061A\u0620-\u0669\u066E-\u06D3\u06D5-\u06DC\u06DF-\u06E8\u06EA-\u06FC\u06FF\u0710-\u074A\u074D-\u07B1\u07C0-\u07F5\u07FA\u0800-\u082D\u0840-\u085B\u08A0-\u08B2\u08E4-\u0963\u0966-\u096F\u0971-\u0983\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BC-\u09C4\u09C7\u09C8\u09CB-\u09CE\u09D7\u09DC\u09DD\u09DF-\u09E3\u09E6-\u09F1\u0A01-\u0A03\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A59-\u0A5C\u0A5E\u0A66-\u0A75\u0A81-\u0A83\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABC-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AD0\u0AE0-\u0AE3\u0AE6-\u0AEF\u0B01-\u0B03\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3C-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B5C\u0B5D\u0B5F-\u0B63\u0B66-\u0B6F\u0B71\u0B82\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD0\u0BD7\u0BE6-\u0BEF\u0C00-\u0C03\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C58\u0C59\u0C60-\u0C63\u0C66-\u0C6F\u0C81-\u0C83\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBC-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CDE\u0CE0-\u0CE3\u0CE6-\u0CEF\u0CF1\u0CF2\u0D01-\u0D03\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D-\u0D44\u0D46-\u0D48\u0D4A-\u0D4E\u0D57\u0D60-\u0D63\u0D66-\u0D6F\u0D7A-\u0D7F\u0D82\u0D83\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E01-\u0E3A\u0E40-\u0E4E\u0E50-\u0E59\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB9\u0EBB-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECD\u0ED0-\u0ED9\u0EDC-\u0EDF\u0F00\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E-\u0F47\u0F49-\u0F6C\u0F71-\u0F84\u0F86-\u0F97\u0F99-\u0FBC\u0FC6\u1000-\u1049\u1050-\u109D\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u135D-\u135F\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1714\u1720-\u1734\u1740-\u1753\u1760-\u176C\u176E-\u1770\u1772\u1773\u1780-\u17D3\u17D7\u17DC\u17DD\u17E0-\u17E9\u180B-\u180D\u1810-\u1819\u1820-\u1877\u1880-\u18AA\u18B0-\u18F5\u1900-\u191E\u1920-\u192B\u1930-\u193B\u1946-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u19D0-\u19D9\u1A00-\u1A1B\u1A20-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AA7\u1AB0-\u1ABD\u1B00-\u1B4B\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1BF3\u1C00-\u1C37\u1C40-\u1C49\u1C4D-\u1C7D\u1CD0-\u1CD2\u1CD4-\u1CF6\u1CF8\u1CF9\u1D00-\u1DF5\u1DFC-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u200C\u200D\u203F\u2040\u2054\u2071\u207F\u2090-\u209C\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D7F-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2DE0-\u2DFF\u2E2F\u3005-\u3007\u3021-\u302F\u3031-\u3035\u3038-\u303C\u3041-\u3096\u3099\u309A\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA62B\uA640-\uA66F\uA674-\uA67D\uA67F-\uA69D\uA69F-\uA6F1\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA827\uA840-\uA873\uA880-\uA8C4\uA8D0-\uA8D9\uA8E0-\uA8F7\uA8FB\uA900-\uA92D\uA930-\uA953\uA960-\uA97C\uA980-\uA9C0\uA9CF-\uA9D9\uA9E0-\uA9FE\uAA00-\uAA36\uAA40-\uAA4D\uAA50-\uAA59\uAA60-\uAA76\uAA7A-\uAAC2\uAADB-\uAADD\uAAE0-\uAAEF\uAAF2-\uAAF6\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABEA\uABEC\uABED\uABF0-\uABF9\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE00-\uFE0F\uFE20-\uFE2D\uFE33\uFE34\uFE4D-\uFE4F\uFE70-\uFE74\uFE76-\uFEFC\uFF10-\uFF19\uFF21-\uFF3A\uFF3F\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]/
-    };
-
-    ES6Regex = {
-        // ECMAScript 6/Unicode v7.0.0 NonAsciiIdentifierStart:
-        NonAsciiIdentifierStart: /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u08A0-\u08B2\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58\u0C59\u0C60\u0C61\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D60\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1877\u1880-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19C1-\u19C7\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4B\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1CE9-\u1CEC\u1CEE-\u1CF1\u1CF5\u1CF6\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2118-\u211D\u2124\u2126\u2128\u212A-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309B-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDE80-\uDE9C\uDEA0-\uDED0\uDF00-\uDF1F\uDF30-\uDF4A\uDF50-\uDF75\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00\uDE10-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE4\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48]|\uD804[\uDC03-\uDC37\uDC83-\uDCAF\uDCD0-\uDCE8\uDD03-\uDD26\uDD50-\uDD72\uDD76\uDD83-\uDDB2\uDDC1-\uDDC4\uDDDA\uDE00-\uDE11\uDE13-\uDE2B\uDEB0-\uDEDE\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3D\uDF5D-\uDF61]|\uD805[\uDC80-\uDCAF\uDCC4\uDCC5\uDCC7\uDD80-\uDDAE\uDE00-\uDE2F\uDE44\uDE80-\uDEAA]|\uD806[\uDCA0-\uDCDF\uDCFF\uDEC0-\uDEF8]|\uD808[\uDC00-\uDF98]|\uD809[\uDC00-\uDC6E]|[\uD80C\uD840-\uD868\uD86A-\uD86C][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDED0-\uDEED\uDF00-\uDF2F\uDF40-\uDF43\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50\uDF93-\uDF9F]|\uD82C[\uDC00\uDC01]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB]|\uD83A[\uDC00-\uDCC4]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D]|\uD87E[\uDC00-\uDE1D]/,
-        // ECMAScript 6/Unicode v7.0.0 NonAsciiIdentifierPart:
-        NonAsciiIdentifierPart: /[\xAA\xB5\xB7\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0300-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u0483-\u0487\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u05D0-\u05EA\u05F0-\u05F2\u0610-\u061A\u0620-\u0669\u066E-\u06D3\u06D5-\u06DC\u06DF-\u06E8\u06EA-\u06FC\u06FF\u0710-\u074A\u074D-\u07B1\u07C0-\u07F5\u07FA\u0800-\u082D\u0840-\u085B\u08A0-\u08B2\u08E4-\u0963\u0966-\u096F\u0971-\u0983\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BC-\u09C4\u09C7\u09C8\u09CB-\u09CE\u09D7\u09DC\u09DD\u09DF-\u09E3\u09E6-\u09F1\u0A01-\u0A03\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A59-\u0A5C\u0A5E\u0A66-\u0A75\u0A81-\u0A83\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABC-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AD0\u0AE0-\u0AE3\u0AE6-\u0AEF\u0B01-\u0B03\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3C-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B5C\u0B5D\u0B5F-\u0B63\u0B66-\u0B6F\u0B71\u0B82\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD0\u0BD7\u0BE6-\u0BEF\u0C00-\u0C03\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C58\u0C59\u0C60-\u0C63\u0C66-\u0C6F\u0C81-\u0C83\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBC-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CDE\u0CE0-\u0CE3\u0CE6-\u0CEF\u0CF1\u0CF2\u0D01-\u0D03\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D-\u0D44\u0D46-\u0D48\u0D4A-\u0D4E\u0D57\u0D60-\u0D63\u0D66-\u0D6F\u0D7A-\u0D7F\u0D82\u0D83\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E01-\u0E3A\u0E40-\u0E4E\u0E50-\u0E59\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB9\u0EBB-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECD\u0ED0-\u0ED9\u0EDC-\u0EDF\u0F00\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E-\u0F47\u0F49-\u0F6C\u0F71-\u0F84\u0F86-\u0F97\u0F99-\u0FBC\u0FC6\u1000-\u1049\u1050-\u109D\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u135D-\u135F\u1369-\u1371\u1380-\u138F\u13A0-\u13F4\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1714\u1720-\u1734\u1740-\u1753\u1760-\u176C\u176E-\u1770\u1772\u1773\u1780-\u17D3\u17D7\u17DC\u17DD\u17E0-\u17E9\u180B-\u180D\u1810-\u1819\u1820-\u1877\u1880-\u18AA\u18B0-\u18F5\u1900-\u191E\u1920-\u192B\u1930-\u193B\u1946-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u19D0-\u19DA\u1A00-\u1A1B\u1A20-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AA7\u1AB0-\u1ABD\u1B00-\u1B4B\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1BF3\u1C00-\u1C37\u1C40-\u1C49\u1C4D-\u1C7D\u1CD0-\u1CD2\u1CD4-\u1CF6\u1CF8\u1CF9\u1D00-\u1DF5\u1DFC-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u200C\u200D\u203F\u2040\u2054\u2071\u207F\u2090-\u209C\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2102\u2107\u210A-\u2113\u2115\u2118-\u211D\u2124\u2126\u2128\u212A-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D7F-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2DE0-\u2DFF\u3005-\u3007\u3021-\u302F\u3031-\u3035\u3038-\u303C\u3041-\u3096\u3099-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312D\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FCC\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA62B\uA640-\uA66F\uA674-\uA67D\uA67F-\uA69D\uA69F-\uA6F1\uA717-\uA71F\uA722-\uA788\uA78B-\uA78E\uA790-\uA7AD\uA7B0\uA7B1\uA7F7-\uA827\uA840-\uA873\uA880-\uA8C4\uA8D0-\uA8D9\uA8E0-\uA8F7\uA8FB\uA900-\uA92D\uA930-\uA953\uA960-\uA97C\uA980-\uA9C0\uA9CF-\uA9D9\uA9E0-\uA9FE\uAA00-\uAA36\uAA40-\uAA4D\uAA50-\uAA59\uAA60-\uAA76\uAA7A-\uAAC2\uAADB-\uAADD\uAAE0-\uAAEF\uAAF2-\uAAF6\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB5F\uAB64\uAB65\uABC0-\uABEA\uABEC\uABED\uABF0-\uABF9\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE00-\uFE0F\uFE20-\uFE2D\uFE33\uFE34\uFE4D-\uFE4F\uFE70-\uFE74\uFE76-\uFEFC\uFF10-\uFF19\uFF21-\uFF3A\uFF3F\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDDFD\uDE80-\uDE9C\uDEA0-\uDED0\uDEE0\uDF00-\uDF1F\uDF30-\uDF4A\uDF50-\uDF7A\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCA0-\uDCA9\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00-\uDE03\uDE05\uDE06\uDE0C-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE38-\uDE3A\uDE3F\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE6\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48]|\uD804[\uDC00-\uDC46\uDC66-\uDC6F\uDC7F-\uDCBA\uDCD0-\uDCE8\uDCF0-\uDCF9\uDD00-\uDD34\uDD36-\uDD3F\uDD50-\uDD73\uDD76\uDD80-\uDDC4\uDDD0-\uDDDA\uDE00-\uDE11\uDE13-\uDE37\uDEB0-\uDEEA\uDEF0-\uDEF9\uDF01-\uDF03\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3C-\uDF44\uDF47\uDF48\uDF4B-\uDF4D\uDF57\uDF5D-\uDF63\uDF66-\uDF6C\uDF70-\uDF74]|\uD805[\uDC80-\uDCC5\uDCC7\uDCD0-\uDCD9\uDD80-\uDDB5\uDDB8-\uDDC0\uDE00-\uDE40\uDE44\uDE50-\uDE59\uDE80-\uDEB7\uDEC0-\uDEC9]|\uD806[\uDCA0-\uDCE9\uDCFF\uDEC0-\uDEF8]|\uD808[\uDC00-\uDF98]|\uD809[\uDC00-\uDC6E]|[\uD80C\uD840-\uD868\uD86A-\uD86C][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDE60-\uDE69\uDED0-\uDEED\uDEF0-\uDEF4\uDF00-\uDF36\uDF40-\uDF43\uDF50-\uDF59\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50-\uDF7E\uDF8F-\uDF9F]|\uD82C[\uDC00\uDC01]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99\uDC9D\uDC9E]|\uD834[\uDD65-\uDD69\uDD6D-\uDD72\uDD7B-\uDD82\uDD85-\uDD8B\uDDAA-\uDDAD\uDE42-\uDE44]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB\uDFCE-\uDFFF]|\uD83A[\uDC00-\uDCC4\uDCD0-\uDCD6]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D]|\uD87E[\uDC00-\uDE1D]|\uDB40[\uDD00-\uDDEF]/
-    };
-
-    function isDecimalDigit(ch) {
-        return 0x30 <= ch && ch <= 0x39;  // 0..9
-    }
-
-    function isHexDigit(ch) {
-        return 0x30 <= ch && ch <= 0x39 ||  // 0..9
-            0x61 <= ch && ch <= 0x66 ||     // a..f
-            0x41 <= ch && ch <= 0x46;       // A..F
-    }
-
-    function isOctalDigit(ch) {
-        return ch >= 0x30 && ch <= 0x37;  // 0..7
-    }
-
-    // 7.2 White Space
-
-    NON_ASCII_WHITESPACES = [
-        0x1680, 0x180E,
-        0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A,
-        0x202F, 0x205F,
-        0x3000,
-        0xFEFF
-    ];
-
-    function isWhiteSpace(ch) {
-        return ch === 0x20 || ch === 0x09 || ch === 0x0B || ch === 0x0C || ch === 0xA0 ||
-            ch >= 0x1680 && NON_ASCII_WHITESPACES.indexOf(ch) >= 0;
-    }
-
-    // 7.3 Line Terminators
-
-    function isLineTerminator(ch) {
-        return ch === 0x0A || ch === 0x0D || ch === 0x2028 || ch === 0x2029;
-    }
-
-    // 7.6 Identifier Names and Identifiers
-
-    function fromCodePoint(cp) {
-        if (cp <= 0xFFFF) { return String.fromCharCode(cp); }
-        var cu1 = String.fromCharCode(Math.floor((cp - 0x10000) / 0x400) + 0xD800);
-        var cu2 = String.fromCharCode(((cp - 0x10000) % 0x400) + 0xDC00);
-        return cu1 + cu2;
-    }
-
-    IDENTIFIER_START = new Array(0x80);
-    for(ch = 0; ch < 0x80; ++ch) {
-        IDENTIFIER_START[ch] =
-            ch >= 0x61 && ch <= 0x7A ||  // a..z
-            ch >= 0x41 && ch <= 0x5A ||  // A..Z
-            ch === 0x24 || ch === 0x5F;  // $ (dollar) and _ (underscore)
-    }
-
-    IDENTIFIER_PART = new Array(0x80);
-    for(ch = 0; ch < 0x80; ++ch) {
-        IDENTIFIER_PART[ch] =
-            ch >= 0x61 && ch <= 0x7A ||  // a..z
-            ch >= 0x41 && ch <= 0x5A ||  // A..Z
-            ch >= 0x30 && ch <= 0x39 ||  // 0..9
-            ch === 0x24 || ch === 0x5F;  // $ (dollar) and _ (underscore)
-    }
-
-    function isIdentifierStartES5(ch) {
-        return ch < 0x80 ? IDENTIFIER_START[ch] : ES5Regex.NonAsciiIdentifierStart.test(fromCodePoint(ch));
-    }
-
-    function isIdentifierPartES5(ch) {
-        return ch < 0x80 ? IDENTIFIER_PART[ch] : ES5Regex.NonAsciiIdentifierPart.test(fromCodePoint(ch));
-    }
-
-    function isIdentifierStartES6(ch) {
-        return ch < 0x80 ? IDENTIFIER_START[ch] : ES6Regex.NonAsciiIdentifierStart.test(fromCodePoint(ch));
-    }
-
-    function isIdentifierPartES6(ch) {
-        return ch < 0x80 ? IDENTIFIER_PART[ch] : ES6Regex.NonAsciiIdentifierPart.test(fromCodePoint(ch));
-    }
-
-    module.exports = {
-        isDecimalDigit: isDecimalDigit,
-        isHexDigit: isHexDigit,
-        isOctalDigit: isOctalDigit,
-        isWhiteSpace: isWhiteSpace,
-        isLineTerminator: isLineTerminator,
-        isIdentifierStartES5: isIdentifierStartES5,
-        isIdentifierPartES5: isIdentifierPartES5,
-        isIdentifierStartES6: isIdentifierStartES6,
-        isIdentifierPartES6: isIdentifierPartES6
-    };
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{}],92:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-(function () {
-    'use strict';
-
-    var code = require('./code');
-
-    function isStrictModeReservedWordES6(id) {
-        switch (id) {
-        case 'implements':
-        case 'interface':
-        case 'package':
-        case 'private':
-        case 'protected':
-        case 'public':
-        case 'static':
-        case 'let':
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    function isKeywordES5(id, strict) {
-        // yield should not be treated as keyword under non-strict mode.
-        if (!strict && id === 'yield') {
-            return false;
-        }
-        return isKeywordES6(id, strict);
-    }
-
-    function isKeywordES6(id, strict) {
-        if (strict && isStrictModeReservedWordES6(id)) {
-            return true;
-        }
-
-        switch (id.length) {
-        case 2:
-            return (id === 'if') || (id === 'in') || (id === 'do');
-        case 3:
-            return (id === 'var') || (id === 'for') || (id === 'new') || (id === 'try');
-        case 4:
-            return (id === 'this') || (id === 'else') || (id === 'case') ||
-                (id === 'void') || (id === 'with') || (id === 'enum');
-        case 5:
-            return (id === 'while') || (id === 'break') || (id === 'catch') ||
-                (id === 'throw') || (id === 'const') || (id === 'yield') ||
-                (id === 'class') || (id === 'super');
-        case 6:
-            return (id === 'return') || (id === 'typeof') || (id === 'delete') ||
-                (id === 'switch') || (id === 'export') || (id === 'import');
-        case 7:
-            return (id === 'default') || (id === 'finally') || (id === 'extends');
-        case 8:
-            return (id === 'function') || (id === 'continue') || (id === 'debugger');
-        case 10:
-            return (id === 'instanceof');
-        default:
-            return false;
-        }
-    }
-
-    function isReservedWordES5(id, strict) {
-        return id === 'null' || id === 'true' || id === 'false' || isKeywordES5(id, strict);
-    }
-
-    function isReservedWordES6(id, strict) {
-        return id === 'null' || id === 'true' || id === 'false' || isKeywordES6(id, strict);
-    }
-
-    function isRestrictedWord(id) {
-        return id === 'eval' || id === 'arguments';
-    }
-
-    function isIdentifierNameES5(id) {
-        var i, iz, ch;
-
-        if (id.length === 0) { return false; }
-
-        ch = id.charCodeAt(0);
-        if (!code.isIdentifierStartES5(ch)) {
-            return false;
-        }
-
-        for (i = 1, iz = id.length; i < iz; ++i) {
-            ch = id.charCodeAt(i);
-            if (!code.isIdentifierPartES5(ch)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    function decodeUtf16(lead, trail) {
-        return (lead - 0xD800) * 0x400 + (trail - 0xDC00) + 0x10000;
-    }
-
-    function isIdentifierNameES6(id) {
-        var i, iz, ch, lowCh, check;
-
-        if (id.length === 0) { return false; }
-
-        check = code.isIdentifierStartES6;
-        for (i = 0, iz = id.length; i < iz; ++i) {
-            ch = id.charCodeAt(i);
-            if (0xD800 <= ch && ch <= 0xDBFF) {
-                ++i;
-                if (i >= iz) { return false; }
-                lowCh = id.charCodeAt(i);
-                if (!(0xDC00 <= lowCh && lowCh <= 0xDFFF)) {
-                    return false;
-                }
-                ch = decodeUtf16(ch, lowCh);
-            }
-            if (!check(ch)) {
-                return false;
-            }
-            check = code.isIdentifierPartES6;
-        }
-        return true;
-    }
-
-    function isIdentifierES5(id, strict) {
-        return isIdentifierNameES5(id) && !isReservedWordES5(id, strict);
-    }
-
-    function isIdentifierES6(id, strict) {
-        return isIdentifierNameES6(id) && !isReservedWordES6(id, strict);
-    }
-
-    module.exports = {
-        isKeywordES5: isKeywordES5,
-        isKeywordES6: isKeywordES6,
-        isReservedWordES5: isReservedWordES5,
-        isReservedWordES6: isReservedWordES6,
-        isRestrictedWord: isRestrictedWord,
-        isIdentifierNameES5: isIdentifierNameES5,
-        isIdentifierNameES6: isIdentifierNameES6,
-        isIdentifierES5: isIdentifierES5,
-        isIdentifierES6: isIdentifierES6
-    };
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"./code":91}],93:[function(require,module,exports){
-/*
-  Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-
-(function () {
-    'use strict';
-
-    exports.ast = require('./ast');
-    exports.code = require('./code');
-    exports.keyword = require('./keyword');
-}());
-/* vim: set sw=4 ts=4 et tw=80 : */
-
-},{"./ast":90,"./code":91,"./keyword":92}],94:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
+arguments[4][83][0].apply(exports,arguments)
+},{"dup":83}],97:[function(require,module,exports){
+arguments[4][84][0].apply(exports,arguments)
+},{"dup":84}],98:[function(require,module,exports){
+arguments[4][85][0].apply(exports,arguments)
+},{"./code":97,"dup":85}],99:[function(require,module,exports){
+arguments[4][86][0].apply(exports,arguments)
+},{"./ast":96,"./code":97,"./keyword":98,"dup":86}],100:[function(require,module,exports){
 /**
  *  Copyright (c) 2014-2015, Facebook, Inc.
  *  All rights reserved.
@@ -33124,7 +33060,7 @@ module.exports={
   return Immutable;
 
 }));
-},{}],95:[function(require,module,exports){
+},{}],101:[function(require,module,exports){
 module.exports = LRUCache
 
 // This will be a proper iterable 'Map' in engines that support it,
@@ -33594,7 +33530,497 @@ function Entry (key, value, length, now, maxAge) {
   this.maxAge = maxAge || 0
 }
 
-},{"pseudomap":98,"util":392,"yallist":139}],96:[function(require,module,exports){
+},{"pseudomap":102,"util":402,"yallist":104}],102:[function(require,module,exports){
+(function (process){
+if (process.env.npm_package_name === 'pseudomap' &&
+    process.env.npm_lifecycle_script === 'test')
+  process.env.TEST_PSEUDOMAP = 'true'
+
+if (typeof Map === 'function' && !process.env.TEST_PSEUDOMAP) {
+  module.exports = Map
+} else {
+  module.exports = require('./pseudomap')
+}
+
+}).call(this,require('_process'))
+},{"./pseudomap":103,"_process":385}],103:[function(require,module,exports){
+var hasOwnProperty = Object.prototype.hasOwnProperty
+
+module.exports = PseudoMap
+
+function PseudoMap (set) {
+  if (!(this instanceof PseudoMap)) // whyyyyyyy
+    throw new TypeError("Constructor PseudoMap requires 'new'")
+
+  this.clear()
+
+  if (set) {
+    if ((set instanceof PseudoMap) ||
+        (typeof Map === 'function' && set instanceof Map))
+      set.forEach(function (value, key) {
+        this.set(key, value)
+      }, this)
+    else if (Array.isArray(set))
+      set.forEach(function (kv) {
+        this.set(kv[0], kv[1])
+      }, this)
+    else
+      throw new TypeError('invalid argument')
+  }
+}
+
+PseudoMap.prototype.forEach = function (fn, thisp) {
+  thisp = thisp || this
+  Object.keys(this._data).forEach(function (k) {
+    if (k !== 'size')
+      fn.call(thisp, this._data[k].value, this._data[k].key)
+  }, this)
+}
+
+PseudoMap.prototype.has = function (k) {
+  return !!find(this._data, k)
+}
+
+PseudoMap.prototype.get = function (k) {
+  var res = find(this._data, k)
+  return res && res.value
+}
+
+PseudoMap.prototype.set = function (k, v) {
+  set(this._data, k, v)
+}
+
+PseudoMap.prototype.delete = function (k) {
+  var res = find(this._data, k)
+  if (res) {
+    delete this._data[res._index]
+    this._data.size--
+  }
+}
+
+PseudoMap.prototype.clear = function () {
+  var data = Object.create(null)
+  data.size = 0
+
+  Object.defineProperty(this, '_data', {
+    value: data,
+    enumerable: false,
+    configurable: true,
+    writable: false
+  })
+}
+
+Object.defineProperty(PseudoMap.prototype, 'size', {
+  get: function () {
+    return this._data.size
+  },
+  set: function (n) {},
+  enumerable: true,
+  configurable: true
+})
+
+PseudoMap.prototype.values =
+PseudoMap.prototype.keys =
+PseudoMap.prototype.entries = function () {
+  throw new Error('iterators are not implemented in this version')
+}
+
+// Either identical, or both NaN
+function same (a, b) {
+  return a === b || a !== a && b !== b
+}
+
+function Entry (k, v, i) {
+  this.key = k
+  this.value = v
+  this._index = i
+}
+
+function find (data, k) {
+  for (var i = 0, s = '_' + k, key = s;
+       hasOwnProperty.call(data, key);
+       key = s + i++) {
+    if (same(data[key].key, k))
+      return data[key]
+  }
+}
+
+function set (data, k, v) {
+  for (var i = 0, s = '_' + k, key = s;
+       hasOwnProperty.call(data, key);
+       key = s + i++) {
+    if (same(data[key].key, k)) {
+      data[key].value = v
+      return
+    }
+  }
+  data.size++
+  data[key] = new Entry(k, v, key)
+}
+
+},{}],104:[function(require,module,exports){
+module.exports = Yallist
+
+Yallist.Node = Node
+Yallist.create = Yallist
+
+function Yallist (list) {
+  var self = this
+  if (!(self instanceof Yallist)) {
+    self = new Yallist()
+  }
+
+  self.tail = null
+  self.head = null
+  self.length = 0
+
+  if (list && typeof list.forEach === 'function') {
+    list.forEach(function (item) {
+      self.push(item)
+    })
+  } else if (arguments.length > 0) {
+    for (var i = 0, l = arguments.length; i < l; i++) {
+      self.push(arguments[i])
+    }
+  }
+
+  return self
+}
+
+Yallist.prototype.removeNode = function (node) {
+  if (node.list !== this) {
+    throw new Error('removing node which does not belong to this list')
+  }
+
+  var next = node.next
+  var prev = node.prev
+
+  if (next) {
+    next.prev = prev
+  }
+
+  if (prev) {
+    prev.next = next
+  }
+
+  if (node === this.head) {
+    this.head = next
+  }
+  if (node === this.tail) {
+    this.tail = prev
+  }
+
+  node.list.length --
+  node.next = null
+  node.prev = null
+  node.list = null
+}
+
+Yallist.prototype.unshiftNode = function (node) {
+  if (node === this.head) {
+    return
+  }
+
+  if (node.list) {
+    node.list.removeNode(node)
+  }
+
+  var head = this.head
+  node.list = this
+  node.next = head
+  if (head) {
+    head.prev = node
+  }
+
+  this.head = node
+  if (!this.tail) {
+    this.tail = node
+  }
+  this.length ++
+}
+
+Yallist.prototype.pushNode = function (node) {
+  if (node === this.tail) {
+    return
+  }
+
+  if (node.list) {
+    node.list.removeNode(node)
+  }
+
+  var tail = this.tail
+  node.list = this
+  node.prev = tail
+  if (tail) {
+    tail.next = node
+  }
+
+  this.tail = node
+  if (!this.head) {
+    this.head = node
+  }
+  this.length ++
+}
+
+Yallist.prototype.push = function () {
+  for (var i = 0, l = arguments.length; i < l; i++) {
+    push(this, arguments[i])
+  }
+  return this.length
+}
+
+Yallist.prototype.unshift = function () {
+  for (var i = 0, l = arguments.length; i < l; i++) {
+    unshift(this, arguments[i])
+  }
+  return this.length
+}
+
+Yallist.prototype.pop = function () {
+  if (!this.tail)
+    return undefined
+
+  var res = this.tail.value
+  this.tail = this.tail.prev
+  this.tail.next = null
+  this.length --
+  return res
+}
+
+Yallist.prototype.shift = function () {
+  if (!this.head)
+    return undefined
+
+  var res = this.head.value
+  this.head = this.head.next
+  this.head.prev = null
+  this.length --
+  return res
+}
+
+Yallist.prototype.forEach = function (fn, thisp) {
+  thisp = thisp || this
+  for (var walker = this.head, i = 0; walker !== null; i++) {
+    fn.call(thisp, walker.value, i, this)
+    walker = walker.next
+  }
+}
+
+Yallist.prototype.forEachReverse = function (fn, thisp) {
+  thisp = thisp || this
+  for (var walker = this.tail, i = this.length - 1; walker !== null; i--) {
+    fn.call(thisp, walker.value, i, this)
+    walker = walker.prev
+  }
+}
+
+Yallist.prototype.get = function (n) {
+  for (var i = 0, walker = this.head; walker !== null && i < n; i++) {
+    // abort out of the list early if we hit a cycle
+    walker = walker.next
+  }
+  if (i === n && walker !== null) {
+    return walker.value
+  }
+}
+
+Yallist.prototype.getReverse = function (n) {
+  for (var i = 0, walker = this.tail; walker !== null && i < n; i++) {
+    // abort out of the list early if we hit a cycle
+    walker = walker.prev
+  }
+  if (i === n && walker !== null) {
+    return walker.value
+  }
+}
+
+Yallist.prototype.map = function (fn, thisp) {
+  thisp = thisp || this
+  var res = new Yallist()
+  for (var walker = this.head; walker !== null; ) {
+    res.push(fn.call(thisp, walker.value, this))
+    walker = walker.next
+  }
+  return res
+}
+
+Yallist.prototype.mapReverse = function (fn, thisp) {
+  thisp = thisp || this
+  var res = new Yallist()
+  for (var walker = this.tail; walker !== null;) {
+    res.push(fn.call(thisp, walker.value, this))
+    walker = walker.prev
+  }
+  return res
+}
+
+Yallist.prototype.reduce = function (fn, initial) {
+  var acc
+  var walker = this.head
+  if (arguments.length > 1) {
+    acc = initial
+  } else if (this.head) {
+    walker = this.head.next
+    acc = this.head.value
+  } else {
+    throw new TypeError('Reduce of empty list with no initial value')
+  }
+
+  for (var i = 0; walker !== null; i++) {
+    acc = fn(acc, walker.value, i)
+    walker = walker.next
+  }
+
+  return acc
+}
+
+Yallist.prototype.reduceReverse = function (fn, initial) {
+  var acc
+  var walker = this.tail
+  if (arguments.length > 1) {
+    acc = initial
+  } else if (this.tail) {
+    walker = this.tail.prev
+    acc = this.tail.value
+  } else {
+    throw new TypeError('Reduce of empty list with no initial value')
+  }
+
+  for (var i = this.length - 1; walker !== null; i--) {
+    acc = fn(acc, walker.value, i)
+    walker = walker.prev
+  }
+
+  return acc
+}
+
+Yallist.prototype.toArray = function () {
+  var arr = new Array(this.length)
+  for (var i = 0, walker = this.head; walker !== null; i++) {
+    arr[i] = walker.value
+    walker = walker.next
+  }
+  return arr
+}
+
+Yallist.prototype.toArrayReverse = function () {
+  var arr = new Array(this.length)
+  for (var i = 0, walker = this.tail; walker !== null; i++) {
+    arr[i] = walker.value
+    walker = walker.prev
+  }
+  return arr
+}
+
+Yallist.prototype.slice = function (from, to) {
+  to = to || this.length
+  if (to < 0) {
+    to += this.length
+  }
+  from = from || 0
+  if (from < 0) {
+    from += this.length
+  }
+  var ret = new Yallist()
+  if (to < from || to < 0) {
+    return ret
+  }
+  if (from < 0) {
+    from = 0
+  }
+  if (to > this.length) {
+    to = this.length
+  }
+  for (var i = 0, walker = this.head; walker !== null && i < from; i++) {
+    walker = walker.next
+  }
+  for (; walker !== null && i < to; i++, walker = walker.next) {
+    ret.push(walker.value)
+  }
+  return ret
+}
+
+Yallist.prototype.sliceReverse = function (from, to) {
+  to = to || this.length
+  if (to < 0) {
+    to += this.length
+  }
+  from = from || 0
+  if (from < 0) {
+    from += this.length
+  }
+  var ret = new Yallist()
+  if (to < from || to < 0) {
+    return ret
+  }
+  if (from < 0) {
+    from = 0
+  }
+  if (to > this.length) {
+    to = this.length
+  }
+  for (var i = this.length, walker = this.tail; walker !== null && i > to; i--) {
+    walker = walker.prev
+  }
+  for (; walker !== null && i > from; i--, walker = walker.prev) {
+    ret.push(walker.value)
+  }
+  return ret
+}
+
+Yallist.prototype.reverse = function () {
+  var head = this.head
+  var tail = this.tail
+  for (var walker = head; walker !== null; walker = walker.prev) {
+    var p = walker.prev
+    walker.prev = walker.next
+    walker.next = p
+  }
+  this.head = tail
+  this.tail = head
+  return this
+}
+
+function push (self, item) {
+  self.tail = new Node(item, self.tail, null, self)
+  if (!self.head) {
+    self.head = self.tail
+  }
+  self.length ++
+}
+
+function unshift (self, item) {
+  self.head = new Node(item, null, self.head, self)
+  if (!self.tail) {
+    self.tail = self.head
+  }
+  self.length ++
+}
+
+function Node (value, prev, next, list) {
+  if (!(this instanceof Node)) {
+    return new Node(value, prev, next, list)
+  }
+
+  this.list = list
+  this.value = value
+
+  if (prev) {
+    prev.next = this
+    this.prev = prev
+  } else {
+    this.prev = null
+  }
+
+  if (next) {
+    next.prev = this
+    this.next = next
+  } else {
+    this.next = null
+  }
+}
+
+},{}],105:[function(require,module,exports){
 (function (global){
 "use strict";
 
@@ -38022,7 +38448,7 @@ numeric.svd= function svd(A) {
 
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],97:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 /**
  * Expose `PriorityQueue`.
  */
@@ -38196,304 +38622,7 @@ PriorityQueue.prototype._swap = function(a, b) {
   this._elements[b] = aux;
 };
 
-},{}],98:[function(require,module,exports){
-(function (process){
-if (process.env.npm_package_name === 'pseudomap' &&
-    process.env.npm_lifecycle_script === 'test')
-  process.env.TEST_PSEUDOMAP = 'true'
-
-if (typeof Map === 'function' && !process.env.TEST_PSEUDOMAP) {
-  module.exports = Map
-} else {
-  module.exports = require('./pseudomap')
-}
-
-}).call(this,require('_process'))
-},{"./pseudomap":99,"_process":375}],99:[function(require,module,exports){
-var hasOwnProperty = Object.prototype.hasOwnProperty
-
-module.exports = PseudoMap
-
-function PseudoMap (set) {
-  if (!(this instanceof PseudoMap)) // whyyyyyyy
-    throw new TypeError("Constructor PseudoMap requires 'new'")
-
-  this.clear()
-
-  if (set) {
-    if ((set instanceof PseudoMap) ||
-        (typeof Map === 'function' && set instanceof Map))
-      set.forEach(function (value, key) {
-        this.set(key, value)
-      }, this)
-    else if (Array.isArray(set))
-      set.forEach(function (kv) {
-        this.set(kv[0], kv[1])
-      }, this)
-    else
-      throw new TypeError('invalid argument')
-  }
-}
-
-PseudoMap.prototype.forEach = function (fn, thisp) {
-  thisp = thisp || this
-  Object.keys(this._data).forEach(function (k) {
-    if (k !== 'size')
-      fn.call(thisp, this._data[k].value, this._data[k].key)
-  }, this)
-}
-
-PseudoMap.prototype.has = function (k) {
-  return !!find(this._data, k)
-}
-
-PseudoMap.prototype.get = function (k) {
-  var res = find(this._data, k)
-  return res && res.value
-}
-
-PseudoMap.prototype.set = function (k, v) {
-  set(this._data, k, v)
-}
-
-PseudoMap.prototype.delete = function (k) {
-  var res = find(this._data, k)
-  if (res) {
-    delete this._data[res._index]
-    this._data.size--
-  }
-}
-
-PseudoMap.prototype.clear = function () {
-  var data = Object.create(null)
-  data.size = 0
-
-  Object.defineProperty(this, '_data', {
-    value: data,
-    enumerable: false,
-    configurable: true,
-    writable: false
-  })
-}
-
-Object.defineProperty(PseudoMap.prototype, 'size', {
-  get: function () {
-    return this._data.size
-  },
-  set: function (n) {},
-  enumerable: true,
-  configurable: true
-})
-
-PseudoMap.prototype.values =
-PseudoMap.prototype.keys =
-PseudoMap.prototype.entries = function () {
-  throw new Error('iterators are not implemented in this version')
-}
-
-// Either identical, or both NaN
-function same (a, b) {
-  return a === b || a !== a && b !== b
-}
-
-function Entry (k, v, i) {
-  this.key = k
-  this.value = v
-  this._index = i
-}
-
-function find (data, k) {
-  for (var i = 0, s = '_' + k, key = s;
-       hasOwnProperty.call(data, key);
-       key = s + i++) {
-    if (same(data[key].key, k))
-      return data[key]
-  }
-}
-
-function set (data, k, v) {
-  for (var i = 0, s = '_' + k, key = s;
-       hasOwnProperty.call(data, key);
-       key = s + i++) {
-    if (same(data[key].key, k)) {
-      data[key].value = v
-      return
-    }
-  }
-  data.size++
-  data[key] = new Entry(k, v, key)
-}
-
-},{}],100:[function(require,module,exports){
-module.exports = function () {
-    // see https://code.google.com/p/v8/wiki/JavaScriptStackTraceApi
-    var origPrepareStackTrace = Error.prepareStackTrace;
-    Error.prepareStackTrace = function (_, stack) { return stack };
-    var stack = (new Error()).stack;
-    Error.prepareStackTrace = origPrepareStackTrace;
-    return stack[2].getFileName();
-};
-
-},{}],101:[function(require,module,exports){
-module.exports=[
-    "assert",
-    "buffer_ieee754",
-    "buffer",
-    "child_process",
-    "cluster",
-    "console",
-    "constants",
-    "crypto",
-    "_debugger",
-    "dgram",
-    "dns",
-    "domain",
-    "events",
-    "freelist",
-    "fs",
-    "http",
-    "https",
-    "_linklist",
-    "module",
-    "net",
-    "os",
-    "path",
-    "punycode",
-    "querystring",
-    "readline",
-    "repl",
-    "stream",
-    "string_decoder",
-    "sys",
-    "timers",
-    "tls",
-    "tty",
-    "url",
-    "util",
-    "vm",
-    "zlib"
-]
-
-},{}],102:[function(require,module,exports){
-module.exports = require('./core.json').reduce(function (acc, x) {
-    acc[x] = true;
-    return acc;
-}, {});
-
-},{"./core.json":101}],103:[function(require,module,exports){
-(function (process){
-var path = require('path');
-
-
-module.exports = function (start, opts) {
-    var modules = opts.moduleDirectory || 'node_modules';
-    var prefix = '/';
-    if (/^([A-Za-z]:)/.test(start)) {
-        prefix = '';
-    } else if (/^\\\\/.test(start)) {
-        prefix = '\\\\';
-    }
-    var splitRe = process.platform === 'win32' ? /[\/\\]/ : /\/+/;
-    var parts = start.split(splitRe);
-
-    var dirs = [];
-    for (var i = parts.length - 1; i >= 0; i--) {
-        if (parts[i] === modules) continue;
-        var dir = path.join(
-            path.join.apply(path, parts.slice(0, i + 1)),
-            modules
-        );
-        dirs.push(prefix + dir);
-    }
-    if(process.platform === 'win32'){
-        dirs[dirs.length-1] = dirs[dirs.length-1].replace(":", ":\\");
-    }
-    return dirs.concat(opts.paths);
-}
-}).call(this,require('_process'))
-},{"_process":375,"path":374}],104:[function(require,module,exports){
-var core = require('./core');
-var fs = require('fs');
-var path = require('path');
-var caller = require('./caller.js');
-var nodeModulesPaths = require('./node-modules-paths.js');
-
-module.exports = function (x, opts) {
-    if (!opts) opts = {};
-    var isFile = opts.isFile || function (file) {
-        try { var stat = fs.statSync(file) }
-        catch (err) { if (err && err.code === 'ENOENT') return false }
-        return stat.isFile() || stat.isFIFO();
-    };
-    var readFileSync = opts.readFileSync || fs.readFileSync;
-    
-    var extensions = opts.extensions || [ '.js' ];
-    var y = opts.basedir || path.dirname(caller());
-
-    opts.paths = opts.paths || [];
-
-    if (x.match(/^(?:\.\.?\/|\/|([A-Za-z]:)?\\)/)) {
-        var m = loadAsFileSync(path.resolve(y, x))
-            || loadAsDirectorySync(path.resolve(y, x));
-        if (m) return m;
-    } else {
-        var n = loadNodeModulesSync(x, y);
-        if (n) return n;
-    }
-    
-    if (core[x]) return x;
-    
-    throw new Error("Cannot find module '" + x + "' from '" + y + "'");
-    
-    function loadAsFileSync (x) {
-        if (isFile(x)) {
-            return x;
-        }
-        
-        for (var i = 0; i < extensions.length; i++) {
-            var file = x + extensions[i];
-            if (isFile(file)) {
-                return file;
-            }
-        }
-    }
-    
-    function loadAsDirectorySync (x) {
-        var pkgfile = path.join(x, '/package.json');
-        if (isFile(pkgfile)) {
-            var body = readFileSync(pkgfile, 'utf8');
-            try {
-                var pkg = JSON.parse(body);
-                if (opts.packageFilter) {
-                    pkg = opts.packageFilter(pkg, x);
-                }
-                
-                if (pkg.main) {
-                    var m = loadAsFileSync(path.resolve(x, pkg.main));
-                    if (m) return m;
-                    var n = loadAsDirectorySync(path.resolve(x, pkg.main));
-                    if (n) return n;
-                }
-            }
-            catch (err) {}
-        }
-        
-        return loadAsFileSync(path.join( x, '/index'));
-    }
-    
-    function loadNodeModulesSync (x, start) {
-        var dirs = nodeModulesPaths(start, opts);
-        for (var i = 0; i < dirs.length; i++) {
-            var dir = dirs[i];
-            var m = loadAsFileSync(path.join( dir, '/', x));
-            if (m) return m;
-            var n = loadAsDirectorySync(path.join( dir, '/', x ));
-            if (n) return n;
-        }
-    }
-};
-
-},{"./caller.js":100,"./core":102,"./node-modules-paths.js":103,"fs":177,"path":374}],105:[function(require,module,exports){
+},{}],107:[function(require,module,exports){
 // A library of seedable RNGs implemented in Javascript.
 //
 // Usage:
@@ -38555,7 +38684,7 @@ sr.tychei = tychei;
 
 module.exports = sr;
 
-},{"./lib/alea":106,"./lib/tychei":107,"./lib/xor128":108,"./lib/xor4096":109,"./lib/xorshift7":110,"./lib/xorwow":111,"./seedrandom":112}],106:[function(require,module,exports){
+},{"./lib/alea":108,"./lib/tychei":109,"./lib/xor128":110,"./lib/xor4096":111,"./lib/xorshift7":112,"./lib/xorwow":113,"./seedrandom":114}],108:[function(require,module,exports){
 // A port of an algorithm by Johannes Baagøe <baagoe@baagoe.com>, 2010
 // http://baagoe.com/en/RandomMusings/javascript/
 // https://github.com/nquinlan/better-random-numbers-for-javascript-mirror
@@ -38671,7 +38800,7 @@ if (module && module.exports) {
 
 
 
-},{}],107:[function(require,module,exports){
+},{}],109:[function(require,module,exports){
 // A Javascript implementaion of the "Tyche-i" prng algorithm by
 // Samuel Neves and Filipe Araujo.
 // See https://eden.dei.uc.pt/~sneves/pubs/2011-snfa2.pdf
@@ -38776,7 +38905,7 @@ if (module && module.exports) {
 
 
 
-},{}],108:[function(require,module,exports){
+},{}],110:[function(require,module,exports){
 // A Javascript implementaion of the "xor128" prng algorithm by
 // George Marsaglia.  See http://www.jstatsoft.org/v08/i14/paper
 
@@ -38859,7 +38988,7 @@ if (module && module.exports) {
 
 
 
-},{}],109:[function(require,module,exports){
+},{}],111:[function(require,module,exports){
 // A Javascript implementaion of Richard Brent's Xorgens xor4096 algorithm.
 //
 // This fast non-cryptographic random number generator is designed for
@@ -39007,7 +39136,7 @@ if (module && module.exports) {
   (typeof define) == 'function' && define   // present with an AMD loader
 );
 
-},{}],110:[function(require,module,exports){
+},{}],112:[function(require,module,exports){
 // A Javascript implementaion of the "xorshift7" algorithm by
 // François Panneton and Pierre L'ecuyer:
 // "On the Xorgshift Random Number Generators"
@@ -39106,7 +39235,7 @@ if (module && module.exports) {
 );
 
 
-},{}],111:[function(require,module,exports){
+},{}],113:[function(require,module,exports){
 // A Javascript implementaion of the "xorwow" prng algorithm by
 // George Marsaglia.  See http://www.jstatsoft.org/v08/i14/paper
 
@@ -39194,7 +39323,7 @@ if (module && module.exports) {
 
 
 
-},{}],112:[function(require,module,exports){
+},{}],114:[function(require,module,exports){
 /*
 Copyright 2014 David Bau.
 
@@ -39438,907 +39567,7 @@ if ((typeof module) == 'object' && module.exports) {
   Math    // math: package containing random, pow, and seedrandom
 );
 
-},{"crypto":184}],113:[function(require,module,exports){
-arguments[4][24][0].apply(exports,arguments)
-},{"./source-map/source-map-consumer":119,"./source-map/source-map-generator":120,"./source-map/source-node":121,"dup":24}],114:[function(require,module,exports){
-arguments[4][25][0].apply(exports,arguments)
-},{"./util":122,"amdefine":123,"dup":25}],115:[function(require,module,exports){
-arguments[4][26][0].apply(exports,arguments)
-},{"./base64":116,"amdefine":123,"dup":26}],116:[function(require,module,exports){
-arguments[4][27][0].apply(exports,arguments)
-},{"amdefine":123,"dup":27}],117:[function(require,module,exports){
-arguments[4][29][0].apply(exports,arguments)
-},{"amdefine":123,"dup":29}],118:[function(require,module,exports){
-arguments[4][31][0].apply(exports,arguments)
-},{"./util":122,"amdefine":123,"dup":31}],119:[function(require,module,exports){
-/* -*- Mode: js; js-indent-level: 2; -*- */
-/*
- * Copyright 2011 Mozilla Foundation and contributors
- * Licensed under the New BSD license. See LICENSE or:
- * http://opensource.org/licenses/BSD-3-Clause
- */
-if (typeof define !== 'function') {
-    var define = require('amdefine')(module, require);
-}
-define(function (require, exports, module) {
-
-  var util = require('./util');
-  var binarySearch = require('./binary-search');
-  var ArraySet = require('./array-set').ArraySet;
-  var base64VLQ = require('./base64-vlq');
-
-  /**
-   * A SourceMapConsumer instance represents a parsed source map which we can
-   * query for information about the original file positions by giving it a file
-   * position in the generated source.
-   *
-   * The only parameter is the raw source map (either as a JSON string, or
-   * already parsed to an object). According to the spec, source maps have the
-   * following attributes:
-   *
-   *   - version: Which version of the source map spec this map is following.
-   *   - sources: An array of URLs to the original source files.
-   *   - names: An array of identifiers which can be referrenced by individual mappings.
-   *   - sourceRoot: Optional. The URL root from which all sources are relative.
-   *   - sourcesContent: Optional. An array of contents of the original source files.
-   *   - mappings: A string of base64 VLQs which contain the actual mappings.
-   *   - file: Optional. The generated file this source map is associated with.
-   *
-   * Here is an example source map, taken from the source map spec[0]:
-   *
-   *     {
-   *       version : 3,
-   *       file: "out.js",
-   *       sourceRoot : "",
-   *       sources: ["foo.js", "bar.js"],
-   *       names: ["src", "maps", "are", "fun"],
-   *       mappings: "AA,AB;;ABCDE;"
-   *     }
-   *
-   * [0]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit?pli=1#
-   */
-  function SourceMapConsumer(aSourceMap) {
-    var sourceMap = aSourceMap;
-    if (typeof aSourceMap === 'string') {
-      sourceMap = JSON.parse(aSourceMap.replace(/^\)\]\}'/, ''));
-    }
-
-    var version = util.getArg(sourceMap, 'version');
-    var sources = util.getArg(sourceMap, 'sources');
-    // Sass 3.3 leaves out the 'names' array, so we deviate from the spec (which
-    // requires the array) to play nice here.
-    var names = util.getArg(sourceMap, 'names', []);
-    var sourceRoot = util.getArg(sourceMap, 'sourceRoot', null);
-    var sourcesContent = util.getArg(sourceMap, 'sourcesContent', null);
-    var mappings = util.getArg(sourceMap, 'mappings');
-    var file = util.getArg(sourceMap, 'file', null);
-
-    // Once again, Sass deviates from the spec and supplies the version as a
-    // string rather than a number, so we use loose equality checking here.
-    if (version != this._version) {
-      throw new Error('Unsupported version: ' + version);
-    }
-
-    // Some source maps produce relative source paths like "./foo.js" instead of
-    // "foo.js".  Normalize these first so that future comparisons will succeed.
-    // See bugzil.la/1090768.
-    sources = sources.map(util.normalize);
-
-    // Pass `true` below to allow duplicate names and sources. While source maps
-    // are intended to be compressed and deduplicated, the TypeScript compiler
-    // sometimes generates source maps with duplicates in them. See Github issue
-    // #72 and bugzil.la/889492.
-    this._names = ArraySet.fromArray(names, true);
-    this._sources = ArraySet.fromArray(sources, true);
-
-    this.sourceRoot = sourceRoot;
-    this.sourcesContent = sourcesContent;
-    this._mappings = mappings;
-    this.file = file;
-  }
-
-  /**
-   * Create a SourceMapConsumer from a SourceMapGenerator.
-   *
-   * @param SourceMapGenerator aSourceMap
-   *        The source map that will be consumed.
-   * @returns SourceMapConsumer
-   */
-  SourceMapConsumer.fromSourceMap =
-    function SourceMapConsumer_fromSourceMap(aSourceMap) {
-      var smc = Object.create(SourceMapConsumer.prototype);
-
-      smc._names = ArraySet.fromArray(aSourceMap._names.toArray(), true);
-      smc._sources = ArraySet.fromArray(aSourceMap._sources.toArray(), true);
-      smc.sourceRoot = aSourceMap._sourceRoot;
-      smc.sourcesContent = aSourceMap._generateSourcesContent(smc._sources.toArray(),
-                                                              smc.sourceRoot);
-      smc.file = aSourceMap._file;
-
-      smc.__generatedMappings = aSourceMap._mappings.toArray().slice();
-      smc.__originalMappings = aSourceMap._mappings.toArray().slice()
-        .sort(util.compareByOriginalPositions);
-
-      return smc;
-    };
-
-  /**
-   * The version of the source mapping spec that we are consuming.
-   */
-  SourceMapConsumer.prototype._version = 3;
-
-  /**
-   * The list of original sources.
-   */
-  Object.defineProperty(SourceMapConsumer.prototype, 'sources', {
-    get: function () {
-      return this._sources.toArray().map(function (s) {
-        return this.sourceRoot != null ? util.join(this.sourceRoot, s) : s;
-      }, this);
-    }
-  });
-
-  // `__generatedMappings` and `__originalMappings` are arrays that hold the
-  // parsed mapping coordinates from the source map's "mappings" attribute. They
-  // are lazily instantiated, accessed via the `_generatedMappings` and
-  // `_originalMappings` getters respectively, and we only parse the mappings
-  // and create these arrays once queried for a source location. We jump through
-  // these hoops because there can be many thousands of mappings, and parsing
-  // them is expensive, so we only want to do it if we must.
-  //
-  // Each object in the arrays is of the form:
-  //
-  //     {
-  //       generatedLine: The line number in the generated code,
-  //       generatedColumn: The column number in the generated code,
-  //       source: The path to the original source file that generated this
-  //               chunk of code,
-  //       originalLine: The line number in the original source that
-  //                     corresponds to this chunk of generated code,
-  //       originalColumn: The column number in the original source that
-  //                       corresponds to this chunk of generated code,
-  //       name: The name of the original symbol which generated this chunk of
-  //             code.
-  //     }
-  //
-  // All properties except for `generatedLine` and `generatedColumn` can be
-  // `null`.
-  //
-  // `_generatedMappings` is ordered by the generated positions.
-  //
-  // `_originalMappings` is ordered by the original positions.
-
-  SourceMapConsumer.prototype.__generatedMappings = null;
-  Object.defineProperty(SourceMapConsumer.prototype, '_generatedMappings', {
-    get: function () {
-      if (!this.__generatedMappings) {
-        this.__generatedMappings = [];
-        this.__originalMappings = [];
-        this._parseMappings(this._mappings, this.sourceRoot);
-      }
-
-      return this.__generatedMappings;
-    }
-  });
-
-  SourceMapConsumer.prototype.__originalMappings = null;
-  Object.defineProperty(SourceMapConsumer.prototype, '_originalMappings', {
-    get: function () {
-      if (!this.__originalMappings) {
-        this.__generatedMappings = [];
-        this.__originalMappings = [];
-        this._parseMappings(this._mappings, this.sourceRoot);
-      }
-
-      return this.__originalMappings;
-    }
-  });
-
-  SourceMapConsumer.prototype._nextCharIsMappingSeparator =
-    function SourceMapConsumer_nextCharIsMappingSeparator(aStr) {
-      var c = aStr.charAt(0);
-      return c === ";" || c === ",";
-    };
-
-  /**
-   * Parse the mappings in a string in to a data structure which we can easily
-   * query (the ordered arrays in the `this.__generatedMappings` and
-   * `this.__originalMappings` properties).
-   */
-  SourceMapConsumer.prototype._parseMappings =
-    function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
-      var generatedLine = 1;
-      var previousGeneratedColumn = 0;
-      var previousOriginalLine = 0;
-      var previousOriginalColumn = 0;
-      var previousSource = 0;
-      var previousName = 0;
-      var str = aStr;
-      var temp = {};
-      var mapping;
-
-      while (str.length > 0) {
-        if (str.charAt(0) === ';') {
-          generatedLine++;
-          str = str.slice(1);
-          previousGeneratedColumn = 0;
-        }
-        else if (str.charAt(0) === ',') {
-          str = str.slice(1);
-        }
-        else {
-          mapping = {};
-          mapping.generatedLine = generatedLine;
-
-          // Generated column.
-          base64VLQ.decode(str, temp);
-          mapping.generatedColumn = previousGeneratedColumn + temp.value;
-          previousGeneratedColumn = mapping.generatedColumn;
-          str = temp.rest;
-
-          if (str.length > 0 && !this._nextCharIsMappingSeparator(str)) {
-            // Original source.
-            base64VLQ.decode(str, temp);
-            mapping.source = this._sources.at(previousSource + temp.value);
-            previousSource += temp.value;
-            str = temp.rest;
-            if (str.length === 0 || this._nextCharIsMappingSeparator(str)) {
-              throw new Error('Found a source, but no line and column');
-            }
-
-            // Original line.
-            base64VLQ.decode(str, temp);
-            mapping.originalLine = previousOriginalLine + temp.value;
-            previousOriginalLine = mapping.originalLine;
-            // Lines are stored 0-based
-            mapping.originalLine += 1;
-            str = temp.rest;
-            if (str.length === 0 || this._nextCharIsMappingSeparator(str)) {
-              throw new Error('Found a source and line, but no column');
-            }
-
-            // Original column.
-            base64VLQ.decode(str, temp);
-            mapping.originalColumn = previousOriginalColumn + temp.value;
-            previousOriginalColumn = mapping.originalColumn;
-            str = temp.rest;
-
-            if (str.length > 0 && !this._nextCharIsMappingSeparator(str)) {
-              // Original name.
-              base64VLQ.decode(str, temp);
-              mapping.name = this._names.at(previousName + temp.value);
-              previousName += temp.value;
-              str = temp.rest;
-            }
-          }
-
-          this.__generatedMappings.push(mapping);
-          if (typeof mapping.originalLine === 'number') {
-            this.__originalMappings.push(mapping);
-          }
-        }
-      }
-
-      this.__generatedMappings.sort(util.compareByGeneratedPositions);
-      this.__originalMappings.sort(util.compareByOriginalPositions);
-    };
-
-  /**
-   * Find the mapping that best matches the hypothetical "needle" mapping that
-   * we are searching for in the given "haystack" of mappings.
-   */
-  SourceMapConsumer.prototype._findMapping =
-    function SourceMapConsumer_findMapping(aNeedle, aMappings, aLineName,
-                                           aColumnName, aComparator) {
-      // To return the position we are searching for, we must first find the
-      // mapping for the given position and then return the opposite position it
-      // points to. Because the mappings are sorted, we can use binary search to
-      // find the best mapping.
-
-      if (aNeedle[aLineName] <= 0) {
-        throw new TypeError('Line must be greater than or equal to 1, got '
-                            + aNeedle[aLineName]);
-      }
-      if (aNeedle[aColumnName] < 0) {
-        throw new TypeError('Column must be greater than or equal to 0, got '
-                            + aNeedle[aColumnName]);
-      }
-
-      return binarySearch.search(aNeedle, aMappings, aComparator);
-    };
-
-  /**
-   * Compute the last column for each generated mapping. The last column is
-   * inclusive.
-   */
-  SourceMapConsumer.prototype.computeColumnSpans =
-    function SourceMapConsumer_computeColumnSpans() {
-      for (var index = 0; index < this._generatedMappings.length; ++index) {
-        var mapping = this._generatedMappings[index];
-
-        // Mappings do not contain a field for the last generated columnt. We
-        // can come up with an optimistic estimate, however, by assuming that
-        // mappings are contiguous (i.e. given two consecutive mappings, the
-        // first mapping ends where the second one starts).
-        if (index + 1 < this._generatedMappings.length) {
-          var nextMapping = this._generatedMappings[index + 1];
-
-          if (mapping.generatedLine === nextMapping.generatedLine) {
-            mapping.lastGeneratedColumn = nextMapping.generatedColumn - 1;
-            continue;
-          }
-        }
-
-        // The last mapping for each line spans the entire line.
-        mapping.lastGeneratedColumn = Infinity;
-      }
-    };
-
-  /**
-   * Returns the original source, line, and column information for the generated
-   * source's line and column positions provided. The only argument is an object
-   * with the following properties:
-   *
-   *   - line: The line number in the generated source.
-   *   - column: The column number in the generated source.
-   *
-   * and an object is returned with the following properties:
-   *
-   *   - source: The original source file, or null.
-   *   - line: The line number in the original source, or null.
-   *   - column: The column number in the original source, or null.
-   *   - name: The original identifier, or null.
-   */
-  SourceMapConsumer.prototype.originalPositionFor =
-    function SourceMapConsumer_originalPositionFor(aArgs) {
-      var needle = {
-        generatedLine: util.getArg(aArgs, 'line'),
-        generatedColumn: util.getArg(aArgs, 'column')
-      };
-
-      var index = this._findMapping(needle,
-                                    this._generatedMappings,
-                                    "generatedLine",
-                                    "generatedColumn",
-                                    util.compareByGeneratedPositions);
-
-      if (index >= 0) {
-        var mapping = this._generatedMappings[index];
-
-        if (mapping.generatedLine === needle.generatedLine) {
-          var source = util.getArg(mapping, 'source', null);
-          if (source != null && this.sourceRoot != null) {
-            source = util.join(this.sourceRoot, source);
-          }
-          return {
-            source: source,
-            line: util.getArg(mapping, 'originalLine', null),
-            column: util.getArg(mapping, 'originalColumn', null),
-            name: util.getArg(mapping, 'name', null)
-          };
-        }
-      }
-
-      return {
-        source: null,
-        line: null,
-        column: null,
-        name: null
-      };
-    };
-
-  /**
-   * Returns the original source content. The only argument is the url of the
-   * original source file. Returns null if no original source content is
-   * availible.
-   */
-  SourceMapConsumer.prototype.sourceContentFor =
-    function SourceMapConsumer_sourceContentFor(aSource) {
-      if (!this.sourcesContent) {
-        return null;
-      }
-
-      if (this.sourceRoot != null) {
-        aSource = util.relative(this.sourceRoot, aSource);
-      }
-
-      if (this._sources.has(aSource)) {
-        return this.sourcesContent[this._sources.indexOf(aSource)];
-      }
-
-      var url;
-      if (this.sourceRoot != null
-          && (url = util.urlParse(this.sourceRoot))) {
-        // XXX: file:// URIs and absolute paths lead to unexpected behavior for
-        // many users. We can help them out when they expect file:// URIs to
-        // behave like it would if they were running a local HTTP server. See
-        // https://bugzilla.mozilla.org/show_bug.cgi?id=885597.
-        var fileUriAbsPath = aSource.replace(/^file:\/\//, "");
-        if (url.scheme == "file"
-            && this._sources.has(fileUriAbsPath)) {
-          return this.sourcesContent[this._sources.indexOf(fileUriAbsPath)]
-        }
-
-        if ((!url.path || url.path == "/")
-            && this._sources.has("/" + aSource)) {
-          return this.sourcesContent[this._sources.indexOf("/" + aSource)];
-        }
-      }
-
-      throw new Error('"' + aSource + '" is not in the SourceMap.');
-    };
-
-  /**
-   * Returns the generated line and column information for the original source,
-   * line, and column positions provided. The only argument is an object with
-   * the following properties:
-   *
-   *   - source: The filename of the original source.
-   *   - line: The line number in the original source.
-   *   - column: The column number in the original source.
-   *
-   * and an object is returned with the following properties:
-   *
-   *   - line: The line number in the generated source, or null.
-   *   - column: The column number in the generated source, or null.
-   */
-  SourceMapConsumer.prototype.generatedPositionFor =
-    function SourceMapConsumer_generatedPositionFor(aArgs) {
-      var needle = {
-        source: util.getArg(aArgs, 'source'),
-        originalLine: util.getArg(aArgs, 'line'),
-        originalColumn: util.getArg(aArgs, 'column')
-      };
-
-      if (this.sourceRoot != null) {
-        needle.source = util.relative(this.sourceRoot, needle.source);
-      }
-
-      var index = this._findMapping(needle,
-                                    this._originalMappings,
-                                    "originalLine",
-                                    "originalColumn",
-                                    util.compareByOriginalPositions);
-
-      if (index >= 0) {
-        var mapping = this._originalMappings[index];
-
-        return {
-          line: util.getArg(mapping, 'generatedLine', null),
-          column: util.getArg(mapping, 'generatedColumn', null),
-          lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
-        };
-      }
-
-      return {
-        line: null,
-        column: null,
-        lastColumn: null
-      };
-    };
-
-  /**
-   * Returns all generated line and column information for the original source
-   * and line provided. The only argument is an object with the following
-   * properties:
-   *
-   *   - source: The filename of the original source.
-   *   - line: The line number in the original source.
-   *
-   * and an array of objects is returned, each with the following properties:
-   *
-   *   - line: The line number in the generated source, or null.
-   *   - column: The column number in the generated source, or null.
-   */
-  SourceMapConsumer.prototype.allGeneratedPositionsFor =
-    function SourceMapConsumer_allGeneratedPositionsFor(aArgs) {
-      // When there is no exact match, SourceMapConsumer.prototype._findMapping
-      // returns the index of the closest mapping less than the needle. By
-      // setting needle.originalColumn to Infinity, we thus find the last
-      // mapping for the given line, provided such a mapping exists.
-      var needle = {
-        source: util.getArg(aArgs, 'source'),
-        originalLine: util.getArg(aArgs, 'line'),
-        originalColumn: Infinity
-      };
-
-      if (this.sourceRoot != null) {
-        needle.source = util.relative(this.sourceRoot, needle.source);
-      }
-
-      var mappings = [];
-
-      var index = this._findMapping(needle,
-                                    this._originalMappings,
-                                    "originalLine",
-                                    "originalColumn",
-                                    util.compareByOriginalPositions);
-      if (index >= 0) {
-        var mapping = this._originalMappings[index];
-
-        while (mapping && mapping.originalLine === needle.originalLine) {
-          mappings.push({
-            line: util.getArg(mapping, 'generatedLine', null),
-            column: util.getArg(mapping, 'generatedColumn', null),
-            lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
-          });
-
-          mapping = this._originalMappings[--index];
-        }
-      }
-
-      return mappings.reverse();
-    };
-
-  SourceMapConsumer.GENERATED_ORDER = 1;
-  SourceMapConsumer.ORIGINAL_ORDER = 2;
-
-  /**
-   * Iterate over each mapping between an original source/line/column and a
-   * generated line/column in this source map.
-   *
-   * @param Function aCallback
-   *        The function that is called with each mapping.
-   * @param Object aContext
-   *        Optional. If specified, this object will be the value of `this` every
-   *        time that `aCallback` is called.
-   * @param aOrder
-   *        Either `SourceMapConsumer.GENERATED_ORDER` or
-   *        `SourceMapConsumer.ORIGINAL_ORDER`. Specifies whether you want to
-   *        iterate over the mappings sorted by the generated file's line/column
-   *        order or the original's source/line/column order, respectively. Defaults to
-   *        `SourceMapConsumer.GENERATED_ORDER`.
-   */
-  SourceMapConsumer.prototype.eachMapping =
-    function SourceMapConsumer_eachMapping(aCallback, aContext, aOrder) {
-      var context = aContext || null;
-      var order = aOrder || SourceMapConsumer.GENERATED_ORDER;
-
-      var mappings;
-      switch (order) {
-      case SourceMapConsumer.GENERATED_ORDER:
-        mappings = this._generatedMappings;
-        break;
-      case SourceMapConsumer.ORIGINAL_ORDER:
-        mappings = this._originalMappings;
-        break;
-      default:
-        throw new Error("Unknown order of iteration.");
-      }
-
-      var sourceRoot = this.sourceRoot;
-      mappings.map(function (mapping) {
-        var source = mapping.source;
-        if (source != null && sourceRoot != null) {
-          source = util.join(sourceRoot, source);
-        }
-        return {
-          source: source,
-          generatedLine: mapping.generatedLine,
-          generatedColumn: mapping.generatedColumn,
-          originalLine: mapping.originalLine,
-          originalColumn: mapping.originalColumn,
-          name: mapping.name
-        };
-      }).forEach(aCallback, context);
-    };
-
-  exports.SourceMapConsumer = SourceMapConsumer;
-
-});
-
-},{"./array-set":114,"./base64-vlq":115,"./binary-search":117,"./util":122,"amdefine":123}],120:[function(require,module,exports){
-arguments[4][33][0].apply(exports,arguments)
-},{"./array-set":114,"./base64-vlq":115,"./mapping-list":118,"./util":122,"amdefine":123,"dup":33}],121:[function(require,module,exports){
-arguments[4][34][0].apply(exports,arguments)
-},{"./source-map-generator":120,"./util":122,"amdefine":123,"dup":34}],122:[function(require,module,exports){
-arguments[4][35][0].apply(exports,arguments)
-},{"amdefine":123,"dup":35}],123:[function(require,module,exports){
-(function (process,__filename){
-/** vim: et:ts=4:sw=4:sts=4
- * @license amdefine 1.0.0 Copyright (c) 2011-2015, The Dojo Foundation All Rights Reserved.
- * Available via the MIT or new BSD license.
- * see: http://github.com/jrburke/amdefine for details
- */
-
-/*jslint node: true */
-/*global module, process */
-'use strict';
-
-/**
- * Creates a define for node.
- * @param {Object} module the "module" object that is defined by Node for the
- * current module.
- * @param {Function} [requireFn]. Node's require function for the current module.
- * It only needs to be passed in Node versions before 0.5, when module.require
- * did not exist.
- * @returns {Function} a define function that is usable for the current node
- * module.
- */
-function amdefine(module, requireFn) {
-    'use strict';
-    var defineCache = {},
-        loaderCache = {},
-        alreadyCalled = false,
-        path = require('path'),
-        makeRequire, stringRequire;
-
-    /**
-     * Trims the . and .. from an array of path segments.
-     * It will keep a leading path segment if a .. will become
-     * the first path segment, to help with module name lookups,
-     * which act like paths, but can be remapped. But the end result,
-     * all paths that use this function should look normalized.
-     * NOTE: this method MODIFIES the input array.
-     * @param {Array} ary the array of path segments.
-     */
-    function trimDots(ary) {
-        var i, part;
-        for (i = 0; ary[i]; i+= 1) {
-            part = ary[i];
-            if (part === '.') {
-                ary.splice(i, 1);
-                i -= 1;
-            } else if (part === '..') {
-                if (i === 1 && (ary[2] === '..' || ary[0] === '..')) {
-                    //End of the line. Keep at least one non-dot
-                    //path segment at the front so it can be mapped
-                    //correctly to disk. Otherwise, there is likely
-                    //no path mapping for a path starting with '..'.
-                    //This can still fail, but catches the most reasonable
-                    //uses of ..
-                    break;
-                } else if (i > 0) {
-                    ary.splice(i - 1, 2);
-                    i -= 2;
-                }
-            }
-        }
-    }
-
-    function normalize(name, baseName) {
-        var baseParts;
-
-        //Adjust any relative paths.
-        if (name && name.charAt(0) === '.') {
-            //If have a base name, try to normalize against it,
-            //otherwise, assume it is a top-level require that will
-            //be relative to baseUrl in the end.
-            if (baseName) {
-                baseParts = baseName.split('/');
-                baseParts = baseParts.slice(0, baseParts.length - 1);
-                baseParts = baseParts.concat(name.split('/'));
-                trimDots(baseParts);
-                name = baseParts.join('/');
-            }
-        }
-
-        return name;
-    }
-
-    /**
-     * Create the normalize() function passed to a loader plugin's
-     * normalize method.
-     */
-    function makeNormalize(relName) {
-        return function (name) {
-            return normalize(name, relName);
-        };
-    }
-
-    function makeLoad(id) {
-        function load(value) {
-            loaderCache[id] = value;
-        }
-
-        load.fromText = function (id, text) {
-            //This one is difficult because the text can/probably uses
-            //define, and any relative paths and requires should be relative
-            //to that id was it would be found on disk. But this would require
-            //bootstrapping a module/require fairly deeply from node core.
-            //Not sure how best to go about that yet.
-            throw new Error('amdefine does not implement load.fromText');
-        };
-
-        return load;
-    }
-
-    makeRequire = function (systemRequire, exports, module, relId) {
-        function amdRequire(deps, callback) {
-            if (typeof deps === 'string') {
-                //Synchronous, single module require('')
-                return stringRequire(systemRequire, exports, module, deps, relId);
-            } else {
-                //Array of dependencies with a callback.
-
-                //Convert the dependencies to modules.
-                deps = deps.map(function (depName) {
-                    return stringRequire(systemRequire, exports, module, depName, relId);
-                });
-
-                //Wait for next tick to call back the require call.
-                if (callback) {
-                    process.nextTick(function () {
-                        callback.apply(null, deps);
-                    });
-                }
-            }
-        }
-
-        amdRequire.toUrl = function (filePath) {
-            if (filePath.indexOf('.') === 0) {
-                return normalize(filePath, path.dirname(module.filename));
-            } else {
-                return filePath;
-            }
-        };
-
-        return amdRequire;
-    };
-
-    //Favor explicit value, passed in if the module wants to support Node 0.4.
-    requireFn = requireFn || function req() {
-        return module.require.apply(module, arguments);
-    };
-
-    function runFactory(id, deps, factory) {
-        var r, e, m, result;
-
-        if (id) {
-            e = loaderCache[id] = {};
-            m = {
-                id: id,
-                uri: __filename,
-                exports: e
-            };
-            r = makeRequire(requireFn, e, m, id);
-        } else {
-            //Only support one define call per file
-            if (alreadyCalled) {
-                throw new Error('amdefine with no module ID cannot be called more than once per file.');
-            }
-            alreadyCalled = true;
-
-            //Use the real variables from node
-            //Use module.exports for exports, since
-            //the exports in here is amdefine exports.
-            e = module.exports;
-            m = module;
-            r = makeRequire(requireFn, e, m, module.id);
-        }
-
-        //If there are dependencies, they are strings, so need
-        //to convert them to dependency values.
-        if (deps) {
-            deps = deps.map(function (depName) {
-                return r(depName);
-            });
-        }
-
-        //Call the factory with the right dependencies.
-        if (typeof factory === 'function') {
-            result = factory.apply(m.exports, deps);
-        } else {
-            result = factory;
-        }
-
-        if (result !== undefined) {
-            m.exports = result;
-            if (id) {
-                loaderCache[id] = m.exports;
-            }
-        }
-    }
-
-    stringRequire = function (systemRequire, exports, module, id, relId) {
-        //Split the ID by a ! so that
-        var index = id.indexOf('!'),
-            originalId = id,
-            prefix, plugin;
-
-        if (index === -1) {
-            id = normalize(id, relId);
-
-            //Straight module lookup. If it is one of the special dependencies,
-            //deal with it, otherwise, delegate to node.
-            if (id === 'require') {
-                return makeRequire(systemRequire, exports, module, relId);
-            } else if (id === 'exports') {
-                return exports;
-            } else if (id === 'module') {
-                return module;
-            } else if (loaderCache.hasOwnProperty(id)) {
-                return loaderCache[id];
-            } else if (defineCache[id]) {
-                runFactory.apply(null, defineCache[id]);
-                return loaderCache[id];
-            } else {
-                if(systemRequire) {
-                    return systemRequire(originalId);
-                } else {
-                    throw new Error('No module with ID: ' + id);
-                }
-            }
-        } else {
-            //There is a plugin in play.
-            prefix = id.substring(0, index);
-            id = id.substring(index + 1, id.length);
-
-            plugin = stringRequire(systemRequire, exports, module, prefix, relId);
-
-            if (plugin.normalize) {
-                id = plugin.normalize(id, makeNormalize(relId));
-            } else {
-                //Normalize the ID normally.
-                id = normalize(id, relId);
-            }
-
-            if (loaderCache[id]) {
-                return loaderCache[id];
-            } else {
-                plugin.load(id, makeRequire(systemRequire, exports, module, relId), makeLoad(id), {});
-
-                return loaderCache[id];
-            }
-        }
-    };
-
-    //Create a define function specific to the module asking for amdefine.
-    function define(id, deps, factory) {
-        if (Array.isArray(id)) {
-            factory = deps;
-            deps = id;
-            id = undefined;
-        } else if (typeof id !== 'string') {
-            factory = id;
-            id = deps = undefined;
-        }
-
-        if (deps && !Array.isArray(deps)) {
-            factory = deps;
-            deps = undefined;
-        }
-
-        if (!deps) {
-            deps = ['require', 'exports', 'module'];
-        }
-
-        //Set up properties for this module. If an ID, then use
-        //internal cache. If no ID, then use the external variables
-        //for this node module.
-        if (id) {
-            //Put the module in deep freeze until there is a
-            //require call for it.
-            defineCache[id] = [id, deps, factory];
-        } else {
-            runFactory(id, deps, factory);
-        }
-    }
-
-    //define.require, which has access to all the values in the
-    //cache. Useful for AMD modules that all have IDs in the file,
-    //but need to finally export a value to node based on one of those
-    //IDs.
-    define.require = function (id) {
-        if (loaderCache[id]) {
-            return loaderCache[id];
-        }
-
-        if (defineCache[id]) {
-            runFactory.apply(null, defineCache[id]);
-            return loaderCache[id];
-        }
-    };
-
-    define.amd = {};
-
-    return define;
-}
-
-module.exports = amdefine;
-
-}).call(this,require('_process'),"/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"_process":375,"path":374}],124:[function(require,module,exports){
+},{"crypto":194}],115:[function(require,module,exports){
 (function (root, factory) {
     if (typeof exports === 'object') {
         // CommonJS
@@ -42917,7 +42146,7 @@ module.exports = amdefine;
     exports$2.syntaxToTokens = syn.syntaxToTokens;
 }));
 
-},{"./parser":125,"./patterns":126,"./scopedEval":127,"./syntax":129,"escodegen":130,"underscore":137}],125:[function(require,module,exports){
+},{"./parser":116,"./patterns":117,"./scopedEval":118,"./syntax":120,"escodegen":121,"underscore":146}],116:[function(require,module,exports){
 (function (root, factory) {
     'use strict';
     if (// Universal Module Definition (UMD) to support AMD, CommonJS/Node.js,
@@ -47824,7 +47053,7 @@ module.exports = amdefine;
     }();
 }));
 
-},{"./expander":124}],126:[function(require,module,exports){
+},{"./expander":115}],117:[function(require,module,exports){
 (function (root, factory) {
     if (typeof exports === 'object') {
         // CommonJS
@@ -48778,7 +48007,7 @@ module.exports = amdefine;
     exports$2.isEquivPatternEnvToken = isEquivPatternEnvToken;
 }));
 
-},{"./expander":124,"./parser":125,"./syntax":129,"underscore":137}],127:[function(require,module,exports){
+},{"./expander":115,"./parser":116,"./syntax":120,"underscore":146}],118:[function(require,module,exports){
 // thou shalt not macro expand me...all kinds of hygiene hackary
 // with strings and `with`.
 
@@ -48800,7 +48029,7 @@ module.exports = amdefine;
 }));
 
 
-},{}],128:[function(require,module,exports){
+},{}],119:[function(require,module,exports){
 (function (process){
 (function (root, factory) {
     if (typeof exports === 'object') {
@@ -49063,7 +48292,7 @@ module.exports = amdefine;
 }));
 
 }).call(this,require('_process'))
-},{"./expander":124,"./parser":125,"./syntax":129,"_process":375,"escodegen":130,"escope":38,"fs":177,"path":374,"resolve/lib/sync":104,"underscore":137}],129:[function(require,module,exports){
+},{"./expander":115,"./parser":116,"./syntax":120,"_process":385,"escodegen":121,"escope":138,"fs":187,"path":384,"resolve/lib/sync":145,"underscore":146}],120:[function(require,module,exports){
 (function (root, factory) {
     if (typeof exports === 'object') {
         // CommonJS
@@ -49540,7 +48769,7 @@ module.exports = amdefine;
     exports$2.printSyntaxError = printSyntaxError;
 }));
 
-},{"./expander":124,"./parser":125,"underscore":137}],130:[function(require,module,exports){
+},{"./expander":115,"./parser":116,"underscore":146}],121:[function(require,module,exports){
 (function (global){
 /*
   Copyright (C) 2012-2014 Yusuke Suzuki <utatane.tea@gmail.com>
@@ -52102,11 +51331,11 @@ module.exports = amdefine;
 /* vim: set sw=4 ts=4 et tw=80 : */
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./package.json":136,"estraverse":131,"esutils":135,"source-map":113}],131:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23}],132:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"dup":90}],133:[function(require,module,exports){
+},{"./package.json":137,"estraverse":122,"esutils":126,"source-map":127}],122:[function(require,module,exports){
+arguments[4][24][0].apply(exports,arguments)
+},{"dup":24}],123:[function(require,module,exports){
+arguments[4][83][0].apply(exports,arguments)
+},{"dup":83}],124:[function(require,module,exports){
 /*
   Copyright (C) 2013-2014 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2014 Ivan Nikulin <ifaaan@gmail.com>
@@ -52209,7 +51438,7 @@ arguments[4][90][0].apply(exports,arguments)
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{}],134:[function(require,module,exports){
+},{}],125:[function(require,module,exports){
 /*
   Copyright (C) 2013 Yusuke Suzuki <utatane.tea@gmail.com>
 
@@ -52348,9 +51577,604 @@ arguments[4][90][0].apply(exports,arguments)
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"./code":133}],135:[function(require,module,exports){
-arguments[4][93][0].apply(exports,arguments)
-},{"./ast":132,"./code":133,"./keyword":134,"dup":93}],136:[function(require,module,exports){
+},{"./code":124}],126:[function(require,module,exports){
+arguments[4][86][0].apply(exports,arguments)
+},{"./ast":123,"./code":124,"./keyword":125,"dup":86}],127:[function(require,module,exports){
+arguments[4][25][0].apply(exports,arguments)
+},{"./source-map/source-map-consumer":133,"./source-map/source-map-generator":134,"./source-map/source-node":135,"dup":25}],128:[function(require,module,exports){
+arguments[4][26][0].apply(exports,arguments)
+},{"./util":136,"amdefine":6,"dup":26}],129:[function(require,module,exports){
+arguments[4][27][0].apply(exports,arguments)
+},{"./base64":130,"amdefine":6,"dup":27}],130:[function(require,module,exports){
+arguments[4][28][0].apply(exports,arguments)
+},{"amdefine":6,"dup":28}],131:[function(require,module,exports){
+arguments[4][30][0].apply(exports,arguments)
+},{"amdefine":6,"dup":30}],132:[function(require,module,exports){
+arguments[4][32][0].apply(exports,arguments)
+},{"./util":136,"amdefine":6,"dup":32}],133:[function(require,module,exports){
+/* -*- Mode: js; js-indent-level: 2; -*- */
+/*
+ * Copyright 2011 Mozilla Foundation and contributors
+ * Licensed under the New BSD license. See LICENSE or:
+ * http://opensource.org/licenses/BSD-3-Clause
+ */
+if (typeof define !== 'function') {
+    var define = require('amdefine')(module, require);
+}
+define(function (require, exports, module) {
+
+  var util = require('./util');
+  var binarySearch = require('./binary-search');
+  var ArraySet = require('./array-set').ArraySet;
+  var base64VLQ = require('./base64-vlq');
+
+  /**
+   * A SourceMapConsumer instance represents a parsed source map which we can
+   * query for information about the original file positions by giving it a file
+   * position in the generated source.
+   *
+   * The only parameter is the raw source map (either as a JSON string, or
+   * already parsed to an object). According to the spec, source maps have the
+   * following attributes:
+   *
+   *   - version: Which version of the source map spec this map is following.
+   *   - sources: An array of URLs to the original source files.
+   *   - names: An array of identifiers which can be referrenced by individual mappings.
+   *   - sourceRoot: Optional. The URL root from which all sources are relative.
+   *   - sourcesContent: Optional. An array of contents of the original source files.
+   *   - mappings: A string of base64 VLQs which contain the actual mappings.
+   *   - file: Optional. The generated file this source map is associated with.
+   *
+   * Here is an example source map, taken from the source map spec[0]:
+   *
+   *     {
+   *       version : 3,
+   *       file: "out.js",
+   *       sourceRoot : "",
+   *       sources: ["foo.js", "bar.js"],
+   *       names: ["src", "maps", "are", "fun"],
+   *       mappings: "AA,AB;;ABCDE;"
+   *     }
+   *
+   * [0]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit?pli=1#
+   */
+  function SourceMapConsumer(aSourceMap) {
+    var sourceMap = aSourceMap;
+    if (typeof aSourceMap === 'string') {
+      sourceMap = JSON.parse(aSourceMap.replace(/^\)\]\}'/, ''));
+    }
+
+    var version = util.getArg(sourceMap, 'version');
+    var sources = util.getArg(sourceMap, 'sources');
+    // Sass 3.3 leaves out the 'names' array, so we deviate from the spec (which
+    // requires the array) to play nice here.
+    var names = util.getArg(sourceMap, 'names', []);
+    var sourceRoot = util.getArg(sourceMap, 'sourceRoot', null);
+    var sourcesContent = util.getArg(sourceMap, 'sourcesContent', null);
+    var mappings = util.getArg(sourceMap, 'mappings');
+    var file = util.getArg(sourceMap, 'file', null);
+
+    // Once again, Sass deviates from the spec and supplies the version as a
+    // string rather than a number, so we use loose equality checking here.
+    if (version != this._version) {
+      throw new Error('Unsupported version: ' + version);
+    }
+
+    // Some source maps produce relative source paths like "./foo.js" instead of
+    // "foo.js".  Normalize these first so that future comparisons will succeed.
+    // See bugzil.la/1090768.
+    sources = sources.map(util.normalize);
+
+    // Pass `true` below to allow duplicate names and sources. While source maps
+    // are intended to be compressed and deduplicated, the TypeScript compiler
+    // sometimes generates source maps with duplicates in them. See Github issue
+    // #72 and bugzil.la/889492.
+    this._names = ArraySet.fromArray(names, true);
+    this._sources = ArraySet.fromArray(sources, true);
+
+    this.sourceRoot = sourceRoot;
+    this.sourcesContent = sourcesContent;
+    this._mappings = mappings;
+    this.file = file;
+  }
+
+  /**
+   * Create a SourceMapConsumer from a SourceMapGenerator.
+   *
+   * @param SourceMapGenerator aSourceMap
+   *        The source map that will be consumed.
+   * @returns SourceMapConsumer
+   */
+  SourceMapConsumer.fromSourceMap =
+    function SourceMapConsumer_fromSourceMap(aSourceMap) {
+      var smc = Object.create(SourceMapConsumer.prototype);
+
+      smc._names = ArraySet.fromArray(aSourceMap._names.toArray(), true);
+      smc._sources = ArraySet.fromArray(aSourceMap._sources.toArray(), true);
+      smc.sourceRoot = aSourceMap._sourceRoot;
+      smc.sourcesContent = aSourceMap._generateSourcesContent(smc._sources.toArray(),
+                                                              smc.sourceRoot);
+      smc.file = aSourceMap._file;
+
+      smc.__generatedMappings = aSourceMap._mappings.toArray().slice();
+      smc.__originalMappings = aSourceMap._mappings.toArray().slice()
+        .sort(util.compareByOriginalPositions);
+
+      return smc;
+    };
+
+  /**
+   * The version of the source mapping spec that we are consuming.
+   */
+  SourceMapConsumer.prototype._version = 3;
+
+  /**
+   * The list of original sources.
+   */
+  Object.defineProperty(SourceMapConsumer.prototype, 'sources', {
+    get: function () {
+      return this._sources.toArray().map(function (s) {
+        return this.sourceRoot != null ? util.join(this.sourceRoot, s) : s;
+      }, this);
+    }
+  });
+
+  // `__generatedMappings` and `__originalMappings` are arrays that hold the
+  // parsed mapping coordinates from the source map's "mappings" attribute. They
+  // are lazily instantiated, accessed via the `_generatedMappings` and
+  // `_originalMappings` getters respectively, and we only parse the mappings
+  // and create these arrays once queried for a source location. We jump through
+  // these hoops because there can be many thousands of mappings, and parsing
+  // them is expensive, so we only want to do it if we must.
+  //
+  // Each object in the arrays is of the form:
+  //
+  //     {
+  //       generatedLine: The line number in the generated code,
+  //       generatedColumn: The column number in the generated code,
+  //       source: The path to the original source file that generated this
+  //               chunk of code,
+  //       originalLine: The line number in the original source that
+  //                     corresponds to this chunk of generated code,
+  //       originalColumn: The column number in the original source that
+  //                       corresponds to this chunk of generated code,
+  //       name: The name of the original symbol which generated this chunk of
+  //             code.
+  //     }
+  //
+  // All properties except for `generatedLine` and `generatedColumn` can be
+  // `null`.
+  //
+  // `_generatedMappings` is ordered by the generated positions.
+  //
+  // `_originalMappings` is ordered by the original positions.
+
+  SourceMapConsumer.prototype.__generatedMappings = null;
+  Object.defineProperty(SourceMapConsumer.prototype, '_generatedMappings', {
+    get: function () {
+      if (!this.__generatedMappings) {
+        this.__generatedMappings = [];
+        this.__originalMappings = [];
+        this._parseMappings(this._mappings, this.sourceRoot);
+      }
+
+      return this.__generatedMappings;
+    }
+  });
+
+  SourceMapConsumer.prototype.__originalMappings = null;
+  Object.defineProperty(SourceMapConsumer.prototype, '_originalMappings', {
+    get: function () {
+      if (!this.__originalMappings) {
+        this.__generatedMappings = [];
+        this.__originalMappings = [];
+        this._parseMappings(this._mappings, this.sourceRoot);
+      }
+
+      return this.__originalMappings;
+    }
+  });
+
+  SourceMapConsumer.prototype._nextCharIsMappingSeparator =
+    function SourceMapConsumer_nextCharIsMappingSeparator(aStr) {
+      var c = aStr.charAt(0);
+      return c === ";" || c === ",";
+    };
+
+  /**
+   * Parse the mappings in a string in to a data structure which we can easily
+   * query (the ordered arrays in the `this.__generatedMappings` and
+   * `this.__originalMappings` properties).
+   */
+  SourceMapConsumer.prototype._parseMappings =
+    function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+      var generatedLine = 1;
+      var previousGeneratedColumn = 0;
+      var previousOriginalLine = 0;
+      var previousOriginalColumn = 0;
+      var previousSource = 0;
+      var previousName = 0;
+      var str = aStr;
+      var temp = {};
+      var mapping;
+
+      while (str.length > 0) {
+        if (str.charAt(0) === ';') {
+          generatedLine++;
+          str = str.slice(1);
+          previousGeneratedColumn = 0;
+        }
+        else if (str.charAt(0) === ',') {
+          str = str.slice(1);
+        }
+        else {
+          mapping = {};
+          mapping.generatedLine = generatedLine;
+
+          // Generated column.
+          base64VLQ.decode(str, temp);
+          mapping.generatedColumn = previousGeneratedColumn + temp.value;
+          previousGeneratedColumn = mapping.generatedColumn;
+          str = temp.rest;
+
+          if (str.length > 0 && !this._nextCharIsMappingSeparator(str)) {
+            // Original source.
+            base64VLQ.decode(str, temp);
+            mapping.source = this._sources.at(previousSource + temp.value);
+            previousSource += temp.value;
+            str = temp.rest;
+            if (str.length === 0 || this._nextCharIsMappingSeparator(str)) {
+              throw new Error('Found a source, but no line and column');
+            }
+
+            // Original line.
+            base64VLQ.decode(str, temp);
+            mapping.originalLine = previousOriginalLine + temp.value;
+            previousOriginalLine = mapping.originalLine;
+            // Lines are stored 0-based
+            mapping.originalLine += 1;
+            str = temp.rest;
+            if (str.length === 0 || this._nextCharIsMappingSeparator(str)) {
+              throw new Error('Found a source and line, but no column');
+            }
+
+            // Original column.
+            base64VLQ.decode(str, temp);
+            mapping.originalColumn = previousOriginalColumn + temp.value;
+            previousOriginalColumn = mapping.originalColumn;
+            str = temp.rest;
+
+            if (str.length > 0 && !this._nextCharIsMappingSeparator(str)) {
+              // Original name.
+              base64VLQ.decode(str, temp);
+              mapping.name = this._names.at(previousName + temp.value);
+              previousName += temp.value;
+              str = temp.rest;
+            }
+          }
+
+          this.__generatedMappings.push(mapping);
+          if (typeof mapping.originalLine === 'number') {
+            this.__originalMappings.push(mapping);
+          }
+        }
+      }
+
+      this.__generatedMappings.sort(util.compareByGeneratedPositions);
+      this.__originalMappings.sort(util.compareByOriginalPositions);
+    };
+
+  /**
+   * Find the mapping that best matches the hypothetical "needle" mapping that
+   * we are searching for in the given "haystack" of mappings.
+   */
+  SourceMapConsumer.prototype._findMapping =
+    function SourceMapConsumer_findMapping(aNeedle, aMappings, aLineName,
+                                           aColumnName, aComparator) {
+      // To return the position we are searching for, we must first find the
+      // mapping for the given position and then return the opposite position it
+      // points to. Because the mappings are sorted, we can use binary search to
+      // find the best mapping.
+
+      if (aNeedle[aLineName] <= 0) {
+        throw new TypeError('Line must be greater than or equal to 1, got '
+                            + aNeedle[aLineName]);
+      }
+      if (aNeedle[aColumnName] < 0) {
+        throw new TypeError('Column must be greater than or equal to 0, got '
+                            + aNeedle[aColumnName]);
+      }
+
+      return binarySearch.search(aNeedle, aMappings, aComparator);
+    };
+
+  /**
+   * Compute the last column for each generated mapping. The last column is
+   * inclusive.
+   */
+  SourceMapConsumer.prototype.computeColumnSpans =
+    function SourceMapConsumer_computeColumnSpans() {
+      for (var index = 0; index < this._generatedMappings.length; ++index) {
+        var mapping = this._generatedMappings[index];
+
+        // Mappings do not contain a field for the last generated columnt. We
+        // can come up with an optimistic estimate, however, by assuming that
+        // mappings are contiguous (i.e. given two consecutive mappings, the
+        // first mapping ends where the second one starts).
+        if (index + 1 < this._generatedMappings.length) {
+          var nextMapping = this._generatedMappings[index + 1];
+
+          if (mapping.generatedLine === nextMapping.generatedLine) {
+            mapping.lastGeneratedColumn = nextMapping.generatedColumn - 1;
+            continue;
+          }
+        }
+
+        // The last mapping for each line spans the entire line.
+        mapping.lastGeneratedColumn = Infinity;
+      }
+    };
+
+  /**
+   * Returns the original source, line, and column information for the generated
+   * source's line and column positions provided. The only argument is an object
+   * with the following properties:
+   *
+   *   - line: The line number in the generated source.
+   *   - column: The column number in the generated source.
+   *
+   * and an object is returned with the following properties:
+   *
+   *   - source: The original source file, or null.
+   *   - line: The line number in the original source, or null.
+   *   - column: The column number in the original source, or null.
+   *   - name: The original identifier, or null.
+   */
+  SourceMapConsumer.prototype.originalPositionFor =
+    function SourceMapConsumer_originalPositionFor(aArgs) {
+      var needle = {
+        generatedLine: util.getArg(aArgs, 'line'),
+        generatedColumn: util.getArg(aArgs, 'column')
+      };
+
+      var index = this._findMapping(needle,
+                                    this._generatedMappings,
+                                    "generatedLine",
+                                    "generatedColumn",
+                                    util.compareByGeneratedPositions);
+
+      if (index >= 0) {
+        var mapping = this._generatedMappings[index];
+
+        if (mapping.generatedLine === needle.generatedLine) {
+          var source = util.getArg(mapping, 'source', null);
+          if (source != null && this.sourceRoot != null) {
+            source = util.join(this.sourceRoot, source);
+          }
+          return {
+            source: source,
+            line: util.getArg(mapping, 'originalLine', null),
+            column: util.getArg(mapping, 'originalColumn', null),
+            name: util.getArg(mapping, 'name', null)
+          };
+        }
+      }
+
+      return {
+        source: null,
+        line: null,
+        column: null,
+        name: null
+      };
+    };
+
+  /**
+   * Returns the original source content. The only argument is the url of the
+   * original source file. Returns null if no original source content is
+   * availible.
+   */
+  SourceMapConsumer.prototype.sourceContentFor =
+    function SourceMapConsumer_sourceContentFor(aSource) {
+      if (!this.sourcesContent) {
+        return null;
+      }
+
+      if (this.sourceRoot != null) {
+        aSource = util.relative(this.sourceRoot, aSource);
+      }
+
+      if (this._sources.has(aSource)) {
+        return this.sourcesContent[this._sources.indexOf(aSource)];
+      }
+
+      var url;
+      if (this.sourceRoot != null
+          && (url = util.urlParse(this.sourceRoot))) {
+        // XXX: file:// URIs and absolute paths lead to unexpected behavior for
+        // many users. We can help them out when they expect file:// URIs to
+        // behave like it would if they were running a local HTTP server. See
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=885597.
+        var fileUriAbsPath = aSource.replace(/^file:\/\//, "");
+        if (url.scheme == "file"
+            && this._sources.has(fileUriAbsPath)) {
+          return this.sourcesContent[this._sources.indexOf(fileUriAbsPath)]
+        }
+
+        if ((!url.path || url.path == "/")
+            && this._sources.has("/" + aSource)) {
+          return this.sourcesContent[this._sources.indexOf("/" + aSource)];
+        }
+      }
+
+      throw new Error('"' + aSource + '" is not in the SourceMap.');
+    };
+
+  /**
+   * Returns the generated line and column information for the original source,
+   * line, and column positions provided. The only argument is an object with
+   * the following properties:
+   *
+   *   - source: The filename of the original source.
+   *   - line: The line number in the original source.
+   *   - column: The column number in the original source.
+   *
+   * and an object is returned with the following properties:
+   *
+   *   - line: The line number in the generated source, or null.
+   *   - column: The column number in the generated source, or null.
+   */
+  SourceMapConsumer.prototype.generatedPositionFor =
+    function SourceMapConsumer_generatedPositionFor(aArgs) {
+      var needle = {
+        source: util.getArg(aArgs, 'source'),
+        originalLine: util.getArg(aArgs, 'line'),
+        originalColumn: util.getArg(aArgs, 'column')
+      };
+
+      if (this.sourceRoot != null) {
+        needle.source = util.relative(this.sourceRoot, needle.source);
+      }
+
+      var index = this._findMapping(needle,
+                                    this._originalMappings,
+                                    "originalLine",
+                                    "originalColumn",
+                                    util.compareByOriginalPositions);
+
+      if (index >= 0) {
+        var mapping = this._originalMappings[index];
+
+        return {
+          line: util.getArg(mapping, 'generatedLine', null),
+          column: util.getArg(mapping, 'generatedColumn', null),
+          lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+        };
+      }
+
+      return {
+        line: null,
+        column: null,
+        lastColumn: null
+      };
+    };
+
+  /**
+   * Returns all generated line and column information for the original source
+   * and line provided. The only argument is an object with the following
+   * properties:
+   *
+   *   - source: The filename of the original source.
+   *   - line: The line number in the original source.
+   *
+   * and an array of objects is returned, each with the following properties:
+   *
+   *   - line: The line number in the generated source, or null.
+   *   - column: The column number in the generated source, or null.
+   */
+  SourceMapConsumer.prototype.allGeneratedPositionsFor =
+    function SourceMapConsumer_allGeneratedPositionsFor(aArgs) {
+      // When there is no exact match, SourceMapConsumer.prototype._findMapping
+      // returns the index of the closest mapping less than the needle. By
+      // setting needle.originalColumn to Infinity, we thus find the last
+      // mapping for the given line, provided such a mapping exists.
+      var needle = {
+        source: util.getArg(aArgs, 'source'),
+        originalLine: util.getArg(aArgs, 'line'),
+        originalColumn: Infinity
+      };
+
+      if (this.sourceRoot != null) {
+        needle.source = util.relative(this.sourceRoot, needle.source);
+      }
+
+      var mappings = [];
+
+      var index = this._findMapping(needle,
+                                    this._originalMappings,
+                                    "originalLine",
+                                    "originalColumn",
+                                    util.compareByOriginalPositions);
+      if (index >= 0) {
+        var mapping = this._originalMappings[index];
+
+        while (mapping && mapping.originalLine === needle.originalLine) {
+          mappings.push({
+            line: util.getArg(mapping, 'generatedLine', null),
+            column: util.getArg(mapping, 'generatedColumn', null),
+            lastColumn: util.getArg(mapping, 'lastGeneratedColumn', null)
+          });
+
+          mapping = this._originalMappings[--index];
+        }
+      }
+
+      return mappings.reverse();
+    };
+
+  SourceMapConsumer.GENERATED_ORDER = 1;
+  SourceMapConsumer.ORIGINAL_ORDER = 2;
+
+  /**
+   * Iterate over each mapping between an original source/line/column and a
+   * generated line/column in this source map.
+   *
+   * @param Function aCallback
+   *        The function that is called with each mapping.
+   * @param Object aContext
+   *        Optional. If specified, this object will be the value of `this` every
+   *        time that `aCallback` is called.
+   * @param aOrder
+   *        Either `SourceMapConsumer.GENERATED_ORDER` or
+   *        `SourceMapConsumer.ORIGINAL_ORDER`. Specifies whether you want to
+   *        iterate over the mappings sorted by the generated file's line/column
+   *        order or the original's source/line/column order, respectively. Defaults to
+   *        `SourceMapConsumer.GENERATED_ORDER`.
+   */
+  SourceMapConsumer.prototype.eachMapping =
+    function SourceMapConsumer_eachMapping(aCallback, aContext, aOrder) {
+      var context = aContext || null;
+      var order = aOrder || SourceMapConsumer.GENERATED_ORDER;
+
+      var mappings;
+      switch (order) {
+      case SourceMapConsumer.GENERATED_ORDER:
+        mappings = this._generatedMappings;
+        break;
+      case SourceMapConsumer.ORIGINAL_ORDER:
+        mappings = this._originalMappings;
+        break;
+      default:
+        throw new Error("Unknown order of iteration.");
+      }
+
+      var sourceRoot = this.sourceRoot;
+      mappings.map(function (mapping) {
+        var source = mapping.source;
+        if (source != null && sourceRoot != null) {
+          source = util.join(sourceRoot, source);
+        }
+        return {
+          source: source,
+          generatedLine: mapping.generatedLine,
+          generatedColumn: mapping.generatedColumn,
+          originalLine: mapping.originalLine,
+          originalColumn: mapping.originalColumn,
+          name: mapping.name
+        };
+      }).forEach(aCallback, context);
+    };
+
+  exports.SourceMapConsumer = SourceMapConsumer;
+
+});
+
+},{"./array-set":128,"./base64-vlq":129,"./binary-search":131,"./util":136,"amdefine":6}],134:[function(require,module,exports){
+arguments[4][34][0].apply(exports,arguments)
+},{"./array-set":128,"./base64-vlq":129,"./mapping-list":132,"./util":136,"amdefine":6,"dup":34}],135:[function(require,module,exports){
+arguments[4][35][0].apply(exports,arguments)
+},{"./source-map-generator":134,"./util":136,"amdefine":6,"dup":35}],136:[function(require,module,exports){
+arguments[4][36][0].apply(exports,arguments)
+},{"amdefine":6,"dup":36}],137:[function(require,module,exports){
 module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
@@ -52439,7 +52263,182 @@ module.exports={
   "readme": "ERROR: No README data found!"
 }
 
-},{}],137:[function(require,module,exports){
+},{}],138:[function(require,module,exports){
+arguments[4][75][0].apply(exports,arguments)
+},{"dup":75,"estraverse":139}],139:[function(require,module,exports){
+arguments[4][76][0].apply(exports,arguments)
+},{"./package.json":140,"dup":76}],140:[function(require,module,exports){
+arguments[4][77][0].apply(exports,arguments)
+},{"dup":77}],141:[function(require,module,exports){
+module.exports = function () {
+    // see https://code.google.com/p/v8/wiki/JavaScriptStackTraceApi
+    var origPrepareStackTrace = Error.prepareStackTrace;
+    Error.prepareStackTrace = function (_, stack) { return stack };
+    var stack = (new Error()).stack;
+    Error.prepareStackTrace = origPrepareStackTrace;
+    return stack[2].getFileName();
+};
+
+},{}],142:[function(require,module,exports){
+module.exports=[
+    "assert",
+    "buffer_ieee754",
+    "buffer",
+    "child_process",
+    "cluster",
+    "console",
+    "constants",
+    "crypto",
+    "_debugger",
+    "dgram",
+    "dns",
+    "domain",
+    "events",
+    "freelist",
+    "fs",
+    "http",
+    "https",
+    "_linklist",
+    "module",
+    "net",
+    "os",
+    "path",
+    "punycode",
+    "querystring",
+    "readline",
+    "repl",
+    "stream",
+    "string_decoder",
+    "sys",
+    "timers",
+    "tls",
+    "tty",
+    "url",
+    "util",
+    "vm",
+    "zlib"
+]
+
+},{}],143:[function(require,module,exports){
+module.exports = require('./core.json').reduce(function (acc, x) {
+    acc[x] = true;
+    return acc;
+}, {});
+
+},{"./core.json":142}],144:[function(require,module,exports){
+(function (process){
+var path = require('path');
+
+
+module.exports = function (start, opts) {
+    var modules = opts.moduleDirectory || 'node_modules';
+    var prefix = '/';
+    if (/^([A-Za-z]:)/.test(start)) {
+        prefix = '';
+    } else if (/^\\\\/.test(start)) {
+        prefix = '\\\\';
+    }
+    var splitRe = process.platform === 'win32' ? /[\/\\]/ : /\/+/;
+    var parts = start.split(splitRe);
+
+    var dirs = [];
+    for (var i = parts.length - 1; i >= 0; i--) {
+        if (parts[i] === modules) continue;
+        var dir = path.join(
+            path.join.apply(path, parts.slice(0, i + 1)),
+            modules
+        );
+        dirs.push(prefix + dir);
+    }
+    if(process.platform === 'win32'){
+        dirs[dirs.length-1] = dirs[dirs.length-1].replace(":", ":\\");
+    }
+    return dirs.concat(opts.paths);
+}
+}).call(this,require('_process'))
+},{"_process":385,"path":384}],145:[function(require,module,exports){
+var core = require('./core');
+var fs = require('fs');
+var path = require('path');
+var caller = require('./caller.js');
+var nodeModulesPaths = require('./node-modules-paths.js');
+
+module.exports = function (x, opts) {
+    if (!opts) opts = {};
+    var isFile = opts.isFile || function (file) {
+        try { var stat = fs.statSync(file) }
+        catch (err) { if (err && err.code === 'ENOENT') return false }
+        return stat.isFile() || stat.isFIFO();
+    };
+    var readFileSync = opts.readFileSync || fs.readFileSync;
+    
+    var extensions = opts.extensions || [ '.js' ];
+    var y = opts.basedir || path.dirname(caller());
+
+    opts.paths = opts.paths || [];
+
+    if (x.match(/^(?:\.\.?\/|\/|([A-Za-z]:)?\\)/)) {
+        var m = loadAsFileSync(path.resolve(y, x))
+            || loadAsDirectorySync(path.resolve(y, x));
+        if (m) return m;
+    } else {
+        var n = loadNodeModulesSync(x, y);
+        if (n) return n;
+    }
+    
+    if (core[x]) return x;
+    
+    throw new Error("Cannot find module '" + x + "' from '" + y + "'");
+    
+    function loadAsFileSync (x) {
+        if (isFile(x)) {
+            return x;
+        }
+        
+        for (var i = 0; i < extensions.length; i++) {
+            var file = x + extensions[i];
+            if (isFile(file)) {
+                return file;
+            }
+        }
+    }
+    
+    function loadAsDirectorySync (x) {
+        var pkgfile = path.join(x, '/package.json');
+        if (isFile(pkgfile)) {
+            var body = readFileSync(pkgfile, 'utf8');
+            try {
+                var pkg = JSON.parse(body);
+                if (opts.packageFilter) {
+                    pkg = opts.packageFilter(pkg, x);
+                }
+                
+                if (pkg.main) {
+                    var m = loadAsFileSync(path.resolve(x, pkg.main));
+                    if (m) return m;
+                    var n = loadAsDirectorySync(path.resolve(x, pkg.main));
+                    if (n) return n;
+                }
+            }
+            catch (err) {}
+        }
+        
+        return loadAsFileSync(path.join( x, '/index'));
+    }
+    
+    function loadNodeModulesSync (x, start) {
+        var dirs = nodeModulesPaths(start, opts);
+        for (var i = 0; i < dirs.length; i++) {
+            var dir = dirs[i];
+            var m = loadAsFileSync(path.join( dir, '/', x));
+            if (m) return m;
+            var n = loadAsDirectorySync(path.join( dir, '/', x ));
+            if (n) return n;
+        }
+    }
+};
+
+},{"./caller.js":141,"./core":143,"./node-modules-paths.js":144,"fs":187,"path":384}],146:[function(require,module,exports){
 //     Underscore.js 1.3.3
 //     (c) 2009-2012 Jeremy Ashkenas, DocumentCloud Inc.
 //     Underscore is freely distributable under the MIT license.
@@ -53500,7 +53499,7 @@ module.exports={
 
 }).call(this);
 
-},{}],138:[function(require,module,exports){
+},{}],147:[function(require,module,exports){
 //     Underscore.js 1.8.3
 //     http://underscorejs.org
 //     (c) 2009-2015 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -55050,369 +55049,9 @@ module.exports={
   }
 }.call(this));
 
-},{}],139:[function(require,module,exports){
-module.exports = Yallist
+},{}],148:[function(require,module,exports){
+'use strict';
 
-Yallist.Node = Node
-Yallist.create = Yallist
-
-function Yallist (list) {
-  var self = this
-  if (!(self instanceof Yallist)) {
-    self = new Yallist()
-  }
-
-  self.tail = null
-  self.head = null
-  self.length = 0
-
-  if (list && typeof list.forEach === 'function') {
-    list.forEach(function (item) {
-      self.push(item)
-    })
-  } else if (arguments.length > 0) {
-    for (var i = 0, l = arguments.length; i < l; i++) {
-      self.push(arguments[i])
-    }
-  }
-
-  return self
-}
-
-Yallist.prototype.removeNode = function (node) {
-  if (node.list !== this) {
-    throw new Error('removing node which does not belong to this list')
-  }
-
-  var next = node.next
-  var prev = node.prev
-
-  if (next) {
-    next.prev = prev
-  }
-
-  if (prev) {
-    prev.next = next
-  }
-
-  if (node === this.head) {
-    this.head = next
-  }
-  if (node === this.tail) {
-    this.tail = prev
-  }
-
-  node.list.length --
-  node.next = null
-  node.prev = null
-  node.list = null
-}
-
-Yallist.prototype.unshiftNode = function (node) {
-  if (node === this.head) {
-    return
-  }
-
-  if (node.list) {
-    node.list.removeNode(node)
-  }
-
-  var head = this.head
-  node.list = this
-  node.next = head
-  if (head) {
-    head.prev = node
-  }
-
-  this.head = node
-  if (!this.tail) {
-    this.tail = node
-  }
-  this.length ++
-}
-
-Yallist.prototype.pushNode = function (node) {
-  if (node === this.tail) {
-    return
-  }
-
-  if (node.list) {
-    node.list.removeNode(node)
-  }
-
-  var tail = this.tail
-  node.list = this
-  node.prev = tail
-  if (tail) {
-    tail.next = node
-  }
-
-  this.tail = node
-  if (!this.head) {
-    this.head = node
-  }
-  this.length ++
-}
-
-Yallist.prototype.push = function () {
-  for (var i = 0, l = arguments.length; i < l; i++) {
-    push(this, arguments[i])
-  }
-  return this.length
-}
-
-Yallist.prototype.unshift = function () {
-  for (var i = 0, l = arguments.length; i < l; i++) {
-    unshift(this, arguments[i])
-  }
-  return this.length
-}
-
-Yallist.prototype.pop = function () {
-  if (!this.tail)
-    return undefined
-
-  var res = this.tail.value
-  this.tail = this.tail.prev
-  this.tail.next = null
-  this.length --
-  return res
-}
-
-Yallist.prototype.shift = function () {
-  if (!this.head)
-    return undefined
-
-  var res = this.head.value
-  this.head = this.head.next
-  this.head.prev = null
-  this.length --
-  return res
-}
-
-Yallist.prototype.forEach = function (fn, thisp) {
-  thisp = thisp || this
-  for (var walker = this.head, i = 0; walker !== null; i++) {
-    fn.call(thisp, walker.value, i, this)
-    walker = walker.next
-  }
-}
-
-Yallist.prototype.forEachReverse = function (fn, thisp) {
-  thisp = thisp || this
-  for (var walker = this.tail, i = this.length - 1; walker !== null; i--) {
-    fn.call(thisp, walker.value, i, this)
-    walker = walker.prev
-  }
-}
-
-Yallist.prototype.get = function (n) {
-  for (var i = 0, walker = this.head; walker !== null && i < n; i++) {
-    // abort out of the list early if we hit a cycle
-    walker = walker.next
-  }
-  if (i === n && walker !== null) {
-    return walker.value
-  }
-}
-
-Yallist.prototype.getReverse = function (n) {
-  for (var i = 0, walker = this.tail; walker !== null && i < n; i++) {
-    // abort out of the list early if we hit a cycle
-    walker = walker.prev
-  }
-  if (i === n && walker !== null) {
-    return walker.value
-  }
-}
-
-Yallist.prototype.map = function (fn, thisp) {
-  thisp = thisp || this
-  var res = new Yallist()
-  for (var walker = this.head; walker !== null; ) {
-    res.push(fn.call(thisp, walker.value, this))
-    walker = walker.next
-  }
-  return res
-}
-
-Yallist.prototype.mapReverse = function (fn, thisp) {
-  thisp = thisp || this
-  var res = new Yallist()
-  for (var walker = this.tail; walker !== null;) {
-    res.push(fn.call(thisp, walker.value, this))
-    walker = walker.prev
-  }
-  return res
-}
-
-Yallist.prototype.reduce = function (fn, initial) {
-  var acc
-  var walker = this.head
-  if (arguments.length > 1) {
-    acc = initial
-  } else if (this.head) {
-    walker = this.head.next
-    acc = this.head.value
-  } else {
-    throw new TypeError('Reduce of empty list with no initial value')
-  }
-
-  for (var i = 0; walker !== null; i++) {
-    acc = fn(acc, walker.value, i)
-    walker = walker.next
-  }
-
-  return acc
-}
-
-Yallist.prototype.reduceReverse = function (fn, initial) {
-  var acc
-  var walker = this.tail
-  if (arguments.length > 1) {
-    acc = initial
-  } else if (this.tail) {
-    walker = this.tail.prev
-    acc = this.tail.value
-  } else {
-    throw new TypeError('Reduce of empty list with no initial value')
-  }
-
-  for (var i = this.length - 1; walker !== null; i--) {
-    acc = fn(acc, walker.value, i)
-    walker = walker.prev
-  }
-
-  return acc
-}
-
-Yallist.prototype.toArray = function () {
-  var arr = new Array(this.length)
-  for (var i = 0, walker = this.head; walker !== null; i++) {
-    arr[i] = walker.value
-    walker = walker.next
-  }
-  return arr
-}
-
-Yallist.prototype.toArrayReverse = function () {
-  var arr = new Array(this.length)
-  for (var i = 0, walker = this.tail; walker !== null; i++) {
-    arr[i] = walker.value
-    walker = walker.prev
-  }
-  return arr
-}
-
-Yallist.prototype.slice = function (from, to) {
-  to = to || this.length
-  if (to < 0) {
-    to += this.length
-  }
-  from = from || 0
-  if (from < 0) {
-    from += this.length
-  }
-  var ret = new Yallist()
-  if (to < from || to < 0) {
-    return ret
-  }
-  if (from < 0) {
-    from = 0
-  }
-  if (to > this.length) {
-    to = this.length
-  }
-  for (var i = 0, walker = this.head; walker !== null && i < from; i++) {
-    walker = walker.next
-  }
-  for (; walker !== null && i < to; i++, walker = walker.next) {
-    ret.push(walker.value)
-  }
-  return ret
-}
-
-Yallist.prototype.sliceReverse = function (from, to) {
-  to = to || this.length
-  if (to < 0) {
-    to += this.length
-  }
-  from = from || 0
-  if (from < 0) {
-    from += this.length
-  }
-  var ret = new Yallist()
-  if (to < from || to < 0) {
-    return ret
-  }
-  if (from < 0) {
-    from = 0
-  }
-  if (to > this.length) {
-    to = this.length
-  }
-  for (var i = this.length, walker = this.tail; walker !== null && i > to; i--) {
-    walker = walker.prev
-  }
-  for (; walker !== null && i > from; i--, walker = walker.prev) {
-    ret.push(walker.value)
-  }
-  return ret
-}
-
-Yallist.prototype.reverse = function () {
-  var head = this.head
-  var tail = this.tail
-  for (var walker = head; walker !== null; walker = walker.prev) {
-    var p = walker.prev
-    walker.prev = walker.next
-    walker.next = p
-  }
-  this.head = tail
-  this.tail = head
-  return this
-}
-
-function push (self, item) {
-  self.tail = new Node(item, self.tail, null, self)
-  if (!self.head) {
-    self.head = self.tail
-  }
-  self.length ++
-}
-
-function unshift (self, item) {
-  self.head = new Node(item, null, self.head, self)
-  if (!self.tail) {
-    self.tail = self.head
-  }
-  self.length ++
-}
-
-function Node (value, prev, next, list) {
-  if (!(this instanceof Node)) {
-    return new Node(value, prev, next, list)
-  }
-
-  this.list = list
-  this.value = value
-
-  if (prev) {
-    prev.next = this
-    this.prev = prev
-  } else {
-    this.prev = null
-  }
-
-  if (next) {
-    next.prev = this
-    this.next = next
-  } else {
-    this.next = null
-  }
-}
-
-},{}],140:[function(require,module,exports){
 var _ = require('underscore');
 var ad = require('ad.js')({ mode: 'r', noHigher: true });
 
@@ -55420,22 +55059,82 @@ ad.isTape = function(obj) {
   return _.has(obj, 'primal');
 };
 
+// Recursively untapify objects. ad.js already does this for arrays,
+// here we extend that to other objects.
+ad.deepUntapify = function(x) {
+  if (_.isObject(x) && !_.isArray(x) && !ad.isTape(x)) {
+    return _.mapObject(x, ad.deepUntapify);
+  } else {
+    return ad.untapify(x);
+  }
+};
+
 module.exports = ad;
 
-},{"ad.js":4,"underscore":138}],141:[function(require,module,exports){
+},{"ad.js":4,"underscore":147}],149:[function(require,module,exports){
+'use strict';
+var ad = require('../ad.js');
+var assert = require('assert');
+var _ = require('underscore');
+var erp = require('../erp');
+var util = require('../util');
+function logsumexp(a, b) {
+    assert.ok(ad.pneq(a, ad.sub(0, Infinity)) || ad.pneq(b, ad.sub(0, Infinity)));
+    var m = ad.maths.max(a, b);
+    return ad.add(ad.maths.log(ad.add(ad.maths.exp(ad.sub(a, m)), ad.maths.exp(ad.sub(b, m)))), m);
+}
+var Distribution = function () {
+    this.dist = {};
+};
+Object.defineProperties(Distribution.prototype, {
+    size: {
+        get: function () {
+            return _.size(this.dist);
+        }
+    }
+});
+Distribution.prototype.add = function (value, score) {
+    if (ad.peq(score, ad.sub(0, Infinity))) {
+        return;
+    }
+    var k = util.serialize(value);
+    if (ad.peq(this.dist[k], undefined)) {
+        this.dist[k] = {
+            score: ad.sub(0, Infinity),
+            val: value
+        };
+    }
+    this.dist[k].score = logsumexp(this.dist[k].score, score);
+};
+function normalize(dist) {
+    var logNorm = _.reduce(dist, function (acc, obj) {
+        return logsumexp(acc, obj.score);
+    }, ad.sub(0, Infinity));
+    return _.mapObject(dist, function (obj) {
+        return {
+            val: obj.val,
+            prob: ad.maths.exp(ad.sub(obj.score, logNorm))
+        };
+    });
+}
+Distribution.prototype.toERP = function () {
+    return erp.makeMarginalERP(normalize(this.dist));
+};
+module.exports = Distribution;
+},{"../ad.js":148,"../erp":158,"../util":186,"assert":188,"underscore":147}],150:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
-var erp = require('./erp');
-var util = require('./util');
-var ad = require('./ad');
+var util = require('../util');
+var ad = require('../ad');
+var erp = require('../erp');
 
 var Histogram = function() {
   this.hist = {};
 };
 
 Histogram.prototype.add = function(value) {
-  var value = untapify(value);
+  var value = ad.deepUntapify(value);
   var k = util.serialize(value);
   if (this.hist[k] === undefined) {
     this.hist[k] = { count: 0, val: value };
@@ -55443,7 +55142,7 @@ Histogram.prototype.add = function(value) {
   this.hist[k].count += 1;
 };
 
-function normalizeHist(hist) {
+function normalize(hist) {
   var totalCount = _.reduce(hist, function(acc, obj) {
     return acc + obj.count;
   }, 0);
@@ -55453,41 +55152,18 @@ function normalizeHist(hist) {
 }
 
 Histogram.prototype.toERP = function() {
-  return erp.makeMarginalERP(normalizeHist(this.hist));
+  return erp.makeMarginalERP(normalize(this.hist));
 };
 
-var Distribution = function() {
-  this.dist = {};
-};
+module.exports = Histogram;
 
-Object.defineProperties(Distribution.prototype, {
-  size: { get: function() { return _.size(this.dist); } }
-});
+},{"../ad":148,"../erp":158,"../util":186,"underscore":147}],151:[function(require,module,exports){
+'use strict';
 
-Distribution.prototype.add = function(value, score) {
-  if (score === -Infinity) {
-    return;
-  }
-  var k = util.serialize(value);
-  if (this.dist[k] === undefined) {
-    this.dist[k] = { score: -Infinity, val: value };
-  }
-  this.dist[k].score = util.logsumexp([this.dist[k].score, score]);
-};
-
-function normalizeDist(dist) {
-  // Note, this also maps dist from log space into probability space.
-  var logNorm = _.reduce(dist, function(acc, obj) {
-    return util.logsumexp([acc, obj.score]);
-  }, -Infinity);
-  return _.mapObject(dist, function(obj) {
-    return { val: obj.val, prob: Math.exp(obj.score - logNorm) };
-  });
-}
-
-Distribution.prototype.toERP = function() {
-  return erp.makeMarginalERP(normalizeDist(this.dist));
-};
+var _ = require('underscore');
+var util = require('../util');
+var ad = require('../ad');
+var Histogram = require('./histogram');
 
 var MAP = function(retainSamples) {
   this.max = { value: undefined, score: -Infinity };
@@ -55496,7 +55172,8 @@ var MAP = function(retainSamples) {
 };
 
 MAP.prototype.add = function(value, score) {
-  var value = untapify(value);
+  var value = ad.deepUntapify(value);
+  var score = ad.untapify(score);
   if (this.retainSamples) {
     this.samples.push({ value: value, score: score });
   }
@@ -55516,23 +55193,9 @@ MAP.prototype.toERP = function() {
   return erp;
 };
 
-// Recursively untapify objects. ad.js already does this for arrays,
-// here we extend that to other objects.
-function untapify(x) {
-  if (_.isObject(x) && !_.isArray(x) && !ad.isTape(x)) {
-    return _.mapObject(x, untapify);
-  } else {
-    return ad.untapify(x);
-  }
-}
+module.exports = MAP;
 
-module.exports = {
-  Histogram: Histogram,
-  Distribution: Distribution,
-  MAP: MAP
-};
-
-},{"./ad":140,"./erp":148,"./util":176,"underscore":138}],142:[function(require,module,exports){
+},{"../ad":148,"../util":186,"./histogram":150,"underscore":147}],152:[function(require,module,exports){
 'use strict';
 
 var traverse = require('estraverse').traverse;
@@ -55605,7 +55268,7 @@ exports.isHeapRef = function(node) {
 };
 
 
-},{"estraverse":88,"immutable":94}],143:[function(require,module,exports){
+},{"estraverse":94,"immutable":100}],153:[function(require,module,exports){
 'use strict';
 
 var assert = require('assert');
@@ -56105,7 +55768,7 @@ module.exports = {
   prepare: prepare
 };
 
-},{"../main":164,"../syntax":166,"../transforms/cps":169,"../transforms/naming":171,"../transforms/optimize":172,"./analyze-refs":142,"./match":145,"./match-lang":144,"./parser-combinator":146,"assert":178,"ast-types":21,"escodegen":22,"estraverse":88,"immutable":94}],144:[function(require,module,exports){
+},{"../main":174,"../syntax":176,"../transforms/cps":179,"../transforms/naming":181,"../transforms/optimize":182,"./analyze-refs":152,"./match":155,"./match-lang":154,"./parser-combinator":156,"assert":188,"ast-types":22,"escodegen":23,"estraverse":94,"immutable":100}],154:[function(require,module,exports){
 'use strict';
 var types = require('ast-types').namedTypes;
 
@@ -56216,7 +55879,7 @@ module.exports = {
   userCall: destructUserCall
 }
 
-},{"ast-types":21}],145:[function(require,module,exports){
+},{"ast-types":22}],155:[function(require,module,exports){
 'use strict';
 
 function clause(destructor, success) {
@@ -56245,7 +55908,7 @@ module.exports = {
   match: match
 };
 
-},{}],146:[function(require,module,exports){
+},{}],156:[function(require,module,exports){
 'use strict';
 
 function finish() {
@@ -56398,12 +56061,9 @@ module.exports = {
   not: not
 };
 
-},{}],147:[function(require,module,exports){
+},{}],157:[function(require,module,exports){
 (function (global){
-// Entry point for browserify.
-
 'use strict';
-
 var _ = require('underscore');
 var fs = require('fs');
 var esprima = require('esprima');
@@ -56414,63 +56074,55 @@ var naming = require('./transforms/naming').naming;
 var thunkify = require('./syntax').thunkify;
 var cps = require('./transforms/cps').cps;
 var analyze = require('./analysis/main').analyze;
-
-// This is populated by the bundle.js browserify transform.
+var version = 'v0.6.1-15661bb';
 var packages = [];
-
-var load = _.once(function() {
-  // Load JS and headers from packages.
-  packages.forEach(function(pkg) {
-    console.log('package ' + pkg.name + ' loaded.');
-    if (pkg.js) { global[pkg.js.identifier] = pkg.js.path; }
-    pkg.headers.forEach(webppl.requireHeaderWrapper);
-  });
-  var extra = webppl.parsePackageCode(packages);
-  console.log('webppl loaded.');
-  return extra;
+var load = _.once(function () {
+    packages.forEach(function (pkg) {
+        console.log('loaded ' + pkg.name + ' [' + pkg.version + ']');
+        if (pkg.js) {
+            global[pkg.js.identifier] = pkg.js.path;
+        }
+        pkg.headers.forEach(webppl.requireHeaderWrapper);
+    });
+    var bundles = webppl.parsePackageCode(packages);
+    console.log('loaded webppl [' + version + ']');
+    return bundles;
 });
-
 function run(code, k, options) {
-  if (options === undefined) {
-    options = {};
-  }
-  var optionsExtended = _.extend({extra: load()}, options);
-
-  return webppl.run(code, k, optionsExtended);
+    if (options === undefined) {
+        options = {};
+    }
+    var optionsExtended = _.extend({ bundles: load() }, options);
+    return webppl.run(code, k, optionsExtended);
 }
-
 function compile(code, options) {
-  if (options === undefined) {
-    options = {};
-  }
-  var optionsExtended = _.extend({extra: load()}, options);
-  return webppl.compile(code, optionsExtended);
+    if (options === undefined) {
+        options = {};
+    }
+    var optionsExtended = _.extend({ bundles: load() }, options);
+    return webppl.compile(code, optionsExtended);
 }
-
 function webpplCPS(code) {
-  var programAst = esprima.parse(code);
-  var newProgramAst = optimize(cps(thunkify(programAst)));
-  return escodegen.generate(newProgramAst);
+    var programAst = esprima.parse(code);
+    var newProgramAst = optimize(cps(thunkify(programAst)));
+    return escodegen.generate(newProgramAst);
 }
-
 function webpplNaming(code) {
-  var programAst = esprima.parse(code);
-  var newProgramAst = naming(thunkify(programAst));
-  return escodegen.generate(newProgramAst);
+    var programAst = esprima.parse(code);
+    var newProgramAst = naming(thunkify(programAst));
+    return escodegen.generate(newProgramAst);
 }
-
 global.webppl = {
-  run: run,
-  compile: compile,
-  cps: webpplCPS,
-  naming: webpplNaming,
-  analyze: analyze
+    run: run,
+    compile: compile,
+    cps: webpplCPS,
+    naming: webpplNaming,
+    analyze: analyze
 };
-
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./analysis/main":143,"./main":164,"./syntax":166,"./transforms/cps":169,"./transforms/naming":171,"./transforms/optimize":172,"escodegen":22,"esprima":83,"fs":177,"underscore":138}],148:[function(require,module,exports){
+},{"./analysis/main":153,"./main":174,"./syntax":176,"./transforms/cps":179,"./transforms/naming":181,"./transforms/optimize":182,"escodegen":23,"esprima":93,"fs":187,"underscore":147}],158:[function(require,module,exports){
 'use strict';
-var ad = require('./ad');
+var ad = require('./ad.js');
 var numeric = require('numeric');
 var _ = require('underscore');
 var util = require('./util');
@@ -56683,10 +56335,10 @@ function multivariateGaussianScore(params, x) {
     var mu = params[0];
     var cov = params[1];
     var n = mu.length;
-    var coeffs = ad.add(ad.mul(n, LOG_2PI), ad.maths.log(numeric.det(cov)));
+    var coeffs = n * LOG_2PI + Math.log(numeric.det(cov));
     var xSubMu = numeric.sub(x, mu);
     var exponents = numeric.dot(numeric.dot(xSubMu, numeric.inv(cov)), xSubMu);
-    return ad.mul(ad.sub(0, 0.5), ad.add(coeffs, exponents));
+    return -0.5 * (coeffs + exponents);
 }
 var multivariateGaussianERP = new ERP({
     sample: multivariateGaussianSample,
@@ -56707,7 +56359,7 @@ var cauchyERP = new ERP({
     },
     isContinuous: true
 });
-function sumAD(xs) {
+function sum(xs) {
     return xs.reduce(function (a, b) {
         return ad.add(a, b);
     }, 0);
@@ -56715,13 +56367,13 @@ function sumAD(xs) {
 ;
 var discreteERP = new ERP({
     sample: function (params) {
-        return multinomialSample(params[0]);
+        return discreteSample(params[0]);
     },
     score: function (params, val) {
         var probs = params[0];
         var stop = probs.length;
         var inSupport = ad.peq(val, ad.maths.floor(val)) && ad.leq(0, val) && ad.lt(val, stop);
-        return inSupport ? ad.maths.log(ad.div(probs[val], sumAD(probs))) : ad.sub(0, Infinity);
+        return inSupport ? ad.maths.log(ad.div(probs[val], sum(probs))) : ad.sub(0, Infinity);
     },
     support: function (params) {
         return _.range(params[0].length);
@@ -56735,7 +56387,7 @@ var gammaCof = [
     0.001208650973866179,
     -0.000005395239384953
 ];
-function logGammaAD(xx) {
+function logGamma(xx) {
     var x = ad.sub(xx, 1);
     var tmp = ad.add(x, 5.5);
     tmp = ad.sub(tmp, ad.mul(ad.add(x, 0.5), ad.maths.log(tmp)));
@@ -56825,7 +56477,7 @@ var gammaERP = new ERP({
         var shape = params[0];
         var scale = params[1];
         var x = val;
-        return ad.sub(ad.sub(ad.sub(ad.mul(ad.sub(shape, 1), ad.maths.log(x)), ad.div(x, scale)), logGammaAD(shape)), ad.mul(shape, ad.maths.log(scale)));
+        return ad.sub(ad.sub(ad.sub(ad.mul(ad.sub(shape, 1), ad.maths.log(x)), ad.div(x, scale)), logGamma(shape)), ad.mul(shape, ad.maths.log(scale)));
     },
     support: function () {
         return {
@@ -56853,8 +56505,8 @@ var exponentialERP = new ERP({
     },
     isContinuous: true
 });
-function logBetaAD(a, b) {
-    return ad.sub(ad.add(logGammaAD(a), logGammaAD(b)), logGammaAD(ad.add(a, b)));
+function logBeta(a, b) {
+    return ad.sub(ad.add(logGamma(a), logGamma(b)), logGamma(ad.add(a, b)));
 }
 function betaSample(params) {
     var a = params[0];
@@ -56874,7 +56526,7 @@ var betaERP = new ERP({
         var a = params[0];
         var b = params[1];
         var x = val;
-        return ad.gt(x, 0) && ad.lt(x, 1) ? ad.sub(ad.add(ad.mul(ad.sub(a, 1), ad.maths.log(x)), ad.mul(ad.sub(b, 1), ad.maths.log(ad.sub(1, x)))), logBetaAD(a, b)) : ad.sub(0, Infinity);
+        return ad.gt(x, 0) && ad.lt(x, 1) ? ad.sub(ad.add(ad.mul(ad.sub(a, 1), ad.maths.log(x)), ad.mul(ad.sub(b, 1), ad.maths.log(ad.sub(1, x)))), logBeta(a, b)) : ad.sub(0, Infinity);
     },
     support: function () {
         return {
@@ -56884,7 +56536,7 @@ var betaERP = new ERP({
     },
     isContinuous: true
 });
-function binomialG_AD(x) {
+function binomialG(x) {
     if (ad.peq(x, 0)) {
         return 1;
     }
@@ -56944,7 +56596,7 @@ var binomialERP = new ERP({
             var d1 = ad.sub(ad.add(s, inv6), ad.mul(ad.add(n, inv3), p));
             var d2 = ad.add(ad.sub(ad.div(q, ad.add(s, inv2)), ad.div(p, ad.add(T, inv2))), ad.div(ad.sub(q, inv2), ad.add(n, 1)));
             d2 = ad.add(d1, ad.mul(0.02, d2));
-            var num = ad.add(ad.add(1, ad.mul(q, binomialG_AD(ad.div(S, ad.mul(n, p))))), ad.mul(p, binomialG_AD(ad.div(T, ad.mul(n, q)))));
+            var num = ad.add(ad.add(1, ad.mul(q, binomialG(ad.div(S, ad.mul(n, p))))), ad.mul(p, binomialG(ad.div(T, ad.mul(n, q)))));
             var den = ad.mul(ad.mul(ad.add(n, inv6), p), q);
             var z = ad.div(num, den);
             var invsd = ad.maths.sqrt(z);
@@ -56954,14 +56606,84 @@ var binomialERP = new ERP({
                 1
             ], z), ad.maths.log(invsd));
         } else {
-            return ad.add(ad.add(ad.sub(ad.sub(lnfactAD(n), lnfactAD(ad.sub(n, val))), lnfactAD(val)), ad.mul(val, ad.maths.log(p))), ad.mul(ad.sub(n, val), ad.maths.log(ad.sub(1, p))));
+            return ad.add(ad.add(ad.sub(ad.sub(lnfact(n), lnfact(ad.sub(n, val))), lnfact(val)), ad.mul(val, ad.maths.log(p))), ad.mul(ad.sub(n, val), ad.maths.log(ad.sub(1, p))));
         }
     },
     support: function (params) {
         return _.range(params[1]).concat([params[1]]);
     }
 });
-function factAD(x) {
+function zeros(n) {
+    var a = new Array(n);
+    for (var i = 0; i < n; i++) {
+        a[i] = 0;
+    }
+    return a;
+}
+function multinomialSample(params) {
+    var theta = params[0];
+    var n = params[1];
+    var thetaSum = util.sum(theta);
+    var a = zeros(theta.length);
+    for (var i = 0; i < n; i++) {
+        a[discreteSample(theta)]++;
+    }
+    return a;
+}
+var multinomialERP = new ERP({
+    sample: multinomialSample,
+    score: function (params, val) {
+        var probs = params[0];
+        var n = params[1];
+        if (sum(val) != n) {
+            return -Infinity;
+        }
+        var x = [];
+        var y = [];
+        for (var i = 0; i < probs.length; i++) {
+            x[i] = lnfact(val[i]);
+            y[i] = val[i] * Math.log(probs[i]);
+        }
+        return lnfact(n) - sum(x) + sum(y);
+    },
+    support: function (params) {
+        var probs = params[0];
+        var k = params[1];
+        var combinations = allDiscreteCombinations(k, probs, [], 0);
+        var toHist = function (l) {
+            return buildHistogramFromCombinations(l, probs);
+        };
+        var hists = combinations.map(toHist);
+        return hists;
+    }
+});
+function allDiscreteCombinations(k, states, got, pos) {
+    var support = [];
+    if (got.length == k) {
+        return [_.clone(got)];
+    }
+    for (var i = pos; i < states.length; i++) {
+        got.push(i);
+        support = support.concat(allDiscreteCombinations(k, states, got, i));
+        got.pop();
+    }
+    return support;
+}
+function buildHistogramFromCombinations(samples, states) {
+    var stateIndices = _.range(states.length);
+    var zeroHist = _.chain(stateIndices).map(function (i) {
+        return [
+            i,
+            0
+        ];
+    }).object().value();
+    var hist = _.defaults(_.countBy(samples), zeroHist);
+    var array = _.sortBy(hist, function (val, key) {
+        return key;
+    });
+    return array;
+}
+function fact(x) {
     var t = 1;
     while (ad.gt(x, 1)) {
         t = ad.mul(t, x);
@@ -56969,12 +56691,12 @@ function factAD(x) {
     }
     return t;
 }
-function lnfactAD(x) {
+function lnfact(x) {
     if (ad.lt(x, 1)) {
         x = 1;
     }
     if (ad.lt(x, 12)) {
-        return ad.maths.log(factAD(ad.maths.round(x)));
+        return ad.maths.log(fact(ad.maths.round(x)));
     }
     var invx = ad.div(1, x);
     var invx2 = ad.mul(invx, invx);
@@ -57018,7 +56740,7 @@ var poissonERP = new ERP({
     score: function (params, val) {
         var mu = params[0];
         var k = val;
-        return ad.sub(ad.sub(ad.mul(k, ad.maths.log(mu)), mu), lnfactAD(k));
+        return ad.sub(ad.sub(ad.mul(k, ad.maths.log(mu)), mu), lnfact(k));
     },
     isContinuous: false
 });
@@ -57044,13 +56766,13 @@ function dirichletScore(params, val) {
     var alpha = params;
     var theta = val;
     var asum = 0;
-    for (var i = 0; ad.lt(i, alpha.length); i = ad.add(i, 1)) {
-        asum = ad.add(asum, alpha[i]);
+    for (var i = 0; i < alpha.length; i++) {
+        asum += alpha[i];
     }
-    var logp = logGammaAD(asum);
-    for (var j = 0; ad.lt(j, alpha.length); j = ad.add(j, 1)) {
-        logp = ad.add(logp, ad.mul(ad.sub(alpha[j], 1), ad.maths.log(theta[j])));
-        logp = ad.sub(logp, logGammaAD(alpha[j]));
+    var logp = logGamma(asum);
+    for (var j = 0; j < alpha.length; j++) {
+        logp += (alpha[j] - 1) * Math.log(theta[j]);
+        logp -= logGamma(alpha[j]);
     }
     return logp;
 }
@@ -57059,7 +56781,7 @@ var dirichletERP = new ERP({
     score: dirichletScore,
     isContinuous: false
 });
-function multinomialSample(theta) {
+function discreteSample(theta) {
     var thetaSum = util.sum(theta);
     var x = util.random() * thetaSum;
     var k = theta.length;
@@ -57074,9 +56796,9 @@ function multinomialSample(theta) {
 }
 function makeMarginalERP(marginal) {
     var norm = _.reduce(marginal, function (acc, obj) {
-        return acc + obj.prob;
+        return ad.add(acc, obj.prob);
     }, 0);
-    assert.ok(Math.abs(1 - norm) < 1e-8, 'Expected marginal to be normalized.');
+    assert.ok(ad.lt(ad.maths.abs(ad.sub(1, norm)), 1e-8), 'Expected marginal to be normalized.');
     var support = _.map(marginal, function (obj) {
         return obj.val;
     });
@@ -57086,8 +56808,8 @@ function makeMarginalERP(marginal) {
             var probAccum = 0;
             for (var i in marginal) {
                 if (marginal.hasOwnProperty(i)) {
-                    probAccum += marginal[i].prob;
-                    if (x < probAccum) {
+                    probAccum = ad.add(probAccum, marginal[i].prob);
+                    if (ad.lt(x, probAccum)) {
                         return marginal[i].val;
                     }
                 }
@@ -57117,7 +56839,7 @@ var makeCategoricalERP = function (ps, vs, extraParams) {
     var categoricalSample = vs.length === 1 ? function (params) {
         return vs[0];
     } : function (params) {
-        return vs[multinomialSample(ps)];
+        return vs[discreteSample(ps)];
     };
     return new ERP(_.extendOwn({
         sample: categoricalSample,
@@ -57174,7 +56896,7 @@ function gaussianProposalParams(params, prevVal) {
 }
 function dirichletProposalParams(params, prevVal) {
     var concentration = 10;
-    var driftParams = params.map(function (x) {
+    var driftParams = prevVal.map(function (x) {
         return concentration * x;
     });
     return driftParams;
@@ -57237,9 +56959,11 @@ module.exports = setErpNames({
     binomialERP: binomialERP,
     dirichletERP: dirichletERP,
     discreteERP: discreteERP,
+    multinomialERP: multinomialERP,
     exponentialERP: exponentialERP,
     gammaERP: gammaERP,
     gaussianERP: gaussianERP,
+    discreteSample: discreteSample,
     multinomialSample: multinomialSample,
     multivariateGaussianERP: multivariateGaussianERP,
     cauchyERP: cauchyERP,
@@ -57257,7 +56981,7 @@ module.exports = setErpNames({
     isErp: isErp,
     isErpWithSupport: isErpWithSupport
 });
-},{"./ad":140,"./util":176,"assert":178,"numeric":96,"underscore":138}],149:[function(require,module,exports){
+},{"./ad.js":148,"./util":186,"assert":188,"numeric":105,"underscore":147}],159:[function(require,module,exports){
 /**
  * @license jahashtable, a JavaScript implementation of a hash table. It creates a single constructor function called
  * Hashtable in the global scope.
@@ -57692,7 +57416,7 @@ module.exports = {
   Hashtable: Hashtable
 };
 
-},{}],150:[function(require,module,exports){
+},{}],160:[function(require,module,exports){
 (function (process,global){
 ////////////////////////////////////////////////////////////////////
 // Inference interface
@@ -57717,31 +57441,27 @@ module.exports = {
 var assert = require('assert');
 var _ = require('underscore');
 
-var util = require('./util');
-var erp = requireErp();
-var enumerate = require('./inference/enumerate');
-var mcmc = require('./inference/mcmc');
-var asyncpf = require('./inference/asyncpf');
-var pmcmc = require('./inference/pmcmc');
-var smc = require('./inference/smc');
-var variational = require('./inference/variational');
-var rejection = require('./inference/rejection');
-var incrementalmh = require('./inference/incrementalmh');
-var headerUtils = require('./headerUtils');
-var Query = require('./query').Query;
-var ad = require('./ad');
-
-function requireErp() {
-  try {
-    return require('./erp');
-  } catch (e) {
-    if (e.code === 'MODULE_NOT_FOUND') {
-      console.log('ERROR: erp.js not found');
-      console.log('Run "./script/transformERP" and try again.');
-      process.exit();
-    } else {
-      throw e;
-    }
+try {
+  var util = require('./util');
+  var erp = require('./erp');
+  var enumerate = require('./inference/enumerate');
+  var mcmc = require('./inference/mcmc');
+  var asyncpf = require('./inference/asyncpf');
+  var pmcmc = require('./inference/pmcmc');
+  var smc = require('./inference/smc');
+  var variational = require('./inference/variational');
+  var rejection = require('./inference/rejection');
+  var incrementalmh = require('./inference/incrementalmh');
+  var headerUtils = require('./headerUtils');
+  var Query = require('./query').Query;
+  var ad = require('./ad');
+} catch (e) {
+  if (e.code === 'MODULE_NOT_FOUND') {
+    console.error(e.message);
+    console.error('Run ./script/adify and try again.');
+    process.exit();
+  } else {
+    throw e;
   }
 }
 
@@ -57751,8 +57471,8 @@ module.exports = function(env) {
   // Inference interface
 
   env.coroutine = {
-    sample: function(s, cc, a, erp, params) {
-      return cc(s, erp.sample(params));
+    sample: function(s, k, a, erp, params) {
+      return k(s, erp.sample(params));
     },
     factor: function() {
       throw 'factor allowed only inside inference.';
@@ -57760,26 +57480,26 @@ module.exports = function(env) {
     exit: function(s, r) {
       return r;
     },
-    incrementalize: function(s, cc, a, fn, args) {
-      var args = [s, cc, a].concat(args);
+    incrementalize: function(s, k, a, fn, args) {
+      var args = [s, k, a].concat(args);
       return fn.apply(global, args);
     }
   };
 
   env.defaultCoroutine = env.coroutine;
 
-  env.sample = function(s, k, a, dist, params) {
-    return env.coroutine.sample(s, k, a, dist, params);
+  env.sample = function(s, k, a, erp, params) {
+    return env.coroutine.sample(s, k, a, erp, params);
   };
 
   env.factor = function(s, k, a, score) {
-    assert.ok(!isNaN(ad.untapify(score)));
+    assert.ok(!isNaN(ad.untapify(score)), 'factor() score was NaN');
     return env.coroutine.factor(s, k, a, score);
   };
 
-  env.sampleWithFactor = function(s, k, a, dist, params, scoreFn) {
+  env.sampleWithFactor = function(s, k, a, erp, params, scoreFn) {
     if (typeof env.coroutine.sampleWithFactor === 'function') {
-      return env.coroutine.sampleWithFactor(s, k, a, dist, params, scoreFn);
+      return env.coroutine.sampleWithFactor(s, k, a, erp, params, scoreFn);
     } else {
       var sampleK = function(s, v) {
         var scoreK = function(s, sc) {
@@ -57790,7 +57510,7 @@ module.exports = function(env) {
         };
         return scoreFn(s, scoreK, a + 'swf1', v);
       };
-      return env.sample(s, sampleK, a, dist, params);
+      return env.sample(s, sampleK, a, erp, params);
     }
   };
 
@@ -57798,10 +57518,10 @@ module.exports = function(env) {
     return env.coroutine.exit(s, retval);
   };
 
-  env.incrementalize = function(s, cc, a, fn, args) {
+  env.incrementalize = function(s, k, a, fn, args) {
     args = args || [];
-    return env.coroutine.incrementalize(s, cc, a, fn, args);
-  }
+    return env.coroutine.incrementalize(s, k, a, fn, args);
+  };
 
   // Inference coroutines are responsible for managing this correctly.
   env.query = new Query();
@@ -57851,17 +57571,18 @@ module.exports = function(env) {
 };
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./ad":140,"./erp":148,"./headerUtils":151,"./inference/asyncpf":152,"./inference/enumerate":153,"./inference/incrementalmh":155,"./inference/mcmc":158,"./inference/pmcmc":160,"./inference/rejection":161,"./inference/smc":162,"./inference/variational":163,"./query":165,"./util":176,"_process":375,"assert":178,"underscore":138}],151:[function(require,module,exports){
+},{"./ad":148,"./erp":158,"./headerUtils":161,"./inference/asyncpf":162,"./inference/enumerate":163,"./inference/incrementalmh":165,"./inference/mcmc":168,"./inference/pmcmc":170,"./inference/rejection":171,"./inference/smc":172,"./inference/variational":173,"./query":175,"./util":186,"_process":385,"assert":188,"underscore":147}],161:[function(require,module,exports){
 (function (global){
 'use strict';
 
 var serialize = require('./util').serialize
 var LRU = require('lru-cache');
+var ad = require('./ad');
 
 module.exports = function(env) {
 
   function display(s, k, a, x) {
-    return k(s, console.log(x));
+    return k(s, console.log(ad.untapify(x)));
   }
 
   // Caching for a wppl function f.
@@ -57926,7 +57647,7 @@ module.exports = function(env) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./util":176,"lru-cache":95}],152:[function(require,module,exports){
+},{"./ad":148,"./util":186,"lru-cache":101}],162:[function(require,module,exports){
 ////////////////////////////////////////////////////////////////////
 // Asynchronous Anytime SMC.
 // http://arxiv.org/abs/1407.2864
@@ -57937,7 +57658,7 @@ module.exports = function(env) {
 
 var _ = require('underscore');
 var util = require('../util');
-var Histogram = require('../aggregation').Histogram;
+var Histogram = require('../aggregation/histogram');
 
 module.exports = function(env) {
 
@@ -58135,193 +57856,132 @@ module.exports = function(env) {
 
 };
 
-},{"../aggregation":141,"../util":176,"underscore":138}],153:[function(require,module,exports){
-////////////////////////////////////////////////////////////////////
-// Enumeration
-//
-// Depth-first enumeration of all the paths through the computation.
-// Q is the queue object to use. It should have enq, deq, and size methods.
-
+},{"../aggregation/histogram":150,"../util":186,"underscore":147}],163:[function(require,module,exports){
 'use strict';
-
+var ad = require('../ad.js');
 var _ = require('underscore');
 var PriorityQueue = require('priorityqueuejs');
 var util = require('../util');
-var Distribution = require('../aggregation').Distribution;
-
-module.exports = function(env) {
-
-  function Enumerate(store, k, a, wpplFn, maxExecutions, Q) {
-    this.score = 0; // Used to track the score of the path currently being explored
-    this.marginal = new Distribution(); // We will accumulate the marginal distribution here
-    this.numCompletedExecutions = 0;
-    this.store = store; // will be reinstated at the end
-    this.k = k;
-    this.a = a;
-    this.wpplFn = wpplFn;
-    this.maxExecutions = maxExecutions || Infinity;
-
-    // Queue of states that we have yet to explore.  This queue is a
-    // bunch of computation states. Each state is a continuation, a
-    // value to apply it to, and a score.
-    this.queue = Q;
-
-    // Move old coroutine out of the way
-    // and install this as the current handler
-    this.coroutine = env.coroutine;
-    env.coroutine = this;
-  }
-
-  Enumerate.prototype.run = function() {
-    // Run the wppl computation, when the computation returns we want it
-    // to call the exit method of this coroutine so we pass that as the
-    // continuation.
-    return this.wpplFn(_.clone(this.store), env.exit, this.a);
-  };
-
-  Enumerate.prototype.nextInQueue = function() {
-    var nextState = this.queue.deq();
-    this.score = nextState.score;
-    return nextState.continuation(nextState.store, nextState.value);
-  };
-
-  Enumerate.prototype.enqueueContinuation = function(continuation, value, score, store) {
-    var state = {
-      continuation: continuation,
-      value: value,
-      score: score,
-      store: _.clone(store)
+var Distribution = require('../aggregation/distribution');
+module.exports = function (env) {
+    function Enumerate(store, k, a, wpplFn, maxExecutions, Q) {
+        this.score = 0;
+        this.marginal = new Distribution();
+        this.numCompletedExecutions = 0;
+        this.store = store;
+        this.k = k;
+        this.a = a;
+        this.wpplFn = wpplFn;
+        this.maxExecutions = maxExecutions || Infinity;
+        this.queue = Q;
+        this.coroutine = env.coroutine;
+        env.coroutine = this;
+    }
+    Enumerate.prototype.run = function () {
+        return this.wpplFn(_.clone(this.store), env.exit, this.a);
     };
-    this.queue.enq(state);
-  };
-
-  var getSupport = function(dist, params) {
-    // Find support of this erp:
-    if (dist.isContinuous || !dist.support) {
-      console.error(dist, params);
-      throw 'Enumerate can only be used with ERPs that have finite support.';
-    }
-    var supp = dist.support(params);
-
-    // Check that support is non-empty
-    if (supp.length === 0) {
-      console.error(dist, params);
-      throw 'Enumerate encountered ERP with empty support!';
-    }
-
-    return supp;
-  };
-
-  Enumerate.prototype.sample = function(store, cc, a, dist, params) {
-    var support = getSupport(dist, params);
-
-    // For each value in support, add the continuation paired with
-    // support value and score to queue:
-    _.each(support, function(value) {
-      this.enqueueContinuation(
-          cc, value, this.score + dist.score(params, value), store);
-    }, this);
-
-    // Call the next state on the queue
-    return this.nextInQueue();
-  };
-
-  Enumerate.prototype.factor = function(s, cc, a, score) {
-    // Update score and continue
-    this.score += score;
-    if (this.score === -Infinity) {
-      return this.exit();
-    }
-    return cc(s);
-  };
-
-  Enumerate.prototype.sampleWithFactor = function(store, cc, a, dist, params, scoreFn) {
-    var support = getSupport(dist, params);
-
-    // Allows extra factors to be taken into account in making
-    // exploration decisions:
-
-    return util.cpsForEach(
-        function(value, i, support, nextK) {
-          return scoreFn(store, function(store, extraScore) {
-            var score = env.coroutine.score + dist.score(params, value) + extraScore;
-            env.coroutine.enqueueContinuation(cc, value, score, store);
-            return nextK();
-          }, a, value);
-        },
-        function() {
-          // Call the next state on the queue
-          return env.coroutine.nextInQueue();
-        },
-        support);
-  };
-
-  Enumerate.prototype.exit = function(s, retval) {
-    // We have reached an exit of the computation. Accumulate probability into retval bin.
-    this.marginal.add(retval, this.score);
-
-    // Increment the completed execution counter
-    this.numCompletedExecutions++;
-
-    // If anything is left in queue do it:
-    if (this.queue.size() > 0 && (this.numCompletedExecutions < this.maxExecutions)) {
-      return this.nextInQueue();
-    } else {
-      if (this.marginal.size === 0) {
-        throw 'All paths explored by Enumerate have probability zero.';
-      }
-      // Reinstate previous coroutine:
-      env.coroutine = this.coroutine;
-      // Return from enumeration by calling original continuation with original store:
-      return this.k(this.store, this.marginal.toERP());
-    }
-  };
-
-  Enumerate.prototype.incrementalize = env.defaultCoroutine.incrementalize;
-
-  //helper wraps with 'new' to make a new copy of Enumerate and set 'this' correctly..
-  function enuPriority(s, cc, a, wpplFn, maxExecutions) {
-    var q = new PriorityQueue(function(a, b) {
-      return a.score - b.score;
-    });
-    return new Enumerate(s, cc, a, wpplFn, maxExecutions, q).run();
-  }
-
-  function enuFilo(s, cc, a, wpplFn, maxExecutions) {
-    var q = [];
-    q.size = function() {
-      return q.length;
+    Enumerate.prototype.nextInQueue = function () {
+        var nextState = this.queue.deq();
+        this.score = nextState.score;
+        return nextState.continuation(nextState.store, nextState.value);
     };
-    q.enq = q.push;
-    q.deq = q.pop;
-    return new Enumerate(s, cc, a, wpplFn, maxExecutions, q).run();
-  }
-
-  function enuFifo(s, cc, a, wpplFn, maxExecutions) {
-    var q = [];
-    q.size = function() {
-      return q.length;
+    Enumerate.prototype.enqueueContinuation = function (continuation, value, score, store) {
+        var state = {
+            continuation: continuation,
+            value: value,
+            score: score,
+            store: _.clone(store)
+        };
+        this.queue.enq(state);
     };
-    q.enq = q.push;
-    q.deq = q.shift;
-    return new Enumerate(s, cc, a, wpplFn, maxExecutions, q).run();
-  }
-
-  function enuDefault(s, cc, a, wpplFn, maxExecutions) {
-    var enu = _.isFinite(maxExecutions) ? enuPriority : enuFilo;
-    return enu(s, cc, a, wpplFn, maxExecutions);
-  }
-
-  return {
-    Enumerate: enuDefault,
-    EnumerateBreadthFirst: enuFifo,
-    EnumerateDepthFirst: enuFilo,
-    EnumerateLikelyFirst: enuPriority
-  };
-
+    var getSupport = function (erp, params) {
+        if (erp.isContinuous || !erp.support) {
+            console.error(erp, params);
+            throw 'Enumerate can only be used with ERPs that have finite support.';
+        }
+        var supp = erp.support(params);
+        if (ad.peq(supp.length, 0)) {
+            console.error(erp, params);
+            throw 'Enumerate encountered ERP with empty support!';
+        }
+        return supp;
+    };
+    Enumerate.prototype.sample = function (store, k, a, erp, params) {
+        var support = getSupport(erp, params);
+        _.each(support, function (value) {
+            this.enqueueContinuation(k, value, ad.add(this.score, erp.score(params, value)), store);
+        }, this);
+        return this.nextInQueue();
+    };
+    Enumerate.prototype.factor = function (s, k, a, score) {
+        this.score = ad.add(this.score, score);
+        if (ad.peq(this.score, ad.sub(0, Infinity))) {
+            return this.exit();
+        }
+        return k(s);
+    };
+    Enumerate.prototype.sampleWithFactor = function (store, k, a, erp, params, scoreFn) {
+        var support = getSupport(erp, params);
+        return util.cpsForEach(function (value, i, support$2, nextK) {
+            return scoreFn(store, function (store$2, extraScore) {
+                var score = ad.add(ad.add(env.coroutine.score, erp.score(params, value)), extraScore);
+                env.coroutine.enqueueContinuation(k, value, score, store$2);
+                return nextK();
+            }, a, value);
+        }, function () {
+            return env.coroutine.nextInQueue();
+        }, support);
+    };
+    Enumerate.prototype.exit = function (s, retval) {
+        this.marginal.add(retval, this.score);
+        this.numCompletedExecutions = ad.add(this.numCompletedExecutions, 1);
+        if (ad.gt(this.queue.size(), 0) && ad.lt(this.numCompletedExecutions, this.maxExecutions)) {
+            return this.nextInQueue();
+        } else {
+            if (ad.peq(this.marginal.size, 0)) {
+                throw 'All paths explored by Enumerate have probability zero.';
+            }
+            env.coroutine = this.coroutine;
+            return this.k(this.store, this.marginal.toERP());
+        }
+    };
+    Enumerate.prototype.incrementalize = env.defaultCoroutine.incrementalize;
+    function enuPriority(s, k, a, wpplFn, maxExecutions) {
+        var q = new PriorityQueue(function (a$2, b) {
+            return ad.sub(a$2.score, b.score);
+        });
+        return new Enumerate(s, k, a, wpplFn, maxExecutions, q).run();
+    }
+    function enuFilo(s, k, a, wpplFn, maxExecutions) {
+        var q = [];
+        q.size = function () {
+            return q.length;
+        };
+        q.enq = q.push;
+        q.deq = q.pop;
+        return new Enumerate(s, k, a, wpplFn, maxExecutions, q).run();
+    }
+    function enuFifo(s, k, a, wpplFn, maxExecutions) {
+        var q = [];
+        q.size = function () {
+            return q.length;
+        };
+        q.enq = q.push;
+        q.deq = q.shift;
+        return new Enumerate(s, k, a, wpplFn, maxExecutions, q).run();
+    }
+    function enuDefault(s, k, a, wpplFn, maxExecutions) {
+        var enu = _.isFinite(maxExecutions) ? enuPriority : enuFilo;
+        return enu(s, k, a, wpplFn, maxExecutions);
+    }
+    return {
+        Enumerate: enuDefault,
+        EnumerateBreadthFirst: enuFifo,
+        EnumerateDepthFirst: enuFilo,
+        EnumerateLikelyFirst: enuPriority
+    };
 };
-
-},{"../aggregation":141,"../util":176,"priorityqueuejs":97,"underscore":138}],154:[function(require,module,exports){
+},{"../ad.js":148,"../aggregation/distribution":149,"../util":186,"priorityqueuejs":106,"underscore":147}],164:[function(require,module,exports){
 // Neal, Radford M. "MCMC using Hamiltonian dynamics." Handbook of
 // Markov Chain Monte Carlo 2 (2011).
 // http://arxiv.org/abs/1206.1901
@@ -58531,7 +58191,7 @@ module.exports = function(env) {
 
 };
 
-},{"../ad":140,"../erp":148,"../trace":167,"../util":176,"assert":178,"underscore":138}],155:[function(require,module,exports){
+},{"../ad":148,"../erp":158,"../trace":177,"../util":186,"assert":188,"underscore":147}],165:[function(require,module,exports){
 (function (global){
 ////////////////////////////////////////////////////////////////////
 // Incrementalized (i.e. caching) Lightweight MH
@@ -58543,7 +58203,8 @@ var assert = require('assert');
 var util = require('../util');
 var Hashtable = require('../hashtable').Hashtable
 var Query = require('../query').Query;
-var aggregation = require('../aggregation');
+var Histogram = require('../aggregation/histogram');
+var MAP = require('../aggregation/map');
 
 module.exports = function(env) {
 
@@ -58657,11 +58318,18 @@ module.exports = function(env) {
     }
   };
 
-  ERPNode.prototype.registerInputChanges = function(s, k, unused, params) {
+  ERPNode.prototype.registerInputChanges = function(s, k, erp, params) {
     updateProperty(this, 'store', _.clone(s));
     updateProperty(this, 'continuation', k);
     updateProperty(this, 'index', this.parent.nextChildIdx);
     this.reachable = true;
+    // Check if ERP has changed
+    // TODO: Have ERPs provide 'equal' method to check whether they represent
+    //    the same distribution, even though they may refer to different objects.
+    if (erp !== this.erp) {
+      this.needsUpdate = true;
+      updateProperty(this, 'erp', erp);
+    }
     // Check params for changes
     if (!paramsEqual(params, this.params)) {
       this.needsUpdate = true;
@@ -58989,7 +58657,7 @@ module.exports = function(env) {
       }
     }
     // Check store for changes
-    if (!storesEqual(this.store, s)) {
+    if (!storesEqual(this.inStore, s)) {
       this.needsUpdate = true;
       updateProperty(this, 'inStore', _.clone(s));
     }
@@ -59304,8 +58972,8 @@ module.exports = function(env) {
     this.a = a;
 
     this.aggregator = (justSample || onlyMAP) ?
-        new aggregation.MAP(justSample) :
-        new aggregation.Histogram();
+        new MAP(justSample) :
+        new Histogram();
 
     this.totalIterations = numIterations;
     this.acceptedProps = 0;
@@ -59623,7 +59291,7 @@ module.exports = function(env) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../aggregation":141,"../hashtable":149,"../query":165,"../util":176,"assert":178,"underscore":138}],156:[function(require,module,exports){
+},{"../aggregation/histogram":150,"../aggregation/map":151,"../hashtable":159,"../query":175,"../util":186,"assert":188,"underscore":147}],166:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
@@ -59700,7 +59368,7 @@ module.exports = function(env) {
 
 };
 
-},{"../ad":140,"../trace":167,"assert":178,"underscore":138}],157:[function(require,module,exports){
+},{"../ad":148,"../trace":177,"assert":188,"underscore":147}],167:[function(require,module,exports){
 'use strict';
 
 var assert = require('assert');
@@ -59800,13 +59468,14 @@ module.exports = function(env) {
 
 };
 
-},{"../util":176,"./hmckernel":154,"./mhkernel":159,"assert":178,"underscore":138}],158:[function(require,module,exports){
+},{"../util":186,"./hmckernel":164,"./mhkernel":169,"assert":188,"underscore":147}],168:[function(require,module,exports){
 (function (process){
 'use strict';
 
 var _ = require('underscore');
 var util = require('../util');
-var aggregation = require('../aggregation');
+var Histogram = require('../aggregation/histogram');
+var MAP = require('../aggregation/map');
 
 module.exports = function(env) {
 
@@ -59830,8 +59499,8 @@ module.exports = function(env) {
     _.invoke(callbacks, 'setup', numIters(options));
 
     var aggregator = (options.justSample || options.onlyMAP) ?
-        new aggregation.MAP(options.justSample) :
-        new aggregation.Histogram();
+        new MAP(options.justSample) :
+        new Histogram();
 
     var initialize, run, finish;
 
@@ -59925,7 +59594,7 @@ module.exports = function(env) {
 };
 
 }).call(this,require('_process'))
-},{"../aggregation":141,"../util":176,"./initialize":156,"./kernels":157,"_process":375,"underscore":138}],159:[function(require,module,exports){
+},{"../aggregation/histogram":150,"../aggregation/map":151,"../util":186,"./initialize":166,"./kernels":167,"_process":385,"underscore":147}],169:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
@@ -60125,7 +59794,7 @@ module.exports = function(env) {
 
 };
 
-},{"../ad":140,"../erp":148,"../util":176,"assert":178,"underscore":138}],160:[function(require,module,exports){
+},{"../ad":148,"../erp":158,"../util":186,"assert":188,"underscore":147}],170:[function(require,module,exports){
 ////////////////////////////////////////////////////////////////////
 // PMCMC
 
@@ -60134,7 +59803,7 @@ module.exports = function(env) {
 var _ = require('underscore');
 var erp = require('../erp');
 var util = require('../util')
-var Histogram = require('../aggregation').Histogram;
+var Histogram = require('../aggregation/histogram');
 
 module.exports = function(env) {
 
@@ -60248,7 +59917,7 @@ module.exports = function(env) {
     var j;
     var newParticles = [];
     for (var i = 0; i < particles.length; i++) {
-      j = erp.multinomialSample(weights);
+      j = erp.discreteSample(weights);
       newParticles.push(this.copyParticle(particles[j]));
     }
 
@@ -60335,7 +60004,7 @@ module.exports = function(env) {
 
 };
 
-},{"../aggregation":141,"../erp":148,"../util":176,"underscore":138}],161:[function(require,module,exports){
+},{"../aggregation/histogram":150,"../erp":158,"../util":186,"underscore":147}],171:[function(require,module,exports){
 // Rejection sampling
 //
 // maxScore: An upper bound on the total factor score per-execution.
@@ -60346,10 +60015,11 @@ module.exports = function(env) {
 
 'use strict';
 
+var _ = require('underscore');
 var erp = require('../erp');
 var assert = require('assert');
-var util = require('../util')
-var Histogram = require('../aggregation').Histogram;
+var util = require('../util');
+var Histogram = require('../aggregation/histogram');
 
 module.exports = function(env) {
 
@@ -60358,12 +60028,16 @@ module.exports = function(env) {
     this.k = k;
     this.a = a;
     this.wpplFn = wpplFn;
-    this.maxScore = maxScore === undefined ? 0 : maxScore
+    this.maxScore = (maxScore === undefined) ? 0 : maxScore;
     this.incremental = incremental;
     this.hist = new Histogram();
-    this.numSamples = numSamples;
+    this.numSamples = (numSamples === undefined) ? 1 : numSamples;
     this.oldCoroutine = env.coroutine;
     env.coroutine = this;
+
+    if (!_.isNumber(numSamples) || numSamples <= 0) {
+      throw 'numSamples should be a positive integer.';
+    }
 
     if (this.incremental) {
       assert(this.maxScore <= 0, 'maxScore cannot be positive for incremental rejection.');
@@ -60374,11 +60048,11 @@ module.exports = function(env) {
     this.scoreSoFar = 0;
     this.threshold = this.maxScore + Math.log(util.random());
     return this.wpplFn(_.clone(this.s), env.exit, this.a);
-  }
+  };
 
   Rejection.prototype.sample = function(s, k, a, erp, params) {
     return k(s, erp.sample(params));
-  }
+  };
 
   Rejection.prototype.factor = function(s, k, a, score) {
     if (this.incremental) {
@@ -60395,7 +60069,7 @@ module.exports = function(env) {
     } else {
       return k(s);
     }
-  }
+  };
 
   Rejection.prototype.exit = function(s, retval) {
     assert(this.scoreSoFar <= this.maxScore, 'Score exceeded upper bound.');
@@ -60412,7 +60086,7 @@ module.exports = function(env) {
     } else {
       return this.run();
     }
-  }
+  };
 
   Rejection.prototype.incrementalize = env.defaultCoroutine.incrementalize;
 
@@ -60426,7 +60100,7 @@ module.exports = function(env) {
 
 };
 
-},{"../aggregation":141,"../erp":148,"../util":176,"assert":178}],162:[function(require,module,exports){
+},{"../aggregation/histogram":150,"../erp":158,"../util":186,"assert":188,"underscore":147}],172:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
@@ -60435,7 +60109,7 @@ var erp = require('../erp');
 var Trace = require('../trace');
 
 var assert = require('assert');
-var Histogram = require('../aggregation').Histogram;
+var Histogram = require('../aggregation/histogram');
 var ad = require('../ad');
 
 module.exports = function(env) {
@@ -60561,7 +60235,7 @@ module.exports = function(env) {
     var newParticles = [];
     var j;
     for (var i = 0; i < numNewParticles; i++) {
-      j = erp.multinomialSample(newWeights);
+      j = erp.discreteSample(newWeights);
       newParticles.push(particles[j].copy());
     }
 
@@ -60746,7 +60420,7 @@ module.exports = function(env) {
 
 };
 
-},{"../ad":140,"../aggregation":141,"../erp":148,"../trace":167,"../util":176,"./kernels":157,"assert":178,"underscore":138}],163:[function(require,module,exports){
+},{"../ad":148,"../aggregation/histogram":150,"../erp":158,"../trace":177,"../util":186,"./kernels":167,"assert":188,"underscore":147}],173:[function(require,module,exports){
 ////////////////////////////////////////////////////////////////////
 // Simple Variational inference wrt the (pseudo)mean-field program.
 // We do stochastic gradient descent on the ERP params.
@@ -60911,7 +60585,7 @@ module.exports = function(env) {
 
 };
 
-},{"../erp":148}],164:[function(require,module,exports){
+},{"../erp":158}],174:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -60965,13 +60639,14 @@ function concatPrograms(programs) {
   return programs.reduce(concat, emptyProgram);
 }
 
-function parse(code, macros) {
+function parse(code, macros, filename) {
   return sweet.compile(code, { readableNames: true, ast: true, modules: macros });
 }
 
-function parseAllPairs(pairs) {
-  return pairs.map(function(pair) {
-    return parse(pair.code, pair.macros);
+function parseAll(bundles) {
+  return bundles.map(function(bundle) {
+    var ast = parse(bundle.code, bundle.macros, bundle.filename);
+    return _.extendOwn({ ast: ast }, bundle);
   });
 }
 
@@ -60984,55 +60659,53 @@ function loadMacros(pkg) {
 
 function headerPackage() {
   // Create a pseudo package from the header.
-  var code = "'no caching';\n\n// ERPs\n\nvar flip = function(theta) {\n  var theta = (theta !== undefined) ? theta : 0.5;\n  return sample(bernoulliERP, [theta]);\n};\n\nvar randomInteger = function(n) {\n  return sample(randomIntegerERP, [n]);\n};\n\nvar discrete = function(ps) {\n  return sample(discreteERP, [ps]);\n};\n\nvar categorical = function(ps, vs) {\n  return vs[discrete(ps)];\n}\n\nvar gaussian = function(mu, sigma) {\n  return sample(gaussianERP, [mu, sigma]);\n};\n\nvar multivariateGaussian = function(mu, cov) {\n  return sample(multivariateGaussianERP, [mu, cov]);\n};\n\nvar cauchy = function(location, scale) {\n  return sample(cauchyERP, [location, scale]);\n};\n\nvar uniform = function(a, b) {\n  return sample(uniformERP, [a, b]);\n};\n\nvar uniformDraw = function(l) {\n  return l[sample(randomIntegerERP, [l.length])];\n};\n\nvar dirichlet = function(alpha) {\n  return sample(dirichletERP, alpha);\n};\n\nvar poisson = function(mu) {\n  return sample(poissonERP, [mu]);\n};\n\nvar binomial = function(p, n) {\n  return sample(binomialERP, [p, n]);\n};\n\nvar beta = function(a, b) {\n  return sample(betaERP, [a, b]);\n};\n\nvar exponential = function(a) {\n  return sample(exponentialERP, [a]);\n};\n\nvar gamma = function(shape, scale) {\n  return sample(gammaERP, [shape, scale]);\n};\n\nvar deltaERP = function(v) {\n  return _top.makeCategoricalERP([1.0], [v]);\n};\n\nvar categoricalERP = function(ps, vs, extraParams) {\n  return _top.makeCategoricalERP(ps, vs, extraParams);\n};\n\nvar multiplexERP = function(vs, erps) {\n  return _top.makeMultiplexERP(vs, erps);\n};\n\nvar serializeERP = function(erp) {\n  return _top.serializeERP(erp);\n};\n\nvar deserializeERP = function(JSONString) {\n  return _top.deserializeERP(JSONString);\n};\n\n// XRPs\n\nvar makeBetaBernoulli = function(pseudocounts) {\n  globalStore.BBindex = 1 + (globalStore.BBindex || 0);\n  var bbname = 'BB' + globalStore.BBindex;\n  globalStore[bbname] = pseudocounts;\n  return function() {\n    var pc = globalStore[bbname];  // get current sufficient stats\n    var val = sample(bernoulliERP, [pc[0] / (pc[0] + pc[1])]);  // sample from predictive.\n    globalStore[bbname] = [pc[0] + val, pc[1] + !val];  // update sufficient stats\n    return val;\n  };\n};\n\nvar makeDirichletDiscrete = function(pseudocounts) {\n  var addCount = function(a, i, j) {\n    var j = j || 0;\n    if (a.length === 0) {\n      return [];\n    } else {\n      return [a[0] + (i === j)].concat(addCount(a.slice(1), i, j + 1));\n    }\n  };\n  globalStore.DDindex = 1 + (globalStore.DDindex || 0);\n  var ddname = 'DD' + globalStore.DDindex;\n  globalStore[ddname] = pseudocounts;\n  return function() {\n    var pc = globalStore[ddname];  // get current sufficient stats\n    var val = sample(discreteERP, [pc]);  // sample from predictive. (doesn't need to be normalized.)\n    globalStore[ddname] = addCount(pc, val); // update sufficient stats\n    return val;\n  };\n};\n\n// Arithmetic and other functionals\n\nvar plus = function(a, b) {\n  return a + b;\n};\nvar minus = function(a, b) {\n  return a - b;\n};\nvar mult = function(a, b) {\n  return a * b;\n};\nvar div = function(a, b) {\n  return a / b;\n};\n\nvar and = function(a, b) {\n  return a && b\n}\nvar or = function(a, b) {\n  return a || b\n}\n\nvar eq = function(a, b) {\n  return a === b;\n};\nvar neq = function(a, b) {\n  return a != b;\n};\nvar lt = function(a, b) {\n  return a < b;\n};\nvar gt = function(a, b) {\n  return a > b;\n};\nvar leq = function(a, b) {\n  return a <= b;\n};\nvar geq = function(a, b) {\n  return a >= b;\n};\n\nvar isEven = function(v) {\n  return v % 2 === 0;\n};\nvar isOdd = function(v) {\n  return v % 2 != 0;\n};\n\nvar idF = function(x) {\n  return x;\n};\nvar constF = function(f) {\n  return function() {\n    return f;\n  };\n};\nvar falseF = function() {\n  return false;\n};\nvar trueF = function() {\n  return true;\n};\n\n// Probability computations & calculations\n\nvar MAP = function(erp) {\n  return erp.MAP();\n};\n\nvar expectation = function(erp, func) {\n  var f = func || idF;\n  var supp = erp.support([]);\n  return mapReduce1(plus,\n                    function(s) {\n                      return Math.exp(erp.score([], s)) * f(s);\n                    },\n                    supp);\n};\n\nvar entropy = function(erp) {\n  return erp.entropy();\n};\n\n// Data structures & higher-order functions\n\nvar append = function(a, b) {\n  return a.concat(b);\n};\nvar cons = function(a, b) {\n  return [a].concat(b);\n};\nvar snoc = function(a, b) {\n  return a.concat([b]);\n};\n\nvar first = function(xs) {\n  return xs[0];\n};\nvar second = function(xs) {\n  return xs[1];\n};\nvar third = function(xs) {\n  return xs[2];\n};\nvar fourth = function(xs) {\n  return xs[3];\n};\nvar secondLast = function(xs) {\n  return xs[xs.length - 2];\n};\nvar last = function(xs) {\n  return xs[xs.length - 1];\n};\n\nvar most = function(xs) {\n  return xs.slice(0, xs.length - 1);\n}\n\nvar rest = function(xs) {\n  return xs.slice(1);\n};\n\nvar map_helper = function(i, j, f) {\n  var n = j - i + 1;\n  if (n == 0) {\n    return []\n  } else if (n == 1) {\n    return [f(i)];\n  } else {\n    var n1 = Math.ceil(n / 2);\n    return map_helper(i, i + n1 - 1, f).concat(map_helper(i + n1, j, f));\n  }\n}\n\n// recursively split input array so that we only call\n// concat a logarithmic number of times\nvar map = function(fn, l) {\n  return map_helper(0, l.length - 1, function(i) { return fn(l[i]) })\n}\n\n// assumes that length l1 == length l2\nvar map2 = function(fn, l1, l2) {\n  return map_helper(0, l1.length - 1, function(i) { return fn(l1[i], l2[i]) })\n}\n\n// sugar for map(f, [0,1,...,n-1])\nvar mapN = function(fn, n) {\n  return map_helper(0, n - 1, function(i) { return fn(i) })\n}\n\nvar mapIndexed = function(fn, l) {\n  return map_helper(0, l.length - 1, function(i) { return fn(i, l[i]) })\n}\n\nvar _ringAround = function(l, n) {\n  return l.slice(n).concat(l.slice(0, n));\n};\n\nvar ringForward = function(l, n) {\n  return _ringAround(l, n === undefined ? -1 : -n);\n};\n\nvar ringBackward = function(l, n) {\n  return _ringAround(l, n === undefined ? 1 : n);\n};\n\n// map through the cartesian product l1 * l2\nvar mapPairs2 = function(f, l1, l2) {\n  var res = map(function(a) {\n    return map(function(b) {\n      return f(a, b);\n    }, l2)\n  }, l1);\n  return [].concat.apply([], res); // flatten\n};\n\n// map through all 2-combinations of elements in l\n// e.g., mapPairsC(f, ['a','b','c']) will operate on ['a','b'],\n// ['a','c'], and ['b','c']\nvar mapPairsC = function(f, l) {\n  var n = l.length;\n\n  var helper = function(i) {\n    if (i === n) {\n      return [];\n    } else {\n      // compute {f(i,j)} where j \\in {i+1,...,n}\n      var r = mapN(\n          function(k) {\n            var j = i + k + 1;\n            return f(l[i], l[j])\n          },\n          n - (i + 1));\n\n      return append(r, helper(i + 1))\n    }\n  }\n\n  return helper(0);\n};\n\n// map through all 2-tuples of elements in l\n// e.g., mapPairsC(f, ['a','b','c']) will operate on ['a','b'],\n// ['a','c'], ['b','a'], ['b','c'], ['c','a'], ['c','b']\nvar mapPairsNC = function(f, l) {\n  var res = mapPairs2(function(a, b) {\n    return a === b ? undefined : f(a, b);\n  }, l, l);\n  return remove(undefined, res);\n};\n\nvar mapObject = function(fn, obj) {\n  return _.object(\n      map(\n      function(kv) {\n        return [kv[0], fn(kv[0], kv[1])]\n      },\n      _.pairs(obj))\n  );\n};\n\nvar reduce = function(fn, init, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return init\n    } else {\n      return fn(ar[i], helper(i + 1))\n    }\n  }\n\n  return helper(0);\n};\n\n// sugar for reduce(f, g(init), map(g,ar))\nvar mapReduce = function(f, init, g, ar) {\n  // specialized to above reduce\n  return reduce(function(a, b) {return f(g(a), b);},\n                g(init),\n                ar);\n};\n\n// sugar for reduce(f, g(last(ar)), map(g, butLast(ar)))\nvar mapReduce1 = function(f, g, ar) {\n  // specialized to above reduce\n  return reduce(function(a, b) {return f(g(a), b);},\n                g(ar[ar.length - 1]),\n                ar.slice(0, -1));\n};\n\nvar sum = function(l) {\n  return reduce(plus, 0, l);\n};\nvar product = function(l) {\n  return reduce(mult, 1, l);\n};\n\nvar listMean = function(l) {\n  return reduce(plus, 0, l) / l.length;\n};\nvar listVar = function(l, mu) {\n  var mu = mu === undefined ? listMean(l) : mu;\n  return mapReduce1(plus, function(a) {\n    return (a - mu) * (a - mu);\n  }, l) / l.length;\n};\nvar listStdev = function(l, mu) {\n  return Math.sqrt(listVar(l, mu));\n};\n\nvar normalize = function(xs) {\n  var Z = sum(xs);\n  return map(function(x) {\n    return x / Z;\n  }, xs);\n};\n\n// TODO: short circuiting\n// (also, this form is uninuitive.. we should set p to be idF by default\n// as in sort)\nvar all = function(p, l) {\n  if (l.length === 0) {\n    return true\n  } else {\n    return mapReduce1(and, p, l);\n  }\n};\n\n// TODO: short circuiting\nvar any = function(p, l) {\n  if (l.length === 0) {\n    return false\n  } else {\n    return mapReduce1(or, p, l);\n  }\n};\n\nvar zip = function(xs, ys) {\n  return map2(function(x, y) { return [x, y]},\n              xs,\n              ys)\n};\n\nvar filter = function(fn, ar) {\n  var helper = function(i, j) {\n    var n = j - i + 1;\n    if (n == 0) {\n      return [];\n    } else if (n == 1) {\n      return (fn(ar[i]) ? [ar[i]] : []);\n    } else {\n      var n1 = Math.ceil(n / 2);\n      return helper(i, i + n1 - 1).concat(helper(i + n1, j));\n    }\n  }\n\n  return helper(0, ar.length - 1)\n};\n\nvar find = function(f, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return undefined;\n    } else if (f(ar[i])) {\n      return ar[i];\n    } else {\n      return helper(i + 1);\n    }\n  }\n  return helper(0);\n};\n\nvar remove = function(a, ar) {\n  return filter(function(e) {\n    return a != e;\n  }, ar);\n};\n\nvar insertAt = function(ar, i, x) {\n  return ar.slice(0, i).concat([x]).concat(ar.slice(i));\n}\n\nvar removeAt = function(ar, i) {\n  return ar.slice(0, i).concat(ar.slice(i + 1));\n}\n\nvar replaceAt = function(ar, i, x) {\n  return ar.slice(0, i).concat([x]).concat(ar.slice(i + 1));\n}\n\nvar drop = function(n, ar) {\n  return n > ar.length ? [] : ar.slice(n);\n};\n\nvar take = function(n, ar) {\n  return n >= ar.length ? ar : ar.slice(0, n);\n};\n\nvar dropWhile = function(p, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return n;\n    }\n    return p(ar[i]) ? helper(i + 1) : i;\n  }\n  return ar.slice(helper(0));\n};\n\nvar takeWhile = function(p, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return n;\n    }\n    return p(ar[i]) ? helper(i + 1) : i;\n  }\n\n  return ar.slice(0, helper(0));\n};\n\nvar indexOf = function(x, xs) {\n  // prototype method doesn't return falsy value if not found\n  var i = xs.indexOf(x);\n  return i < 0 ? undefined : i\n};\n\nvar minWith = function(f, ar) {\n  var fn = function(_ar, _best) {\n    if (_ar.length === 0) {\n      return _best;\n    } else if (_ar[0][1] < _best[1]) {\n      return fn(_ar.slice(1), _ar[0]);\n    } else {\n      return fn(_ar.slice(1), _best);\n    }\n  };\n  return fn(zip(ar, map(f, ar)), [Infinity, Infinity]);\n};\n\nvar maxWith = function(f, ar) {\n  var fn = function(_ar, _best) {\n    if (_ar.length === 0) {\n      return _best;\n    } else if (_ar[0][1] > _best[1]) {\n      return fn(_ar.slice(1), _ar[0]);\n    } else {\n      return fn(_ar.slice(1), _best);\n    }\n  };\n  return fn(zip(ar, map(f, ar)), [-Infinity, -Infinity]);\n};\n\n// bin array into items satisfying a predicate p and items not satifying it\nvar span = function(p, ar) {\n  var n = ar.length;\n  var helper = function(i, _ts, _fs) {\n    return (i === n ?\n            [_ts, _fs] :\n            (p(ar[i]) ?\n             helper(i + 1, snoc(_ts, ar[i]), _fs) :\n             helper(i + 1, _ts, snoc(_fs, ar[i]))));\n  };\n  return helper(0, [], []);\n};\n\n// group array items by a comparator\n// NB: there is still room for optimization here\nvar groupBy = function(cmp, ar) {\n  if (ar.length === 0) {\n    return [];\n  } else {\n    var x = ar[0];\n    var sp = span(function(b) { return cmp(x, b); }, ar.slice(1));\n    return [cons(x, sp[0])].concat(groupBy(cmp, sp[1]));\n  }\n};\n\nvar repeat = function(n, fn) {\n  var helper = function(m) {\n    if (m == 0) {\n      return [];\n    } else if (m == 1) {\n      return [fn()];\n    } else {\n      var m1 = Math.ceil(m / 2),\n          m2 = m - m1;\n      return helper(m1).concat(helper(m2));\n    }\n  }\n\n  return helper(n);\n}\n\n\nvar push = function(xs, x) {\n  return xs.concat([x]);\n};\n\nvar compose = function(f, g) {\n  return function(x) {\n    return f(g(x));\n  };\n};\n\nvar everyOther = function(l) {\n  return l.length <= 1 ? l : [l[0]].concat(everyOther(l.slice(2)));\n};\n\n// FIXME: optimize\nvar _merge = function(l1, l2, pred, key) {\n  return (l1.length === 0 ?\n          l2 :\n          (l2.length === 0 ?\n           l1 :\n           (pred(key(l1[0]), key(l2[0])) ?\n            [l1[0]].concat(_merge(l1.slice(1), l2, pred, key)) :\n            [l2[0]].concat(_merge(l1, l2.slice(1), pred, key)))));\n};\n\n// FIXME: optimize\nvar _sort = function(l, pred, key) {\n  return ((l.length <= 1) ?\n          l :\n          _merge(_sort(everyOther(l), pred, key),\n                 _sort(everyOther(l.slice(1)), pred, key),\n                 pred,\n                 key));\n};\n\nvar sort = function(l, pred, key) {\n  return _sort(l, (pred || lt), (key || idF));\n};\n\nvar sortOn = function(l, key, pred) {\n  return _sort(l, (pred || lt), key);\n};\n\nvar condition = function(bool) {\n  factor(bool ? 0 : -Infinity);\n};\n\nvar MH = function(wpplFn, samples, burn) {\n  return MCMC(wpplFn, { samples: samples, burn: burn });\n};\n\nvar ParticleFilter = function(wpplFn, particles) {\n  return SMC(wpplFn, { particles: particles, rejuvSteps: 0 });\n};\n\nvar ParticleFilterRejuv = function(wpplFn, particles, rejuvSteps) {\n  return SMC(wpplFn, { particles: particles, rejuvSteps: rejuvSteps });\n};\n";
+  var code = "'no caching';\n\n// ERPs\n\nvar flip = function(theta) {\n  var theta = (theta !== undefined) ? theta : 0.5;\n  return sample(bernoulliERP, [theta]);\n};\n\nvar randomInteger = function(n) {\n  return sample(randomIntegerERP, [n]);\n};\n\nvar discrete = function(ps) {\n  return sample(discreteERP, [ps]);\n};\n\nvar categorical = function(ps, vs) {\n  return vs[discrete(ps)];\n};\n\nvar multinomial = function(ps, n) {\n  return sample(multinomialERP, [ps, n]);\n};\n\nvar gaussian = function(mu, sigma) {\n  return sample(gaussianERP, [mu, sigma]);\n};\n\nvar multivariateGaussian = function(mu, cov) {\n  return sample(multivariateGaussianERP, [mu, cov]);\n};\n\nvar cauchy = function(location, scale) {\n  return sample(cauchyERP, [location, scale]);\n};\n\nvar uniform = function(a, b) {\n  return sample(uniformERP, [a, b]);\n};\n\nvar uniformDraw = function(l) {\n  return l[sample(randomIntegerERP, [l.length])];\n};\n\nvar dirichlet = function(alpha) {\n  return sample(dirichletERP, alpha);\n};\n\nvar poisson = function(mu) {\n  return sample(poissonERP, [mu]);\n};\n\nvar binomial = function(p, n) {\n  return sample(binomialERP, [p, n]);\n};\n\nvar beta = function(a, b) {\n  return sample(betaERP, [a, b]);\n};\n\nvar exponential = function(a) {\n  return sample(exponentialERP, [a]);\n};\n\nvar gamma = function(shape, scale) {\n  return sample(gammaERP, [shape, scale]);\n};\n\nvar deltaERP = function(v) {\n  return _top.makeCategoricalERP([1.0], [v]);\n};\n\nvar categoricalERP = function(ps, vs, extraParams) {\n  return _top.makeCategoricalERP(ps, vs, extraParams);\n};\n\nvar multiplexERP = function(vs, erps) {\n  return _top.makeMultiplexERP(vs, erps);\n};\n\nvar serializeERP = function(erp) {\n  return _top.serializeERP(erp);\n};\n\nvar deserializeERP = function(JSONString) {\n  return _top.deserializeERP(JSONString);\n};\n\n// XRPs\n\nvar makeBetaBernoulli = function(pseudocounts) {\n  globalStore.BBindex = 1 + (globalStore.BBindex || 0);\n  var bbname = 'BB' + globalStore.BBindex;\n  globalStore[bbname] = pseudocounts;\n  return function() {\n    var pc = globalStore[bbname];  // get current sufficient stats\n    var val = sample(bernoulliERP, [pc[0] / (pc[0] + pc[1])]);  // sample from predictive.\n    globalStore[bbname] = [pc[0] + val, pc[1] + !val];  // update sufficient stats\n    return val;\n  };\n};\n\nvar makeDirichletDiscrete = function(pseudocounts) {\n  var addCount = function(a, i, j) {\n    var j = j || 0;\n    if (a.length === 0) {\n      return [];\n    } else {\n      return [a[0] + (i === j)].concat(addCount(a.slice(1), i, j + 1));\n    }\n  };\n  globalStore.DDindex = 1 + (globalStore.DDindex || 0);\n  var ddname = 'DD' + globalStore.DDindex;\n  globalStore[ddname] = pseudocounts;\n  return function() {\n    var pc = globalStore[ddname];  // get current sufficient stats\n    var val = sample(discreteERP, [pc]);  // sample from predictive. (doesn't need to be normalized.)\n    globalStore[ddname] = addCount(pc, val); // update sufficient stats\n    return val;\n  };\n};\n\n// Arithmetic and other functionals\n\nvar plus = function(a, b) {\n  return a + b;\n};\nvar minus = function(a, b) {\n  return a - b;\n};\nvar mult = function(a, b) {\n  return a * b;\n};\nvar div = function(a, b) {\n  return a / b;\n};\n\nvar and = function(a, b) {\n  return a && b\n}\nvar or = function(a, b) {\n  return a || b\n}\n\nvar eq = function(a, b) {\n  return a === b;\n};\nvar neq = function(a, b) {\n  return a != b;\n};\nvar lt = function(a, b) {\n  return a < b;\n};\nvar gt = function(a, b) {\n  return a > b;\n};\nvar leq = function(a, b) {\n  return a <= b;\n};\nvar geq = function(a, b) {\n  return a >= b;\n};\n\nvar isEven = function(v) {\n  return v % 2 === 0;\n};\nvar isOdd = function(v) {\n  return v % 2 != 0;\n};\n\nvar idF = function(x) {\n  return x;\n};\nvar constF = function(f) {\n  return function() {\n    return f;\n  };\n};\nvar falseF = function() {\n  return false;\n};\nvar trueF = function() {\n  return true;\n};\n\n// Probability computations & calculations\n\nvar MAP = function(erp) {\n  return erp.MAP();\n};\n\nvar expectation = function(erp, func) {\n  var f = func || idF;\n  var supp = erp.support([]);\n  return mapReduce1(plus,\n                    function(s) {\n                      return Math.exp(erp.score([], s)) * f(s);\n                    },\n                    supp);\n};\n\nvar entropy = function(erp) {\n  return erp.entropy();\n};\n\n// Data structures & higher-order functions\n\nvar append = function(a, b) {\n  return a.concat(b);\n};\nvar cons = function(a, b) {\n  return [a].concat(b);\n};\nvar snoc = function(a, b) {\n  return a.concat([b]);\n};\n\nvar first = function(xs) {\n  return xs[0];\n};\nvar second = function(xs) {\n  return xs[1];\n};\nvar third = function(xs) {\n  return xs[2];\n};\nvar fourth = function(xs) {\n  return xs[3];\n};\nvar secondLast = function(xs) {\n  return xs[xs.length - 2];\n};\nvar last = function(xs) {\n  return xs[xs.length - 1];\n};\n\nvar most = function(xs) {\n  return xs.slice(0, xs.length - 1);\n}\n\nvar rest = function(xs) {\n  return xs.slice(1);\n};\n\nvar map_helper = function(i, j, f) {\n  var n = j - i + 1;\n  if (n == 0) {\n    return []\n  } else if (n == 1) {\n    return [f(i)];\n  } else {\n    var n1 = Math.ceil(n / 2);\n    return map_helper(i, i + n1 - 1, f).concat(map_helper(i + n1, j, f));\n  }\n}\n\n// recursively split input array so that we only call\n// concat a logarithmic number of times\nvar map = function(fn, l) {\n  return map_helper(0, l.length - 1, function(i) { return fn(l[i]) })\n}\n\n// assumes that length l1 == length l2\nvar map2 = function(fn, l1, l2) {\n  return map_helper(0, l1.length - 1, function(i) { return fn(l1[i], l2[i]) })\n}\n\n// sugar for map(f, [0,1,...,n-1])\nvar mapN = function(fn, n) {\n  return map_helper(0, n - 1, function(i) { return fn(i) })\n}\n\nvar mapIndexed = function(fn, l) {\n  return map_helper(0, l.length - 1, function(i) { return fn(i, l[i]) })\n}\n\nvar _ringAround = function(l, n) {\n  return l.slice(n).concat(l.slice(0, n));\n};\n\nvar ringForward = function(l, n) {\n  return _ringAround(l, n === undefined ? -1 : -n);\n};\n\nvar ringBackward = function(l, n) {\n  return _ringAround(l, n === undefined ? 1 : n);\n};\n\n// map through the cartesian product l1 * l2\nvar mapPairs2 = function(f, l1, l2) {\n  var res = map(function(a) {\n    return map(function(b) {\n      return f(a, b);\n    }, l2)\n  }, l1);\n  return [].concat.apply([], res); // flatten\n};\n\n// map through all 2-combinations of elements in l\n// e.g., mapPairsC(f, ['a','b','c']) will operate on ['a','b'],\n// ['a','c'], and ['b','c']\nvar mapPairsC = function(f, l) {\n  var n = l.length;\n\n  var helper = function(i) {\n    if (i === n) {\n      return [];\n    } else {\n      // compute {f(i,j)} where j \\in {i+1,...,n}\n      var r = mapN(\n          function(k) {\n            var j = i + k + 1;\n            return f(l[i], l[j])\n          },\n          n - (i + 1));\n\n      return append(r, helper(i + 1))\n    }\n  }\n\n  return helper(0);\n};\n\n// map through all 2-tuples of elements in l\n// e.g., mapPairsC(f, ['a','b','c']) will operate on ['a','b'],\n// ['a','c'], ['b','a'], ['b','c'], ['c','a'], ['c','b']\nvar mapPairsNC = function(f, l) {\n  var res = mapPairs2(function(a, b) {\n    return a === b ? undefined : f(a, b);\n  }, l, l);\n  return remove(undefined, res);\n};\n\nvar mapObject = function(fn, obj) {\n  return _.object(\n      map(\n      function(kv) {\n        return [kv[0], fn(kv[0], kv[1])]\n      },\n      _.pairs(obj))\n  );\n};\n\nvar reduce = function(fn, init, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return init\n    } else {\n      return fn(ar[i], helper(i + 1))\n    }\n  }\n\n  return helper(0);\n};\n\n// sugar for reduce(f, g(init), map(g,ar))\nvar mapReduce = function(f, init, g, ar) {\n  // specialized to above reduce\n  return reduce(function(a, b) {return f(g(a), b);},\n                g(init),\n                ar);\n};\n\n// sugar for reduce(f, g(last(ar)), map(g, butLast(ar)))\nvar mapReduce1 = function(f, g, ar) {\n  // specialized to above reduce\n  return reduce(function(a, b) {return f(g(a), b);},\n                g(ar[ar.length - 1]),\n                ar.slice(0, -1));\n};\n\nvar sum = function(l) {\n  return reduce(plus, 0, l);\n};\nvar product = function(l) {\n  return reduce(mult, 1, l);\n};\n\nvar listMean = function(l) {\n  return reduce(plus, 0, l) / l.length;\n};\nvar listVar = function(l, mu) {\n  var mu = mu === undefined ? listMean(l) : mu;\n  return mapReduce1(plus, function(a) {\n    return (a - mu) * (a - mu);\n  }, l) / l.length;\n};\nvar listStdev = function(l, mu) {\n  return Math.sqrt(listVar(l, mu));\n};\n\nvar normalize = function(xs) {\n  var Z = sum(xs);\n  return map(function(x) {\n    return x / Z;\n  }, xs);\n};\n\nvar all = function(p, l) {\n  if (l.length === 0) {\n    return true\n  } else {\n    return mapReduce1(and, p, l);\n  }\n};\n\nvar any = function(p, l) {\n  if (l.length === 0) {\n    return false\n  } else {\n    return mapReduce1(or, p, l);\n  }\n};\n\nvar zip = function(xs, ys) {\n  return map2(function(x, y) { return [x, y]},\n              xs,\n              ys)\n};\n\nvar filter = function(fn, ar) {\n  var helper = function(i, j) {\n    var n = j - i + 1;\n    if (n == 0) {\n      return [];\n    } else if (n == 1) {\n      return (fn(ar[i]) ? [ar[i]] : []);\n    } else {\n      var n1 = Math.ceil(n / 2);\n      return helper(i, i + n1 - 1).concat(helper(i + n1, j));\n    }\n  }\n\n  return helper(0, ar.length - 1)\n};\n\nvar find = function(f, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return undefined;\n    } else if (f(ar[i])) {\n      return ar[i];\n    } else {\n      return helper(i + 1);\n    }\n  }\n  return helper(0);\n};\n\nvar remove = function(a, ar) {\n  return filter(function(e) {\n    return a != e;\n  }, ar);\n};\n\nvar insertAt = function(ar, i, x) {\n  return ar.slice(0, i).concat([x]).concat(ar.slice(i));\n}\n\nvar removeAt = function(ar, i) {\n  return ar.slice(0, i).concat(ar.slice(i + 1));\n}\n\nvar replaceAt = function(ar, i, x) {\n  return ar.slice(0, i).concat([x]).concat(ar.slice(i + 1));\n}\n\nvar drop = function(n, ar) {\n  return n > ar.length ? [] : ar.slice(n);\n};\n\nvar take = function(n, ar) {\n  return n >= ar.length ? ar : ar.slice(0, n);\n};\n\nvar dropWhile = function(p, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return n;\n    }\n    return p(ar[i]) ? helper(i + 1) : i;\n  }\n  return ar.slice(helper(0));\n};\n\nvar takeWhile = function(p, ar) {\n  var n = ar.length;\n  var helper = function(i) {\n    if (i === n) {\n      return n;\n    }\n    return p(ar[i]) ? helper(i + 1) : i;\n  }\n\n  return ar.slice(0, helper(0));\n};\n\nvar indexOf = function(x, xs) {\n  // prototype method doesn't return falsy value if not found\n  var i = xs.indexOf(x);\n  return i < 0 ? undefined : i\n};\n\nvar minWith = function(f, ar) {\n  var fn = function(_ar, _best) {\n    if (_ar.length === 0) {\n      return _best;\n    } else if (_ar[0][1] < _best[1]) {\n      return fn(_ar.slice(1), _ar[0]);\n    } else {\n      return fn(_ar.slice(1), _best);\n    }\n  };\n  return fn(zip(ar, map(f, ar)), [Infinity, Infinity]);\n};\n\nvar maxWith = function(f, ar) {\n  var fn = function(_ar, _best) {\n    if (_ar.length === 0) {\n      return _best;\n    } else if (_ar[0][1] > _best[1]) {\n      return fn(_ar.slice(1), _ar[0]);\n    } else {\n      return fn(_ar.slice(1), _best);\n    }\n  };\n  return fn(zip(ar, map(f, ar)), [-Infinity, -Infinity]);\n};\n\n// bin array into items satisfying a predicate p and items not satifying it\nvar span = function(p, ar) {\n  var n = ar.length;\n  var helper = function(i, _ts, _fs) {\n    return (i === n ?\n            [_ts, _fs] :\n            (p(ar[i]) ?\n             helper(i + 1, snoc(_ts, ar[i]), _fs) :\n             helper(i + 1, _ts, snoc(_fs, ar[i]))));\n  };\n  return helper(0, [], []);\n};\n\n// group array items by a comparator\n// NB: there is still room for optimization here\nvar groupBy = function(cmp, ar) {\n  if (ar.length === 0) {\n    return [];\n  } else {\n    var x = ar[0];\n    var sp = span(function(b) { return cmp(x, b); }, ar.slice(1));\n    return [cons(x, sp[0])].concat(groupBy(cmp, sp[1]));\n  }\n};\n\nvar repeat = function(n, fn) {\n  var helper = function(m) {\n    if (m == 0) {\n      return [];\n    } else if (m == 1) {\n      return [fn()];\n    } else {\n      var m1 = Math.ceil(m / 2),\n          m2 = m - m1;\n      return helper(m1).concat(helper(m2));\n    }\n  }\n\n  return helper(n);\n}\n\n\nvar push = function(xs, x) {\n  return xs.concat([x]);\n};\n\nvar compose = function(f, g) {\n  return function(x) {\n    return f(g(x));\n  };\n};\n\nvar everyOther = function(l) {\n  return l.length <= 1 ? l : [l[0]].concat(everyOther(l.slice(2)));\n};\n\nvar _merge = function(l1, l2, pred, key) {\n  return (l1.length === 0 ?\n          l2 :\n          (l2.length === 0 ?\n           l1 :\n           (pred(key(l1[0]), key(l2[0])) ?\n            [l1[0]].concat(_merge(l1.slice(1), l2, pred, key)) :\n            [l2[0]].concat(_merge(l1, l2.slice(1), pred, key)))));\n};\n\nvar _sort = function(l, pred, key) {\n  return ((l.length <= 1) ?\n          l :\n          _merge(_sort(everyOther(l), pred, key),\n                 _sort(everyOther(l.slice(1)), pred, key),\n                 pred,\n                 key));\n};\n\nvar sort = function(l, pred, key) {\n  return _sort(l, (pred || lt), (key || idF));\n};\n\nvar sortOn = function(l, key, pred) {\n  return _sort(l, (pred || lt), key);\n};\n\nvar condition = function(bool) {\n  factor(bool ? 0 : -Infinity);\n};\n\nvar MH = function(wpplFn, samples, burn) {\n  return MCMC(wpplFn, { samples: samples, burn: burn });\n};\n\nvar ParticleFilter = function(wpplFn, particles) {\n  return SMC(wpplFn, { particles: particles, rejuvSteps: 0 });\n};\n\nvar ParticleFilterRejuv = function(wpplFn, particles, rejuvSteps) {\n  return SMC(wpplFn, { particles: particles, rejuvSteps: rejuvSteps });\n};\n";
   var headerMacroModule = "operator (|>) 0 left { $val, $f } => #{ $f($val) }\nexport (|>)\n";
   var adMacroModule = "// -*- mode: js -*-\n// precedence and associativity taken from\n// http://sweetjs.org/doc/main/sweet.html#custom-operators\noperator +   14 { $r } => #{ ad.add(0, $r) }\noperator -   14 { $r } => #{ ad.sub(0, $r) }\noperator *   13 left { $l, $r } => #{ ad.mul($l, $r) }\noperator /   13 left { $l, $r } => #{ ad.div($l, $r) }\noperator %   13 left { $l, $r } => #{ ad.mod($l, $r) }\noperator +   12 left { $l, $r } => #{ ad.add($l, $r) }\noperator -   12 left { $l, $r } => #{ ad.sub($l, $r) }\noperator <   10 left { $l, $r } => #{ ad.lt($l, $r) }\noperator <=  10 left { $l, $r } => #{ ad.leq($l, $r) }\noperator >   10 left { $l, $r } => #{ ad.gt($l, $r) }\noperator >=  10 left { $l, $r } => #{ ad.geq($l, $r) }\noperator ==   9 left { $l, $r } => #{ ad.eq($l, $r) }\noperator !=   9 left { $l, $r } => #{ ad.neq($l, $r) }\noperator ===  9 left { $l, $r } => #{ ad.peq($l, $r) }\noperator !==  9 left { $l, $r } => #{ ad.pneq($l, $r) }\n\n// TODO? - the pre/post increment/decrement nuance only comes with assignment\n//       - requires wrapping up when isolated as statement (x++);\nmacro ++ {\n  rule { $r } => { $r = $r + 1 }\n  rule infix { $l | } => { $l = $l + 1 }\n}\nmacro -- {\n  rule { $r } => { $r = $r - 1 }\n  rule infix { $l | } => { $l = $l - 1 }\n}\n\nmacro += {\n  rule infix { $var:expr | $exprVal:expr } => { $var = $var + $exprVal }\n}\nmacro -= {\n  rule infix { $var:expr | $exprVal:expr } => { $var = $var - $exprVal }\n}\nmacro /= {\n  rule infix { $var:expr | $exprVal:expr } => { $var = $var / $exprVal }\n}\nmacro *= {\n  rule infix { $var:expr | $exprVal:expr } => { $var = $var * $exprVal }\n}\n\nmacro Math {\n  rule { .$x } => { ad.maths.$x }\n}\n\nexport +\nexport -\nexport *\nexport /\nexport <\nexport <=\nexport >\nexport >=\nexport ==\nexport !=\nexport ===\nexport !==\nexport ++\nexport --\nexport +=\nexport -=\nexport /=\nexport *=\nexport Math\n";
-  return { wppl: [code], macros: [headerMacroModule, adMacroModule] };
+  return { wppl: [{ code: code, filename: 'header.wppl' }], macros: [headerMacroModule, adMacroModule] };
 }
 
-function packagesToPairs(packages) {
-  // Transform an array of packages into an array of pairs. A pair
-  // contains a string of WebPPL code and an array of macros required
-  // to parse that code.
-
+function unpack(packages) {
+  // Flatten an array of packages into an array of code bundles. A
+  // bundle contains wppl source code, filename and associated macros.
+  //
   // Package :: { wppl: [String], macros: [LoadedMacroModule] }
-  // Pair :: { code: String, macros: [LoadedMacroModule] }
-
+  // Bundle :: { code: String, filename: String, macros: [LoadedMacroModule] }
+  //
   return _.chain(packages).map(function(pkg) {
     return pkg.wppl.map(function(wppl) {
-      return { code: wppl, macros: pkg.macros };
+      return { code: wppl.code, filename: wppl.filename, macros: pkg.macros };
     });
   }).flatten().value();
 }
 
-function addHeaderMacrosToEachPair(pairs) {
+function addHeaderMacrosToEachBundle(bundles) {
   // This assumes that pair[0] is the content of the header.
-  assert.ok(pairs.length >= 1 && pairs[0].macros.length === 2);
-  var headerMacros = pairs[0].macros[0];
-  return pairs.map(function(pair) {
-    return { code: pair.code, macros: pair.macros.concat(headerMacros) };
+  assert.ok(bundles.length >= 1 && bundles[0].macros.length === 2);
+  var headerMacros = bundles[0].macros;
+  return bundles.map(function(bundle, i) {
+    return {
+      code: bundle.code,
+      filename: bundle.filename,
+      macros: bundle.macros.concat(i > 0 ? headerMacros : [])
+    };
   });
 }
 
 function parsePackageCode(packages, verbose) {
-  // Takes an array of packages and turns them into an array of ASTs
-  // in which macros have been expanded. The contents of the header
-  // are included at this stage.
-  //
-  // As a convinience, an array of all macros (header + packages) is
-  // also returned in preparation for parsing the main program.
-  //
+  // Takes an array of packages and turns them into an array of parsed
+  // bundles. i.e. Each bundle (as returned by unpack) is augmented
+  // with an ast.
+  // The contents of the header are included at this stage.
+
   function _parsePackageCode() {
     var allPackages = [headerPackage()].concat(packages).map(loadMacros);
-    var macros = _.chain(allPackages).pluck('macros').flatten().value();
 
-    var asts = util.pipeline([
-      packagesToPairs,
-      addHeaderMacrosToEachPair,
-      parseAllPairs
+    return util.pipeline([
+      unpack,
+      addHeaderMacrosToEachBundle,
+      parseAll
     ])(allPackages);
-
-    return { asts: asts, macros: macros };
   }
 
   return util.timeif(verbose, 'parsePackageCode', _parsePackageCode);
@@ -61053,8 +60726,13 @@ function copyAst(ast) {
 }
 
 function compile(code, options) {
-  options = util.mergeDefaults(options, { verbose: false, generateCode: true });
-  var extra = options.extra || parsePackageCode([], options.verbose);
+  options = util.mergeDefaults(options, {
+    verbose: false,
+    generateCode: true,
+    filename: 'webppl:program'
+  });
+
+  var bundles = options.bundles || parsePackageCode([], options.verbose);
 
   var transforms = options.transforms || [
     thunkify,
@@ -61067,8 +60745,9 @@ function compile(code, options) {
   ];
 
   function _compile() {
-    var programAst = parse(code, extra.macros);
-    var asts = extra.asts.map(copyAst).concat(programAst);
+    var macros = _.chain(bundles).pluck('macros').flatten().uniq().value();
+    var programAst = parse(code, macros, options.filename);
+    var asts = _.pluck(bundles, 'ast').map(copyAst).concat(programAst);
     var doCaching = _.any(asts, caching.transformRequired);
 
     if (options.verbose && doCaching) {
@@ -61120,7 +60799,8 @@ module.exports = {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./analysis/main":143,"./header":150,"./syntax":166,"./transforms/caching":168,"./transforms/cps":169,"./transforms/freevars":170,"./transforms/naming":171,"./transforms/optimize":172,"./transforms/store":173,"./transforms/trampoline":174,"./transforms/varargs":175,"./util":176,"assert":178,"ast-types":21,"escodegen":22,"esprima":83,"fs":177,"sweet.js":128,"underscore":138}],165:[function(require,module,exports){
+},{"./analysis/main":153,"./header":160,"./syntax":176,"./transforms/caching":178,"./transforms/cps":179,"./transforms/freevars":180,"./transforms/naming":181,"./transforms/optimize":182,"./transforms/store":183,"./transforms/trampoline":184,"./transforms/varargs":185,"./util":186,"assert":188,"ast-types":22,"escodegen":23,"esprima":93,"fs":187,"sweet.js":119,"underscore":147}],175:[function(require,module,exports){
+'use strict';
 
 // Inference query table
 // Simple abstraction over js objects that provides a
@@ -61156,7 +60836,7 @@ module.exports = {
   Query: Query
 };
 
-},{}],166:[function(require,module,exports){
+},{}],176:[function(require,module,exports){
 'use strict';
 
 var types = require('ast-types').namedTypes;
@@ -61323,7 +61003,7 @@ module.exports = {
   isPrimitive: isPrimitive
 };
 
-},{"./util":176,"ast-types":21,"estraverse":88}],167:[function(require,module,exports){
+},{"./util":186,"ast-types":22,"estraverse":94}],177:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
@@ -61464,7 +61144,7 @@ Trace.prototype.checkConsistency = function() {
 
 module.exports = Trace;
 
-},{"./ad":140,"./erp":148,"assert":178,"underscore":138}],168:[function(require,module,exports){
+},{"./ad":148,"./erp":158,"assert":188,"underscore":147}],178:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
@@ -61560,7 +61240,7 @@ module.exports = {
   hasNoCachingDirective: hasNoCachingDirective
 };
 
-},{"../syntax":166,"ast-types":21,"estraverse":88,"underscore":138}],169:[function(require,module,exports){
+},{"../syntax":176,"ast-types":22,"estraverse":94,"underscore":147}],179:[function(require,module,exports){
 'use strict';
 
 var assert = require('assert');
@@ -61901,7 +61581,7 @@ module.exports = {
   cps: cpsMain
 };
 
-},{"../syntax":166,"assert":178,"ast-types":21,"estraverse":88}],170:[function(require,module,exports){
+},{"../syntax":176,"assert":188,"ast-types":22,"estraverse":94}],180:[function(require,module,exports){
 'use strict';
 
 var _ = require('underscore');
@@ -62011,7 +61691,7 @@ module.exports = {
   freevars: freevarsMain
 };
 
-},{"../util":176,"ast-types":21,"estraverse":88,"underscore":138}],171:[function(require,module,exports){
+},{"../util":186,"ast-types":22,"estraverse":94,"underscore":147}],181:[function(require,module,exports){
 'use strict';
 
 var Syntax = require('estraverse').Syntax;
@@ -62087,7 +61767,7 @@ module.exports = {
   naming: namingMain
 };
 
-},{"../syntax":166,"../util":176,"ast-types":21,"estraverse":88}],172:[function(require,module,exports){
+},{"../syntax":176,"../util":186,"ast-types":22,"estraverse":94}],182:[function(require,module,exports){
 'use strict';
 
 var esmangle = require('esmangle');
@@ -62219,7 +61899,7 @@ module.exports = {
   optimize: optimizeMain
 };
 
-},{"../syntax":166,"ast-types":21,"esmangle":43,"estraverse":88}],173:[function(require,module,exports){
+},{"../syntax":176,"ast-types":22,"esmangle":40,"estraverse":94}],183:[function(require,module,exports){
 'use strict';
 
 var estraverse = require('estraverse');
@@ -62267,7 +61947,7 @@ module.exports = {
   store: storeMain
 };
 
-},{"../syntax":166,"ast-types":21,"estraverse":88}],174:[function(require,module,exports){
+},{"../syntax":176,"ast-types":22,"estraverse":94}],184:[function(require,module,exports){
 'use strict';
 
 var replace = require('estraverse').replace;
@@ -62344,7 +62024,7 @@ module.exports = {
   trampoline: trampolineMain
 };
 
-},{"../syntax":166,"../util":176,"ast-types":21,"esprima":83,"estraverse":88,"underscore":138}],175:[function(require,module,exports){
+},{"../syntax":176,"../util":186,"ast-types":22,"esprima":93,"estraverse":94,"underscore":147}],185:[function(require,module,exports){
 'use strict';
 
 var assert = require('assert');
@@ -62427,7 +62107,7 @@ module.exports = {
   varargs: varargsMain
 };
 
-},{"assert":178,"ast-types":21,"esprima":83,"estraverse":88}],176:[function(require,module,exports){
+},{"assert":188,"ast-types":22,"esprima":93,"estraverse":94}],186:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -62693,9 +62373,9 @@ module.exports = {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"assert":178,"seedrandom":105,"underscore":138}],177:[function(require,module,exports){
+},{"assert":188,"seedrandom":107,"underscore":147}],187:[function(require,module,exports){
 
-},{}],178:[function(require,module,exports){
+},{}],188:[function(require,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0
 //
 // THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
@@ -63056,9 +62736,9 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":392}],179:[function(require,module,exports){
-arguments[4][177][0].apply(exports,arguments)
-},{"dup":177}],180:[function(require,module,exports){
+},{"util/":402}],189:[function(require,module,exports){
+arguments[4][187][0].apply(exports,arguments)
+},{"dup":187}],190:[function(require,module,exports){
 (function (global){
 /*!
  * The buffer module from node.js, for the browser.
@@ -64604,7 +64284,7 @@ function blitBuffer (src, dst, offset, length) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"base64-js":181,"ieee754":182,"is-array":183}],181:[function(require,module,exports){
+},{"base64-js":191,"ieee754":192,"is-array":193}],191:[function(require,module,exports){
 var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 ;(function (exports) {
@@ -64730,7 +64410,7 @@ var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 	exports.fromByteArray = uint8ToBase64
 }(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
 
-},{}],182:[function(require,module,exports){
+},{}],192:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -64816,7 +64496,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],183:[function(require,module,exports){
+},{}],193:[function(require,module,exports){
 
 /**
  * isArray
@@ -64851,7 +64531,7 @@ module.exports = isArray || function (val) {
   return !! val && '[object Array]' == str.call(val);
 };
 
-},{}],184:[function(require,module,exports){
+},{}],194:[function(require,module,exports){
 'use strict'
 
 exports.randomBytes = exports.rng = exports.pseudoRandomBytes = exports.prng = require('randombytes')
@@ -64930,7 +64610,7 @@ var publicEncrypt = require('public-encrypt')
   }
 })
 
-},{"browserify-cipher":185,"browserify-sign":215,"browserify-sign/algos":214,"create-ecdh":279,"create-hash":302,"create-hmac":315,"diffie-hellman":316,"pbkdf2":323,"public-encrypt":324,"randombytes":369}],185:[function(require,module,exports){
+},{"browserify-cipher":195,"browserify-sign":225,"browserify-sign/algos":224,"create-ecdh":289,"create-hash":312,"create-hmac":325,"diffie-hellman":326,"pbkdf2":333,"public-encrypt":334,"randombytes":379}],195:[function(require,module,exports){
 var ebtk = require('evp_bytestokey')
 var aes = require('browserify-aes/browser')
 var DES = require('browserify-des')
@@ -65005,7 +64685,7 @@ function getCiphers () {
 }
 exports.listCiphers = exports.getCiphers = getCiphers
 
-},{"browserify-aes/browser":188,"browserify-aes/modes":192,"browserify-des":203,"browserify-des/modes":204,"evp_bytestokey":213}],186:[function(require,module,exports){
+},{"browserify-aes/browser":198,"browserify-aes/modes":202,"browserify-des":213,"browserify-des/modes":214,"evp_bytestokey":223}],196:[function(require,module,exports){
 (function (Buffer){
 // based on the aes implimentation in triple sec
 // https://github.com/keybase/triplesec
@@ -65186,7 +64866,7 @@ AES.prototype._doCryptBlock = function (M, keySchedule, SUB_MIX, SBOX) {
 exports.AES = AES
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],187:[function(require,module,exports){
+},{"buffer":190}],197:[function(require,module,exports){
 (function (Buffer){
 var aes = require('./aes')
 var Transform = require('cipher-base')
@@ -65287,7 +64967,7 @@ function xorTest (a, b) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./aes":186,"./ghash":191,"buffer":180,"buffer-xor":200,"cipher-base":201,"inherits":371}],188:[function(require,module,exports){
+},{"./aes":196,"./ghash":201,"buffer":190,"buffer-xor":210,"cipher-base":211,"inherits":381}],198:[function(require,module,exports){
 var ciphers = require('./encrypter')
 exports.createCipher = exports.Cipher = ciphers.createCipher
 exports.createCipheriv = exports.Cipheriv = ciphers.createCipheriv
@@ -65300,7 +64980,7 @@ function getCiphers () {
 }
 exports.listCiphers = exports.getCiphers = getCiphers
 
-},{"./decrypter":189,"./encrypter":190,"./modes":192}],189:[function(require,module,exports){
+},{"./decrypter":199,"./encrypter":200,"./modes":202}],199:[function(require,module,exports){
 (function (Buffer){
 var aes = require('./aes')
 var Transform = require('cipher-base')
@@ -65440,7 +65120,7 @@ exports.createDecipher = createDecipher
 exports.createDecipheriv = createDecipheriv
 
 }).call(this,require("buffer").Buffer)
-},{"./aes":186,"./authCipher":187,"./modes":192,"./modes/cbc":193,"./modes/cfb":194,"./modes/cfb1":195,"./modes/cfb8":196,"./modes/ctr":197,"./modes/ecb":198,"./modes/ofb":199,"./streamCipher":202,"buffer":180,"cipher-base":201,"evp_bytestokey":213,"inherits":371}],190:[function(require,module,exports){
+},{"./aes":196,"./authCipher":197,"./modes":202,"./modes/cbc":203,"./modes/cfb":204,"./modes/cfb1":205,"./modes/cfb8":206,"./modes/ctr":207,"./modes/ecb":208,"./modes/ofb":209,"./streamCipher":212,"buffer":190,"cipher-base":211,"evp_bytestokey":223,"inherits":381}],200:[function(require,module,exports){
 (function (Buffer){
 var aes = require('./aes')
 var Transform = require('cipher-base')
@@ -65565,7 +65245,7 @@ exports.createCipheriv = createCipheriv
 exports.createCipher = createCipher
 
 }).call(this,require("buffer").Buffer)
-},{"./aes":186,"./authCipher":187,"./modes":192,"./modes/cbc":193,"./modes/cfb":194,"./modes/cfb1":195,"./modes/cfb8":196,"./modes/ctr":197,"./modes/ecb":198,"./modes/ofb":199,"./streamCipher":202,"buffer":180,"cipher-base":201,"evp_bytestokey":213,"inherits":371}],191:[function(require,module,exports){
+},{"./aes":196,"./authCipher":197,"./modes":202,"./modes/cbc":203,"./modes/cfb":204,"./modes/cfb1":205,"./modes/cfb8":206,"./modes/ctr":207,"./modes/ecb":208,"./modes/ofb":209,"./streamCipher":212,"buffer":190,"cipher-base":211,"evp_bytestokey":223,"inherits":381}],201:[function(require,module,exports){
 (function (Buffer){
 var zeros = new Buffer(16)
 zeros.fill(0)
@@ -65667,7 +65347,7 @@ function xor (a, b) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],192:[function(require,module,exports){
+},{"buffer":190}],202:[function(require,module,exports){
 exports['aes-128-ecb'] = {
   cipher: 'AES',
   key: 128,
@@ -65840,7 +65520,7 @@ exports['aes-256-gcm'] = {
   type: 'auth'
 }
 
-},{}],193:[function(require,module,exports){
+},{}],203:[function(require,module,exports){
 var xor = require('buffer-xor')
 
 exports.encrypt = function (self, block) {
@@ -65859,7 +65539,7 @@ exports.decrypt = function (self, block) {
   return xor(out, pad)
 }
 
-},{"buffer-xor":200}],194:[function(require,module,exports){
+},{"buffer-xor":210}],204:[function(require,module,exports){
 (function (Buffer){
 var xor = require('buffer-xor')
 
@@ -65894,7 +65574,7 @@ function encryptStart (self, data, decrypt) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"buffer-xor":200}],195:[function(require,module,exports){
+},{"buffer":190,"buffer-xor":210}],205:[function(require,module,exports){
 (function (Buffer){
 function encryptByte (self, byteParam, decrypt) {
   var pad
@@ -65932,7 +65612,7 @@ function shiftIn (buffer, value) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],196:[function(require,module,exports){
+},{"buffer":190}],206:[function(require,module,exports){
 (function (Buffer){
 function encryptByte (self, byteParam, decrypt) {
   var pad = self._cipher.encryptBlock(self._prev)
@@ -65951,7 +65631,7 @@ exports.encrypt = function (self, chunk, decrypt) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],197:[function(require,module,exports){
+},{"buffer":190}],207:[function(require,module,exports){
 (function (Buffer){
 var xor = require('buffer-xor')
 
@@ -65986,7 +65666,7 @@ exports.encrypt = function (self, chunk) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"buffer-xor":200}],198:[function(require,module,exports){
+},{"buffer":190,"buffer-xor":210}],208:[function(require,module,exports){
 exports.encrypt = function (self, block) {
   return self._cipher.encryptBlock(block)
 }
@@ -65994,7 +65674,7 @@ exports.decrypt = function (self, block) {
   return self._cipher.decryptBlock(block)
 }
 
-},{}],199:[function(require,module,exports){
+},{}],209:[function(require,module,exports){
 (function (Buffer){
 var xor = require('buffer-xor')
 
@@ -66014,7 +65694,7 @@ exports.encrypt = function (self, chunk) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"buffer-xor":200}],200:[function(require,module,exports){
+},{"buffer":190,"buffer-xor":210}],210:[function(require,module,exports){
 (function (Buffer){
 module.exports = function xor (a, b) {
   var length = Math.min(a.length, b.length)
@@ -66028,7 +65708,7 @@ module.exports = function xor (a, b) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],201:[function(require,module,exports){
+},{"buffer":190}],211:[function(require,module,exports){
 (function (Buffer){
 var Transform = require('stream').Transform
 var inherits = require('inherits')
@@ -66107,7 +65787,7 @@ CipherBase.prototype._toString = function (value, enc, final) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"inherits":371,"stream":389,"string_decoder":390}],202:[function(require,module,exports){
+},{"buffer":190,"inherits":381,"stream":399,"string_decoder":400}],212:[function(require,module,exports){
 (function (Buffer){
 var aes = require('./aes')
 var Transform = require('cipher-base')
@@ -66136,7 +65816,7 @@ StreamCipher.prototype._final = function () {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./aes":186,"buffer":180,"cipher-base":201,"inherits":371}],203:[function(require,module,exports){
+},{"./aes":196,"buffer":190,"cipher-base":211,"inherits":381}],213:[function(require,module,exports){
 (function (Buffer){
 var CipherBase = require('cipher-base')
 var des = require('des.js')
@@ -66183,7 +65863,7 @@ DES.prototype._final = function () {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"cipher-base":205,"des.js":206,"inherits":371}],204:[function(require,module,exports){
+},{"buffer":190,"cipher-base":215,"des.js":216,"inherits":381}],214:[function(require,module,exports){
 exports['des-ecb'] = {
   key: 8,
   iv: 0
@@ -66209,9 +65889,9 @@ exports['des-ede'] = {
   iv: 0
 }
 
-},{}],205:[function(require,module,exports){
-arguments[4][201][0].apply(exports,arguments)
-},{"buffer":180,"dup":201,"inherits":371,"stream":389,"string_decoder":390}],206:[function(require,module,exports){
+},{}],215:[function(require,module,exports){
+arguments[4][211][0].apply(exports,arguments)
+},{"buffer":190,"dup":211,"inherits":381,"stream":399,"string_decoder":400}],216:[function(require,module,exports){
 'use strict';
 
 exports.utils = require('./des/utils');
@@ -66220,7 +65900,7 @@ exports.DES = require('./des/des');
 exports.CBC = require('./des/cbc');
 exports.EDE = require('./des/ede');
 
-},{"./des/cbc":207,"./des/cipher":208,"./des/des":209,"./des/ede":210,"./des/utils":211}],207:[function(require,module,exports){
+},{"./des/cbc":217,"./des/cipher":218,"./des/des":219,"./des/ede":220,"./des/utils":221}],217:[function(require,module,exports){
 'use strict';
 
 var assert = require('minimalistic-assert');
@@ -66287,7 +65967,7 @@ proto._update = function _update(inp, inOff, out, outOff) {
   }
 };
 
-},{"inherits":371,"minimalistic-assert":212}],208:[function(require,module,exports){
+},{"inherits":381,"minimalistic-assert":222}],218:[function(require,module,exports){
 'use strict';
 
 var assert = require('minimalistic-assert');
@@ -66430,7 +66110,7 @@ Cipher.prototype._finalDecrypt = function _finalDecrypt() {
   return this._unpad(out);
 };
 
-},{"minimalistic-assert":212}],209:[function(require,module,exports){
+},{"minimalistic-assert":222}],219:[function(require,module,exports){
 'use strict';
 
 var assert = require('minimalistic-assert');
@@ -66575,7 +66255,7 @@ DES.prototype._decrypt = function _decrypt(state, lStart, rStart, out, off) {
   utils.rip(l, r, out, off);
 };
 
-},{"../des":206,"inherits":371,"minimalistic-assert":212}],210:[function(require,module,exports){
+},{"../des":216,"inherits":381,"minimalistic-assert":222}],220:[function(require,module,exports){
 'use strict';
 
 var assert = require('minimalistic-assert');
@@ -66632,7 +66312,7 @@ EDE.prototype._update = function _update(inp, inOff, out, outOff) {
 EDE.prototype._pad = DES.prototype._pad;
 EDE.prototype._unpad = DES.prototype._unpad;
 
-},{"../des":206,"inherits":371,"minimalistic-assert":212}],211:[function(require,module,exports){
+},{"../des":216,"inherits":381,"minimalistic-assert":222}],221:[function(require,module,exports){
 'use strict';
 
 exports.readUInt32BE = function readUInt32BE(bytes, off) {
@@ -66890,7 +66570,7 @@ exports.padSplit = function padSplit(num, size, group) {
   return out.join(' ');
 };
 
-},{}],212:[function(require,module,exports){
+},{}],222:[function(require,module,exports){
 module.exports = assert;
 
 function assert(val, msg) {
@@ -66903,7 +66583,7 @@ assert.equal = function assertEqual(l, r, msg) {
     throw new Error(msg || ('Assertion failed: ' + l + ' != ' + r));
 };
 
-},{}],213:[function(require,module,exports){
+},{}],223:[function(require,module,exports){
 (function (Buffer){
 var md5 = require('create-hash/md5')
 module.exports = EVP_BytesToKey
@@ -66975,7 +66655,7 @@ function EVP_BytesToKey (password, salt, keyLen, ivLen) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"create-hash/md5":304}],214:[function(require,module,exports){
+},{"buffer":190,"create-hash/md5":314}],224:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 exports['RSA-SHA224'] = exports.sha224WithRSAEncryption = {
@@ -67050,7 +66730,7 @@ exports['RSA-MD5'] = exports.md5WithRSAEncryption = {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],215:[function(require,module,exports){
+},{"buffer":190}],225:[function(require,module,exports){
 (function (Buffer){
 var _algos = require('./algos')
 var createHash = require('create-hash')
@@ -67157,7 +66837,7 @@ module.exports = {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./algos":214,"./sign":277,"./verify":278,"buffer":180,"create-hash":302,"inherits":371,"stream":389}],216:[function(require,module,exports){
+},{"./algos":224,"./sign":287,"./verify":288,"buffer":190,"create-hash":312,"inherits":381,"stream":399}],226:[function(require,module,exports){
 'use strict'
 exports['1.3.132.0.10'] = 'secp256k1'
 
@@ -67167,7 +66847,7 @@ exports['1.2.840.10045.3.1.1'] = 'p192'
 
 exports['1.2.840.10045.3.1.7'] = 'p256'
 
-},{}],217:[function(require,module,exports){
+},{}],227:[function(require,module,exports){
 (function (module, exports) {
 
 'use strict';
@@ -69487,7 +69167,7 @@ Mont.prototype.invm = function invm(a) {
 
 })(typeof module === 'undefined' || module, this);
 
-},{}],218:[function(require,module,exports){
+},{}],228:[function(require,module,exports){
 (function (Buffer){
 var bn = require('bn.js');
 var randomBytes = require('randombytes');
@@ -69536,7 +69216,7 @@ function getr(priv) {
   return r;
 }
 }).call(this,require("buffer").Buffer)
-},{"bn.js":217,"buffer":180,"randombytes":369}],219:[function(require,module,exports){
+},{"bn.js":227,"buffer":190,"randombytes":379}],229:[function(require,module,exports){
 'use strict';
 
 var elliptic = exports;
@@ -69551,7 +69231,7 @@ elliptic.curves = require('./elliptic/curves');
 // Protocols
 elliptic.ec = require('./elliptic/ec');
 
-},{"../package.json":239,"./elliptic/curve":222,"./elliptic/curves":225,"./elliptic/ec":226,"./elliptic/hmac-drbg":229,"./elliptic/utils":231,"brorand":232}],220:[function(require,module,exports){
+},{"../package.json":249,"./elliptic/curve":232,"./elliptic/curves":235,"./elliptic/ec":236,"./elliptic/hmac-drbg":239,"./elliptic/utils":241,"brorand":242}],230:[function(require,module,exports){
 'use strict';
 
 var bn = require('bn.js');
@@ -69868,7 +69548,7 @@ BasePoint.prototype.dblp = function dblp(k) {
   return r;
 };
 
-},{"../../elliptic":219,"bn.js":217}],221:[function(require,module,exports){
+},{"../../elliptic":229,"bn.js":227}],231:[function(require,module,exports){
 'use strict';
 
 var curve = require('../curve');
@@ -70241,7 +69921,7 @@ Point.prototype.getY = function getY() {
 Point.prototype.toP = Point.prototype.normalize;
 Point.prototype.mixedAdd = Point.prototype.add;
 
-},{"../../elliptic":219,"../curve":222,"bn.js":217,"inherits":371}],222:[function(require,module,exports){
+},{"../../elliptic":229,"../curve":232,"bn.js":227,"inherits":381}],232:[function(require,module,exports){
 'use strict';
 
 var curve = exports;
@@ -70251,7 +69931,7 @@ curve.short = require('./short');
 curve.mont = require('./mont');
 curve.edwards = require('./edwards');
 
-},{"./base":220,"./edwards":221,"./mont":223,"./short":224}],223:[function(require,module,exports){
+},{"./base":230,"./edwards":231,"./mont":233,"./short":234}],233:[function(require,module,exports){
 'use strict';
 
 var curve = require('../curve');
@@ -70414,7 +70094,7 @@ Point.prototype.getX = function getX() {
   return this.x.fromRed();
 };
 
-},{"../curve":222,"bn.js":217,"inherits":371}],224:[function(require,module,exports){
+},{"../curve":232,"bn.js":227,"inherits":381}],234:[function(require,module,exports){
 'use strict';
 
 var curve = require('../curve');
@@ -71323,7 +71003,7 @@ JPoint.prototype.isInfinity = function isInfinity() {
   return this.z.cmpn(0) === 0;
 };
 
-},{"../../elliptic":219,"../curve":222,"bn.js":217,"inherits":371}],225:[function(require,module,exports){
+},{"../../elliptic":229,"../curve":232,"bn.js":227,"inherits":381}],235:[function(require,module,exports){
 'use strict';
 
 var curves = exports;
@@ -71482,7 +71162,7 @@ defineCurve('secp256k1', {
   ]
 });
 
-},{"../elliptic":219,"./precomputed/secp256k1":230,"hash.js":233}],226:[function(require,module,exports){
+},{"../elliptic":229,"./precomputed/secp256k1":240,"hash.js":243}],236:[function(require,module,exports){
 'use strict';
 
 var bn = require('bn.js');
@@ -71693,7 +71373,7 @@ EC.prototype.getKeyRecoveryParam = function(e, signature, Q, enc) {
   throw new Error('Unable to find valid recovery factor');
 };
 
-},{"../../elliptic":219,"./key":227,"./signature":228,"bn.js":217}],227:[function(require,module,exports){
+},{"../../elliptic":229,"./key":237,"./signature":238,"bn.js":227}],237:[function(require,module,exports){
 'use strict';
 
 var bn = require('bn.js');
@@ -71845,7 +71525,7 @@ KeyPair.prototype.inspect = function inspect() {
          ' pub: ' + (this.pub && this.pub.inspect()) + ' >';
 };
 
-},{"../../elliptic":219,"bn.js":217}],228:[function(require,module,exports){
+},{"../../elliptic":229,"bn.js":227}],238:[function(require,module,exports){
 'use strict';
 
 var bn = require('bn.js');
@@ -71917,7 +71597,7 @@ Signature.prototype.toDER = function toDER(enc) {
   return utils.encode(res, enc);
 };
 
-},{"../../elliptic":219,"bn.js":217}],229:[function(require,module,exports){
+},{"../../elliptic":229,"bn.js":227}],239:[function(require,module,exports){
 'use strict';
 
 var hash = require('hash.js');
@@ -72033,7 +71713,7 @@ HmacDRBG.prototype.generate = function generate(len, enc, add, addEnc) {
   return utils.encode(res, enc);
 };
 
-},{"../elliptic":219,"hash.js":233}],230:[function(require,module,exports){
+},{"../elliptic":229,"hash.js":243}],240:[function(require,module,exports){
 module.exports = {
   doubles: {
     step: 4,
@@ -72815,7 +72495,7 @@ module.exports = {
   }
 };
 
-},{}],231:[function(require,module,exports){
+},{}],241:[function(require,module,exports){
 'use strict';
 
 var utils = exports;
@@ -72967,7 +72647,7 @@ function getJSF(k1, k2) {
 }
 utils.getJSF = getJSF;
 
-},{}],232:[function(require,module,exports){
+},{}],242:[function(require,module,exports){
 var r;
 
 module.exports = function rand(len) {
@@ -73026,7 +72706,7 @@ if (typeof window === 'object') {
   }
 }
 
-},{}],233:[function(require,module,exports){
+},{}],243:[function(require,module,exports){
 var hash = exports;
 
 hash.utils = require('./hash/utils');
@@ -73043,7 +72723,7 @@ hash.sha384 = hash.sha.sha384;
 hash.sha512 = hash.sha.sha512;
 hash.ripemd160 = hash.ripemd.ripemd160;
 
-},{"./hash/common":234,"./hash/hmac":235,"./hash/ripemd":236,"./hash/sha":237,"./hash/utils":238}],234:[function(require,module,exports){
+},{"./hash/common":244,"./hash/hmac":245,"./hash/ripemd":246,"./hash/sha":247,"./hash/utils":248}],244:[function(require,module,exports){
 var hash = require('../hash');
 var utils = hash.utils;
 var assert = utils.assert;
@@ -73136,7 +72816,7 @@ BlockHash.prototype._pad = function pad() {
   return res;
 };
 
-},{"../hash":233}],235:[function(require,module,exports){
+},{"../hash":243}],245:[function(require,module,exports){
 var hmac = exports;
 
 var hash = require('../hash');
@@ -73186,7 +72866,7 @@ Hmac.prototype.digest = function digest(enc) {
   return this.outer.digest(enc);
 };
 
-},{"../hash":233}],236:[function(require,module,exports){
+},{"../hash":243}],246:[function(require,module,exports){
 var hash = require('../hash');
 var utils = hash.utils;
 
@@ -73332,7 +73012,7 @@ var sh = [
   8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11
 ];
 
-},{"../hash":233}],237:[function(require,module,exports){
+},{"../hash":243}],247:[function(require,module,exports){
 var hash = require('../hash');
 var utils = hash.utils;
 var assert = utils.assert;
@@ -73898,7 +73578,7 @@ function g1_512_lo(xh, xl) {
   return r;
 }
 
-},{"../hash":233}],238:[function(require,module,exports){
+},{"../hash":243}],248:[function(require,module,exports){
 var utils = exports;
 var inherits = require('inherits');
 
@@ -74157,7 +73837,7 @@ function shr64_lo(ah, al, num) {
 };
 exports.shr64_lo = shr64_lo;
 
-},{"inherits":371}],239:[function(require,module,exports){
+},{"inherits":381}],249:[function(require,module,exports){
 module.exports={
   "name": "elliptic",
   "version": "3.1.0",
@@ -74223,7 +73903,7 @@ module.exports={
   "readme": "ERROR: No README data found!"
 }
 
-},{}],240:[function(require,module,exports){
+},{}],250:[function(require,module,exports){
 module.exports={"2.16.840.1.101.3.4.1.1": "aes-128-ecb",
 "2.16.840.1.101.3.4.1.2": "aes-128-cbc",
 "2.16.840.1.101.3.4.1.3": "aes-128-ofb",
@@ -74237,7 +73917,7 @@ module.exports={"2.16.840.1.101.3.4.1.1": "aes-128-ecb",
 "2.16.840.1.101.3.4.1.43": "aes-256-ofb",
 "2.16.840.1.101.3.4.1.44": "aes-256-cfb"
 }
-},{}],241:[function(require,module,exports){
+},{}],251:[function(require,module,exports){
 // from https://github.com/indutny/self-signed/blob/gh-pages/lib/asn1.js
 // Fedor, you are amazing.
 
@@ -74356,7 +74036,7 @@ exports.signature = asn1.define('signature', function () {
   )
 })
 
-},{"asn1.js":244}],242:[function(require,module,exports){
+},{"asn1.js":254}],252:[function(require,module,exports){
 (function (Buffer){
 // adapted from https://github.com/apatil/pemstrip
 var findProc = /Proc-Type: 4,ENCRYPTED\r?\nDEK-Info: AES-((?:128)|(?:192)|(?:256))-CBC,([0-9A-H]+)\r?\n\r?\n([0-9A-z\n\r\+\/\=]+)\r?\n/m
@@ -74390,7 +74070,7 @@ module.exports = function (okey, password) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"browserify-aes":261,"buffer":180,"evp_bytestokey":276}],243:[function(require,module,exports){
+},{"browserify-aes":271,"buffer":190,"evp_bytestokey":286}],253:[function(require,module,exports){
 (function (Buffer){
 var asn1 = require('./asn1')
 var aesid = require('./aesid.json')
@@ -74495,7 +74175,7 @@ function decrypt (data, password) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./aesid.json":240,"./asn1":241,"./fixProc":242,"browserify-aes":261,"buffer":180,"pbkdf2":323}],244:[function(require,module,exports){
+},{"./aesid.json":250,"./asn1":251,"./fixProc":252,"browserify-aes":271,"buffer":190,"pbkdf2":333}],254:[function(require,module,exports){
 var asn1 = exports;
 
 asn1.bignum = require('bn.js');
@@ -74506,7 +74186,7 @@ asn1.constants = require('./asn1/constants');
 asn1.decoders = require('./asn1/decoders');
 asn1.encoders = require('./asn1/encoders');
 
-},{"./asn1/api":245,"./asn1/base":247,"./asn1/constants":251,"./asn1/decoders":253,"./asn1/encoders":256,"bn.js":217}],245:[function(require,module,exports){
+},{"./asn1/api":255,"./asn1/base":257,"./asn1/constants":261,"./asn1/decoders":263,"./asn1/encoders":266,"bn.js":227}],255:[function(require,module,exports){
 var asn1 = require('../asn1');
 var inherits = require('inherits');
 
@@ -74567,7 +74247,7 @@ Entity.prototype.encode = function encode(data, enc, /* internal */ reporter) {
   return this._getEncoder(enc).encode(data, reporter);
 };
 
-},{"../asn1":244,"inherits":371,"vm":393}],246:[function(require,module,exports){
+},{"../asn1":254,"inherits":381,"vm":403}],256:[function(require,module,exports){
 var inherits = require('inherits');
 var Reporter = require('../base').Reporter;
 var Buffer = require('buffer').Buffer;
@@ -74685,7 +74365,7 @@ EncoderBuffer.prototype.join = function join(out, offset) {
   return out;
 };
 
-},{"../base":247,"buffer":180,"inherits":371}],247:[function(require,module,exports){
+},{"../base":257,"buffer":190,"inherits":381}],257:[function(require,module,exports){
 var base = exports;
 
 base.Reporter = require('./reporter').Reporter;
@@ -74693,7 +74373,7 @@ base.DecoderBuffer = require('./buffer').DecoderBuffer;
 base.EncoderBuffer = require('./buffer').EncoderBuffer;
 base.Node = require('./node');
 
-},{"./buffer":246,"./node":248,"./reporter":249}],248:[function(require,module,exports){
+},{"./buffer":256,"./node":258,"./reporter":259}],258:[function(require,module,exports){
 var Reporter = require('../base').Reporter;
 var EncoderBuffer = require('../base').EncoderBuffer;
 var assert = require('minimalistic-assert');
@@ -75293,7 +74973,7 @@ Node.prototype._encodePrimitive = function encodePrimitive(tag, data) {
     throw new Error('Unsupported tag: ' + tag);
 };
 
-},{"../base":247,"minimalistic-assert":258}],249:[function(require,module,exports){
+},{"../base":257,"minimalistic-assert":268}],259:[function(require,module,exports){
 var inherits = require('inherits');
 
 function Reporter(options) {
@@ -75397,7 +75077,7 @@ ReporterError.prototype.rethrow = function rethrow(msg) {
   return this;
 };
 
-},{"inherits":371}],250:[function(require,module,exports){
+},{"inherits":381}],260:[function(require,module,exports){
 var constants = require('../constants');
 
 exports.tagClass = {
@@ -75441,7 +75121,7 @@ exports.tag = {
 };
 exports.tagByName = constants._reverse(exports.tag);
 
-},{"../constants":251}],251:[function(require,module,exports){
+},{"../constants":261}],261:[function(require,module,exports){
 var constants = exports;
 
 // Helper
@@ -75462,7 +75142,7 @@ constants._reverse = function reverse(map) {
 
 constants.der = require('./der');
 
-},{"./der":250}],252:[function(require,module,exports){
+},{"./der":260}],262:[function(require,module,exports){
 var inherits = require('inherits');
 
 var asn1 = require('../../asn1');
@@ -75755,13 +75435,13 @@ function derDecodeLen(buf, primitive, fail) {
   return len;
 }
 
-},{"../../asn1":244,"inherits":371}],253:[function(require,module,exports){
+},{"../../asn1":254,"inherits":381}],263:[function(require,module,exports){
 var decoders = exports;
 
 decoders.der = require('./der');
 decoders.pem = require('./pem');
 
-},{"./der":252,"./pem":254}],254:[function(require,module,exports){
+},{"./der":262,"./pem":264}],264:[function(require,module,exports){
 var inherits = require('inherits');
 var Buffer = require('buffer').Buffer;
 
@@ -75813,7 +75493,7 @@ PEMDecoder.prototype.decode = function decode(data, options) {
   return DERDecoder.prototype.decode.call(this, input, options);
 };
 
-},{"../../asn1":244,"./der":252,"buffer":180,"inherits":371}],255:[function(require,module,exports){
+},{"../../asn1":254,"./der":262,"buffer":190,"inherits":381}],265:[function(require,module,exports){
 var inherits = require('inherits');
 var Buffer = require('buffer').Buffer;
 
@@ -76087,13 +75767,13 @@ function encodeTag(tag, primitive, cls, reporter) {
   return res;
 }
 
-},{"../../asn1":244,"buffer":180,"inherits":371}],256:[function(require,module,exports){
+},{"../../asn1":254,"buffer":190,"inherits":381}],266:[function(require,module,exports){
 var encoders = exports;
 
 encoders.der = require('./der');
 encoders.pem = require('./pem');
 
-},{"./der":255,"./pem":257}],257:[function(require,module,exports){
+},{"./der":265,"./pem":267}],267:[function(require,module,exports){
 var inherits = require('inherits');
 var Buffer = require('buffer').Buffer;
 
@@ -76118,45 +75798,45 @@ PEMEncoder.prototype.encode = function encode(data, options) {
   return out.join('\n');
 };
 
-},{"../../asn1":244,"./der":255,"buffer":180,"inherits":371}],258:[function(require,module,exports){
-arguments[4][212][0].apply(exports,arguments)
-},{"dup":212}],259:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"buffer":180,"dup":186}],260:[function(require,module,exports){
-arguments[4][187][0].apply(exports,arguments)
-},{"./aes":259,"./ghash":264,"buffer":180,"buffer-xor":273,"cipher-base":274,"dup":187,"inherits":371}],261:[function(require,module,exports){
-arguments[4][188][0].apply(exports,arguments)
-},{"./decrypter":262,"./encrypter":263,"./modes":265,"dup":188}],262:[function(require,module,exports){
-arguments[4][189][0].apply(exports,arguments)
-},{"./aes":259,"./authCipher":260,"./modes":265,"./modes/cbc":266,"./modes/cfb":267,"./modes/cfb1":268,"./modes/cfb8":269,"./modes/ctr":270,"./modes/ecb":271,"./modes/ofb":272,"./streamCipher":275,"buffer":180,"cipher-base":274,"dup":189,"evp_bytestokey":276,"inherits":371}],263:[function(require,module,exports){
-arguments[4][190][0].apply(exports,arguments)
-},{"./aes":259,"./authCipher":260,"./modes":265,"./modes/cbc":266,"./modes/cfb":267,"./modes/cfb1":268,"./modes/cfb8":269,"./modes/ctr":270,"./modes/ecb":271,"./modes/ofb":272,"./streamCipher":275,"buffer":180,"cipher-base":274,"dup":190,"evp_bytestokey":276,"inherits":371}],264:[function(require,module,exports){
-arguments[4][191][0].apply(exports,arguments)
-},{"buffer":180,"dup":191}],265:[function(require,module,exports){
-arguments[4][192][0].apply(exports,arguments)
-},{"dup":192}],266:[function(require,module,exports){
-arguments[4][193][0].apply(exports,arguments)
-},{"buffer-xor":273,"dup":193}],267:[function(require,module,exports){
-arguments[4][194][0].apply(exports,arguments)
-},{"buffer":180,"buffer-xor":273,"dup":194}],268:[function(require,module,exports){
-arguments[4][195][0].apply(exports,arguments)
-},{"buffer":180,"dup":195}],269:[function(require,module,exports){
+},{"../../asn1":254,"./der":265,"buffer":190,"inherits":381}],268:[function(require,module,exports){
+arguments[4][222][0].apply(exports,arguments)
+},{"dup":222}],269:[function(require,module,exports){
 arguments[4][196][0].apply(exports,arguments)
-},{"buffer":180,"dup":196}],270:[function(require,module,exports){
+},{"buffer":190,"dup":196}],270:[function(require,module,exports){
 arguments[4][197][0].apply(exports,arguments)
-},{"buffer":180,"buffer-xor":273,"dup":197}],271:[function(require,module,exports){
+},{"./aes":269,"./ghash":274,"buffer":190,"buffer-xor":283,"cipher-base":284,"dup":197,"inherits":381}],271:[function(require,module,exports){
 arguments[4][198][0].apply(exports,arguments)
-},{"dup":198}],272:[function(require,module,exports){
+},{"./decrypter":272,"./encrypter":273,"./modes":275,"dup":198}],272:[function(require,module,exports){
 arguments[4][199][0].apply(exports,arguments)
-},{"buffer":180,"buffer-xor":273,"dup":199}],273:[function(require,module,exports){
+},{"./aes":269,"./authCipher":270,"./modes":275,"./modes/cbc":276,"./modes/cfb":277,"./modes/cfb1":278,"./modes/cfb8":279,"./modes/ctr":280,"./modes/ecb":281,"./modes/ofb":282,"./streamCipher":285,"buffer":190,"cipher-base":284,"dup":199,"evp_bytestokey":286,"inherits":381}],273:[function(require,module,exports){
 arguments[4][200][0].apply(exports,arguments)
-},{"buffer":180,"dup":200}],274:[function(require,module,exports){
+},{"./aes":269,"./authCipher":270,"./modes":275,"./modes/cbc":276,"./modes/cfb":277,"./modes/cfb1":278,"./modes/cfb8":279,"./modes/ctr":280,"./modes/ecb":281,"./modes/ofb":282,"./streamCipher":285,"buffer":190,"cipher-base":284,"dup":200,"evp_bytestokey":286,"inherits":381}],274:[function(require,module,exports){
 arguments[4][201][0].apply(exports,arguments)
-},{"buffer":180,"dup":201,"inherits":371,"stream":389,"string_decoder":390}],275:[function(require,module,exports){
+},{"buffer":190,"dup":201}],275:[function(require,module,exports){
 arguments[4][202][0].apply(exports,arguments)
-},{"./aes":259,"buffer":180,"cipher-base":274,"dup":202,"inherits":371}],276:[function(require,module,exports){
-arguments[4][213][0].apply(exports,arguments)
-},{"buffer":180,"create-hash/md5":304,"dup":213}],277:[function(require,module,exports){
+},{"dup":202}],276:[function(require,module,exports){
+arguments[4][203][0].apply(exports,arguments)
+},{"buffer-xor":283,"dup":203}],277:[function(require,module,exports){
+arguments[4][204][0].apply(exports,arguments)
+},{"buffer":190,"buffer-xor":283,"dup":204}],278:[function(require,module,exports){
+arguments[4][205][0].apply(exports,arguments)
+},{"buffer":190,"dup":205}],279:[function(require,module,exports){
+arguments[4][206][0].apply(exports,arguments)
+},{"buffer":190,"dup":206}],280:[function(require,module,exports){
+arguments[4][207][0].apply(exports,arguments)
+},{"buffer":190,"buffer-xor":283,"dup":207}],281:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"dup":208}],282:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"buffer":190,"buffer-xor":283,"dup":209}],283:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"buffer":190,"dup":210}],284:[function(require,module,exports){
+arguments[4][211][0].apply(exports,arguments)
+},{"buffer":190,"dup":211,"inherits":381,"stream":399,"string_decoder":400}],285:[function(require,module,exports){
+arguments[4][212][0].apply(exports,arguments)
+},{"./aes":269,"buffer":190,"cipher-base":284,"dup":212,"inherits":381}],286:[function(require,module,exports){
+arguments[4][223][0].apply(exports,arguments)
+},{"buffer":190,"create-hash/md5":314,"dup":223}],287:[function(require,module,exports){
 (function (Buffer){
 // much of this based on https://github.com/indutny/self-signed/blob/gh-pages/lib/rsa.js
 var createHmac = require('create-hmac')
@@ -76345,7 +76025,7 @@ module.exports.getKey = getKey
 module.exports.makeKey = makeKey
 
 }).call(this,require("buffer").Buffer)
-},{"./curves":216,"bn.js":217,"browserify-rsa":218,"buffer":180,"create-hmac":315,"elliptic":219,"parse-asn1":243}],278:[function(require,module,exports){
+},{"./curves":226,"bn.js":227,"browserify-rsa":228,"buffer":190,"create-hmac":325,"elliptic":229,"parse-asn1":253}],288:[function(require,module,exports){
 (function (Buffer){
 // much of this based on https://github.com/indutny/self-signed/blob/gh-pages/lib/rsa.js
 var curves = require('./curves')
@@ -76452,7 +76132,7 @@ function checkValue (b, q) {
 module.exports = verify
 
 }).call(this,require("buffer").Buffer)
-},{"./curves":216,"bn.js":217,"buffer":180,"elliptic":219,"parse-asn1":243}],279:[function(require,module,exports){
+},{"./curves":226,"bn.js":227,"buffer":190,"elliptic":229,"parse-asn1":253}],289:[function(require,module,exports){
 (function (Buffer){
 var elliptic = require('elliptic');
 var BN = require('bn.js');
@@ -76568,51 +76248,51 @@ function formatReturnValue(bn, enc, len) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"bn.js":280,"buffer":180,"elliptic":281}],280:[function(require,module,exports){
-arguments[4][217][0].apply(exports,arguments)
-},{"dup":217}],281:[function(require,module,exports){
-arguments[4][219][0].apply(exports,arguments)
-},{"../package.json":301,"./elliptic/curve":284,"./elliptic/curves":287,"./elliptic/ec":288,"./elliptic/hmac-drbg":291,"./elliptic/utils":293,"brorand":294,"dup":219}],282:[function(require,module,exports){
-arguments[4][220][0].apply(exports,arguments)
-},{"../../elliptic":281,"bn.js":280,"dup":220}],283:[function(require,module,exports){
-arguments[4][221][0].apply(exports,arguments)
-},{"../../elliptic":281,"../curve":284,"bn.js":280,"dup":221,"inherits":371}],284:[function(require,module,exports){
-arguments[4][222][0].apply(exports,arguments)
-},{"./base":282,"./edwards":283,"./mont":285,"./short":286,"dup":222}],285:[function(require,module,exports){
-arguments[4][223][0].apply(exports,arguments)
-},{"../curve":284,"bn.js":280,"dup":223,"inherits":371}],286:[function(require,module,exports){
-arguments[4][224][0].apply(exports,arguments)
-},{"../../elliptic":281,"../curve":284,"bn.js":280,"dup":224,"inherits":371}],287:[function(require,module,exports){
-arguments[4][225][0].apply(exports,arguments)
-},{"../elliptic":281,"./precomputed/secp256k1":292,"dup":225,"hash.js":295}],288:[function(require,module,exports){
-arguments[4][226][0].apply(exports,arguments)
-},{"../../elliptic":281,"./key":289,"./signature":290,"bn.js":280,"dup":226}],289:[function(require,module,exports){
+},{"bn.js":290,"buffer":190,"elliptic":291}],290:[function(require,module,exports){
 arguments[4][227][0].apply(exports,arguments)
-},{"../../elliptic":281,"bn.js":280,"dup":227}],290:[function(require,module,exports){
-arguments[4][228][0].apply(exports,arguments)
-},{"../../elliptic":281,"bn.js":280,"dup":228}],291:[function(require,module,exports){
+},{"dup":227}],291:[function(require,module,exports){
 arguments[4][229][0].apply(exports,arguments)
-},{"../elliptic":281,"dup":229,"hash.js":295}],292:[function(require,module,exports){
+},{"../package.json":311,"./elliptic/curve":294,"./elliptic/curves":297,"./elliptic/ec":298,"./elliptic/hmac-drbg":301,"./elliptic/utils":303,"brorand":304,"dup":229}],292:[function(require,module,exports){
 arguments[4][230][0].apply(exports,arguments)
-},{"dup":230}],293:[function(require,module,exports){
+},{"../../elliptic":291,"bn.js":290,"dup":230}],293:[function(require,module,exports){
 arguments[4][231][0].apply(exports,arguments)
-},{"dup":231}],294:[function(require,module,exports){
+},{"../../elliptic":291,"../curve":294,"bn.js":290,"dup":231,"inherits":381}],294:[function(require,module,exports){
 arguments[4][232][0].apply(exports,arguments)
-},{"dup":232}],295:[function(require,module,exports){
+},{"./base":292,"./edwards":293,"./mont":295,"./short":296,"dup":232}],295:[function(require,module,exports){
 arguments[4][233][0].apply(exports,arguments)
-},{"./hash/common":296,"./hash/hmac":297,"./hash/ripemd":298,"./hash/sha":299,"./hash/utils":300,"dup":233}],296:[function(require,module,exports){
+},{"../curve":294,"bn.js":290,"dup":233,"inherits":381}],296:[function(require,module,exports){
 arguments[4][234][0].apply(exports,arguments)
-},{"../hash":295,"dup":234}],297:[function(require,module,exports){
+},{"../../elliptic":291,"../curve":294,"bn.js":290,"dup":234,"inherits":381}],297:[function(require,module,exports){
 arguments[4][235][0].apply(exports,arguments)
-},{"../hash":295,"dup":235}],298:[function(require,module,exports){
+},{"../elliptic":291,"./precomputed/secp256k1":302,"dup":235,"hash.js":305}],298:[function(require,module,exports){
 arguments[4][236][0].apply(exports,arguments)
-},{"../hash":295,"dup":236}],299:[function(require,module,exports){
+},{"../../elliptic":291,"./key":299,"./signature":300,"bn.js":290,"dup":236}],299:[function(require,module,exports){
 arguments[4][237][0].apply(exports,arguments)
-},{"../hash":295,"dup":237}],300:[function(require,module,exports){
+},{"../../elliptic":291,"bn.js":290,"dup":237}],300:[function(require,module,exports){
 arguments[4][238][0].apply(exports,arguments)
-},{"dup":238,"inherits":371}],301:[function(require,module,exports){
+},{"../../elliptic":291,"bn.js":290,"dup":238}],301:[function(require,module,exports){
 arguments[4][239][0].apply(exports,arguments)
-},{"dup":239}],302:[function(require,module,exports){
+},{"../elliptic":291,"dup":239,"hash.js":305}],302:[function(require,module,exports){
+arguments[4][240][0].apply(exports,arguments)
+},{"dup":240}],303:[function(require,module,exports){
+arguments[4][241][0].apply(exports,arguments)
+},{"dup":241}],304:[function(require,module,exports){
+arguments[4][242][0].apply(exports,arguments)
+},{"dup":242}],305:[function(require,module,exports){
+arguments[4][243][0].apply(exports,arguments)
+},{"./hash/common":306,"./hash/hmac":307,"./hash/ripemd":308,"./hash/sha":309,"./hash/utils":310,"dup":243}],306:[function(require,module,exports){
+arguments[4][244][0].apply(exports,arguments)
+},{"../hash":305,"dup":244}],307:[function(require,module,exports){
+arguments[4][245][0].apply(exports,arguments)
+},{"../hash":305,"dup":245}],308:[function(require,module,exports){
+arguments[4][246][0].apply(exports,arguments)
+},{"../hash":305,"dup":246}],309:[function(require,module,exports){
+arguments[4][247][0].apply(exports,arguments)
+},{"../hash":305,"dup":247}],310:[function(require,module,exports){
+arguments[4][248][0].apply(exports,arguments)
+},{"dup":248,"inherits":381}],311:[function(require,module,exports){
+arguments[4][249][0].apply(exports,arguments)
+},{"dup":249}],312:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 var inherits = require('inherits')
@@ -76668,7 +76348,7 @@ module.exports = function createHash (alg) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./md5":304,"buffer":180,"cipher-base":305,"inherits":371,"ripemd160":306,"sha.js":308}],303:[function(require,module,exports){
+},{"./md5":314,"buffer":190,"cipher-base":315,"inherits":381,"ripemd160":316,"sha.js":318}],313:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 var intSize = 4;
@@ -76705,7 +76385,7 @@ function hash(buf, fn, hashSize, bigEndian) {
 }
 exports.hash = hash;
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],304:[function(require,module,exports){
+},{"buffer":190}],314:[function(require,module,exports){
 'use strict';
 /*
  * A JavaScript implementation of the RSA Data Security, Inc. MD5 Message
@@ -76862,9 +76542,9 @@ function bit_rol(num, cnt)
 module.exports = function md5(buf) {
   return helpers.hash(buf, core_md5, 16);
 };
-},{"./helpers":303}],305:[function(require,module,exports){
-arguments[4][201][0].apply(exports,arguments)
-},{"buffer":180,"dup":201,"inherits":371,"stream":389,"string_decoder":390}],306:[function(require,module,exports){
+},{"./helpers":313}],315:[function(require,module,exports){
+arguments[4][211][0].apply(exports,arguments)
+},{"buffer":190,"dup":211,"inherits":381,"stream":399,"string_decoder":400}],316:[function(require,module,exports){
 (function (Buffer){
 /*
 CryptoJS v3.1.2
@@ -77078,7 +76758,7 @@ function ripemd160 (message) {
 module.exports = ripemd160
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],307:[function(require,module,exports){
+},{"buffer":190}],317:[function(require,module,exports){
 (function (Buffer){
 // prototype class for hash functions
 function Hash (blockSize, finalSize) {
@@ -77151,7 +76831,7 @@ Hash.prototype._update = function () {
 module.exports = Hash
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180}],308:[function(require,module,exports){
+},{"buffer":190}],318:[function(require,module,exports){
 var exports = module.exports = function SHA (algorithm) {
   algorithm = algorithm.toLowerCase()
 
@@ -77168,7 +76848,7 @@ exports.sha256 = require('./sha256')
 exports.sha384 = require('./sha384')
 exports.sha512 = require('./sha512')
 
-},{"./sha":309,"./sha1":310,"./sha224":311,"./sha256":312,"./sha384":313,"./sha512":314}],309:[function(require,module,exports){
+},{"./sha":319,"./sha1":320,"./sha224":321,"./sha256":322,"./sha384":323,"./sha512":324}],319:[function(require,module,exports){
 (function (Buffer){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-0, as defined
@@ -77272,7 +76952,7 @@ module.exports = Sha
 
 
 }).call(this,require("buffer").Buffer)
-},{"./hash":307,"buffer":180,"inherits":371}],310:[function(require,module,exports){
+},{"./hash":317,"buffer":190,"inherits":381}],320:[function(require,module,exports){
 (function (Buffer){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-1, as defined
@@ -77372,7 +77052,7 @@ Sha1.prototype._hash = function () {
 module.exports = Sha1
 
 }).call(this,require("buffer").Buffer)
-},{"./hash":307,"buffer":180,"inherits":371}],311:[function(require,module,exports){
+},{"./hash":317,"buffer":190,"inherits":381}],321:[function(require,module,exports){
 (function (Buffer){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
@@ -77428,7 +77108,7 @@ Sha224.prototype._hash = function () {
 module.exports = Sha224
 
 }).call(this,require("buffer").Buffer)
-},{"./hash":307,"./sha256":312,"buffer":180,"inherits":371}],312:[function(require,module,exports){
+},{"./hash":317,"./sha256":322,"buffer":190,"inherits":381}],322:[function(require,module,exports){
 (function (Buffer){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
@@ -77573,7 +77253,7 @@ Sha256.prototype._hash = function () {
 module.exports = Sha256
 
 }).call(this,require("buffer").Buffer)
-},{"./hash":307,"buffer":180,"inherits":371}],313:[function(require,module,exports){
+},{"./hash":317,"buffer":190,"inherits":381}],323:[function(require,module,exports){
 (function (Buffer){
 var inherits = require('inherits')
 var SHA512 = require('./sha512')
@@ -77633,7 +77313,7 @@ Sha384.prototype._hash = function () {
 module.exports = Sha384
 
 }).call(this,require("buffer").Buffer)
-},{"./hash":307,"./sha512":314,"buffer":180,"inherits":371}],314:[function(require,module,exports){
+},{"./hash":317,"./sha512":324,"buffer":190,"inherits":381}],324:[function(require,module,exports){
 (function (Buffer){
 var inherits = require('inherits')
 var Hash = require('./hash')
@@ -77903,7 +77583,7 @@ Sha512.prototype._hash = function () {
 module.exports = Sha512
 
 }).call(this,require("buffer").Buffer)
-},{"./hash":307,"buffer":180,"inherits":371}],315:[function(require,module,exports){
+},{"./hash":317,"buffer":190,"inherits":381}],325:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 var createHash = require('create-hash/browser');
@@ -77975,7 +77655,7 @@ module.exports = function createHmac(alg, key) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"create-hash/browser":302,"inherits":371,"stream":389}],316:[function(require,module,exports){
+},{"buffer":190,"create-hash/browser":312,"inherits":381,"stream":399}],326:[function(require,module,exports){
 (function (Buffer){
 var generatePrime = require('./lib/generatePrime');
 var primes = require('./lib/primes');
@@ -78019,7 +77699,7 @@ exports.DiffieHellmanGroup = exports.createDiffieHellmanGroup = exports.getDiffi
 exports.createDiffieHellman = exports.DiffieHellman = createDiffieHellman;
 
 }).call(this,require("buffer").Buffer)
-},{"./lib/dh":317,"./lib/generatePrime":318,"./lib/primes":319,"buffer":180}],317:[function(require,module,exports){
+},{"./lib/dh":327,"./lib/generatePrime":328,"./lib/primes":329,"buffer":190}],327:[function(require,module,exports){
 (function (Buffer){
 var BN = require('bn.js');
 var MillerRabin = require('miller-rabin');
@@ -78189,7 +77869,7 @@ function formatReturnValue(bn, enc) {
   }
 }
 }).call(this,require("buffer").Buffer)
-},{"./generatePrime":318,"bn.js":320,"buffer":180,"miller-rabin":321,"randombytes":369}],318:[function(require,module,exports){
+},{"./generatePrime":328,"bn.js":330,"buffer":190,"miller-rabin":331,"randombytes":379}],328:[function(require,module,exports){
 var randomBytes = require('randombytes');
 module.exports = findPrime;
 findPrime.simpleSieve = simpleSieve;
@@ -78322,7 +78002,7 @@ function findPrime(bits, gen) {
   }
 
 }
-},{"bn.js":320,"miller-rabin":321,"randombytes":369}],319:[function(require,module,exports){
+},{"bn.js":330,"miller-rabin":331,"randombytes":379}],329:[function(require,module,exports){
 module.exports={
     "modp1": {
         "gen": "02",
@@ -78357,9 +78037,9 @@ module.exports={
         "prime": "ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aaac42dad33170d04507a33a85521abdf1cba64ecfb850458dbef0a8aea71575d060c7db3970f85a6e1e4c7abf5ae8cdb0933d71e8c94e04a25619dcee3d2261ad2ee6bf12ffa06d98a0864d87602733ec86a64521f2b18177b200cbbe117577a615d6c770988c0bad946e208e24fa074e5ab3143db5bfce0fd108e4b82d120a92108011a723c12a787e6d788719a10bdba5b2699c327186af4e23c1a946834b6150bda2583e9ca2ad44ce8dbbbc2db04de8ef92e8efc141fbecaa6287c59474e6bc05d99b2964fa090c3a2233ba186515be7ed1f612970cee2d7afb81bdd762170481cd0069127d5b05aa993b4ea988d8fddc186ffb7dc90a6c08f4df435c93402849236c3fab4d27c7026c1d4dcb2602646dec9751e763dba37bdf8ff9406ad9e530ee5db382f413001aeb06a53ed9027d831179727b0865a8918da3edbebcf9b14ed44ce6cbaced4bb1bdb7f1447e6cc254b332051512bd7af426fb8f401378cd2bf5983ca01c64b92ecf032ea15d1721d03f482d7ce6e74fef6d55e702f46980c82b5a84031900b1c9e59e7c97fbec7e8f323a97a7e36cc88be0f1d45b7ff585ac54bd407b22b4154aacc8f6d7ebf48e1d814cc5ed20f8037e0a79715eef29be32806a1d58bb7c5da76f550aa3d8a1fbff0eb19ccb1a313d55cda56c9ec2ef29632387fe8d76e3c0468043e8f663f4860ee12bf2d5b0b7474d6e694f91e6dbe115974a3926f12fee5e438777cb6a932df8cd8bec4d073b931ba3bc832b68d9dd300741fa7bf8afc47ed2576f6936ba424663aab639c5ae4f5683423b4742bf1c978238f16cbe39d652de3fdb8befc848ad922222e04a4037c0713eb57a81a23f0c73473fc646cea306b4bcbc8862f8385ddfa9d4b7fa2c087e879683303ed5bdd3a062b3cf5b3a278a66d2a13f83f44f82ddf310ee074ab6a364597e899a0255dc164f31cc50846851df9ab48195ded7ea1b1d510bd7ee74d73faf36bc31ecfa268359046f4eb879f924009438b481c6cd7889a002ed5ee382bc9190da6fc026e479558e4475677e9aa9e3050e2765694dfc81f56e880b96e7160c980dd98edd3dfffffffffffffffff"
     }
 }
-},{}],320:[function(require,module,exports){
-arguments[4][217][0].apply(exports,arguments)
-},{"dup":217}],321:[function(require,module,exports){
+},{}],330:[function(require,module,exports){
+arguments[4][227][0].apply(exports,arguments)
+},{"dup":227}],331:[function(require,module,exports){
 var bn = require('bn.js');
 var brorand = require('brorand');
 
@@ -78474,9 +78154,9 @@ MillerRabin.prototype.getDivisor = function getDivisor(n, k) {
   return false;
 };
 
-},{"bn.js":320,"brorand":322}],322:[function(require,module,exports){
-arguments[4][232][0].apply(exports,arguments)
-},{"dup":232}],323:[function(require,module,exports){
+},{"bn.js":330,"brorand":332}],332:[function(require,module,exports){
+arguments[4][242][0].apply(exports,arguments)
+},{"dup":242}],333:[function(require,module,exports){
 (function (Buffer){
 var createHmac = require('create-hmac')
 var MAX_ALLOC = Math.pow(2, 30) - 1 // default in iojs
@@ -78560,7 +78240,7 @@ function pbkdf2Sync (password, salt, iterations, keylen, digest) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"create-hmac":315}],324:[function(require,module,exports){
+},{"buffer":190,"create-hmac":325}],334:[function(require,module,exports){
 exports.publicEncrypt = require('./publicEncrypt');
 exports.privateDecrypt = require('./privateDecrypt');
 
@@ -78571,7 +78251,7 @@ exports.privateEncrypt = function privateEncrypt(key, buf) {
 exports.publicDecrypt = function publicDecrypt(key, buf) {
   return exports.privateDecrypt(key, buf, true);
 };
-},{"./privateDecrypt":365,"./publicEncrypt":366}],325:[function(require,module,exports){
+},{"./privateDecrypt":375,"./publicEncrypt":376}],335:[function(require,module,exports){
 (function (Buffer){
 var createHash = require('create-hash');
 module.exports = function (seed, len) {
@@ -78590,85 +78270,85 @@ function i2ops(c) {
   return out;
 }
 }).call(this,require("buffer").Buffer)
-},{"buffer":180,"create-hash":302}],326:[function(require,module,exports){
-arguments[4][217][0].apply(exports,arguments)
-},{"dup":217}],327:[function(require,module,exports){
-arguments[4][218][0].apply(exports,arguments)
-},{"bn.js":326,"buffer":180,"dup":218,"randombytes":369}],328:[function(require,module,exports){
-arguments[4][240][0].apply(exports,arguments)
-},{"dup":240}],329:[function(require,module,exports){
-arguments[4][241][0].apply(exports,arguments)
-},{"asn1.js":332,"dup":241}],330:[function(require,module,exports){
-arguments[4][242][0].apply(exports,arguments)
-},{"browserify-aes":349,"buffer":180,"dup":242,"evp_bytestokey":364}],331:[function(require,module,exports){
-arguments[4][243][0].apply(exports,arguments)
-},{"./aesid.json":328,"./asn1":329,"./fixProc":330,"browserify-aes":349,"buffer":180,"dup":243,"pbkdf2":323}],332:[function(require,module,exports){
-arguments[4][244][0].apply(exports,arguments)
-},{"./asn1/api":333,"./asn1/base":335,"./asn1/constants":339,"./asn1/decoders":341,"./asn1/encoders":344,"bn.js":326,"dup":244}],333:[function(require,module,exports){
-arguments[4][245][0].apply(exports,arguments)
-},{"../asn1":332,"dup":245,"inherits":371,"vm":393}],334:[function(require,module,exports){
-arguments[4][246][0].apply(exports,arguments)
-},{"../base":335,"buffer":180,"dup":246,"inherits":371}],335:[function(require,module,exports){
-arguments[4][247][0].apply(exports,arguments)
-},{"./buffer":334,"./node":336,"./reporter":337,"dup":247}],336:[function(require,module,exports){
-arguments[4][248][0].apply(exports,arguments)
-},{"../base":335,"dup":248,"minimalistic-assert":346}],337:[function(require,module,exports){
-arguments[4][249][0].apply(exports,arguments)
-},{"dup":249,"inherits":371}],338:[function(require,module,exports){
+},{"buffer":190,"create-hash":312}],336:[function(require,module,exports){
+arguments[4][227][0].apply(exports,arguments)
+},{"dup":227}],337:[function(require,module,exports){
+arguments[4][228][0].apply(exports,arguments)
+},{"bn.js":336,"buffer":190,"dup":228,"randombytes":379}],338:[function(require,module,exports){
 arguments[4][250][0].apply(exports,arguments)
-},{"../constants":339,"dup":250}],339:[function(require,module,exports){
+},{"dup":250}],339:[function(require,module,exports){
 arguments[4][251][0].apply(exports,arguments)
-},{"./der":338,"dup":251}],340:[function(require,module,exports){
+},{"asn1.js":342,"dup":251}],340:[function(require,module,exports){
 arguments[4][252][0].apply(exports,arguments)
-},{"../../asn1":332,"dup":252,"inherits":371}],341:[function(require,module,exports){
+},{"browserify-aes":359,"buffer":190,"dup":252,"evp_bytestokey":374}],341:[function(require,module,exports){
 arguments[4][253][0].apply(exports,arguments)
-},{"./der":340,"./pem":342,"dup":253}],342:[function(require,module,exports){
+},{"./aesid.json":338,"./asn1":339,"./fixProc":340,"browserify-aes":359,"buffer":190,"dup":253,"pbkdf2":333}],342:[function(require,module,exports){
 arguments[4][254][0].apply(exports,arguments)
-},{"../../asn1":332,"./der":340,"buffer":180,"dup":254,"inherits":371}],343:[function(require,module,exports){
+},{"./asn1/api":343,"./asn1/base":345,"./asn1/constants":349,"./asn1/decoders":351,"./asn1/encoders":354,"bn.js":336,"dup":254}],343:[function(require,module,exports){
 arguments[4][255][0].apply(exports,arguments)
-},{"../../asn1":332,"buffer":180,"dup":255,"inherits":371}],344:[function(require,module,exports){
+},{"../asn1":342,"dup":255,"inherits":381,"vm":403}],344:[function(require,module,exports){
 arguments[4][256][0].apply(exports,arguments)
-},{"./der":343,"./pem":345,"dup":256}],345:[function(require,module,exports){
+},{"../base":345,"buffer":190,"dup":256,"inherits":381}],345:[function(require,module,exports){
 arguments[4][257][0].apply(exports,arguments)
-},{"../../asn1":332,"./der":343,"buffer":180,"dup":257,"inherits":371}],346:[function(require,module,exports){
-arguments[4][212][0].apply(exports,arguments)
-},{"dup":212}],347:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"buffer":180,"dup":186}],348:[function(require,module,exports){
-arguments[4][187][0].apply(exports,arguments)
-},{"./aes":347,"./ghash":352,"buffer":180,"buffer-xor":361,"cipher-base":362,"dup":187,"inherits":371}],349:[function(require,module,exports){
-arguments[4][188][0].apply(exports,arguments)
-},{"./decrypter":350,"./encrypter":351,"./modes":353,"dup":188}],350:[function(require,module,exports){
-arguments[4][189][0].apply(exports,arguments)
-},{"./aes":347,"./authCipher":348,"./modes":353,"./modes/cbc":354,"./modes/cfb":355,"./modes/cfb1":356,"./modes/cfb8":357,"./modes/ctr":358,"./modes/ecb":359,"./modes/ofb":360,"./streamCipher":363,"buffer":180,"cipher-base":362,"dup":189,"evp_bytestokey":364,"inherits":371}],351:[function(require,module,exports){
-arguments[4][190][0].apply(exports,arguments)
-},{"./aes":347,"./authCipher":348,"./modes":353,"./modes/cbc":354,"./modes/cfb":355,"./modes/cfb1":356,"./modes/cfb8":357,"./modes/ctr":358,"./modes/ecb":359,"./modes/ofb":360,"./streamCipher":363,"buffer":180,"cipher-base":362,"dup":190,"evp_bytestokey":364,"inherits":371}],352:[function(require,module,exports){
-arguments[4][191][0].apply(exports,arguments)
-},{"buffer":180,"dup":191}],353:[function(require,module,exports){
-arguments[4][192][0].apply(exports,arguments)
-},{"dup":192}],354:[function(require,module,exports){
-arguments[4][193][0].apply(exports,arguments)
-},{"buffer-xor":361,"dup":193}],355:[function(require,module,exports){
-arguments[4][194][0].apply(exports,arguments)
-},{"buffer":180,"buffer-xor":361,"dup":194}],356:[function(require,module,exports){
-arguments[4][195][0].apply(exports,arguments)
-},{"buffer":180,"dup":195}],357:[function(require,module,exports){
+},{"./buffer":344,"./node":346,"./reporter":347,"dup":257}],346:[function(require,module,exports){
+arguments[4][258][0].apply(exports,arguments)
+},{"../base":345,"dup":258,"minimalistic-assert":356}],347:[function(require,module,exports){
+arguments[4][259][0].apply(exports,arguments)
+},{"dup":259,"inherits":381}],348:[function(require,module,exports){
+arguments[4][260][0].apply(exports,arguments)
+},{"../constants":349,"dup":260}],349:[function(require,module,exports){
+arguments[4][261][0].apply(exports,arguments)
+},{"./der":348,"dup":261}],350:[function(require,module,exports){
+arguments[4][262][0].apply(exports,arguments)
+},{"../../asn1":342,"dup":262,"inherits":381}],351:[function(require,module,exports){
+arguments[4][263][0].apply(exports,arguments)
+},{"./der":350,"./pem":352,"dup":263}],352:[function(require,module,exports){
+arguments[4][264][0].apply(exports,arguments)
+},{"../../asn1":342,"./der":350,"buffer":190,"dup":264,"inherits":381}],353:[function(require,module,exports){
+arguments[4][265][0].apply(exports,arguments)
+},{"../../asn1":342,"buffer":190,"dup":265,"inherits":381}],354:[function(require,module,exports){
+arguments[4][266][0].apply(exports,arguments)
+},{"./der":353,"./pem":355,"dup":266}],355:[function(require,module,exports){
+arguments[4][267][0].apply(exports,arguments)
+},{"../../asn1":342,"./der":353,"buffer":190,"dup":267,"inherits":381}],356:[function(require,module,exports){
+arguments[4][222][0].apply(exports,arguments)
+},{"dup":222}],357:[function(require,module,exports){
 arguments[4][196][0].apply(exports,arguments)
-},{"buffer":180,"dup":196}],358:[function(require,module,exports){
+},{"buffer":190,"dup":196}],358:[function(require,module,exports){
 arguments[4][197][0].apply(exports,arguments)
-},{"buffer":180,"buffer-xor":361,"dup":197}],359:[function(require,module,exports){
+},{"./aes":357,"./ghash":362,"buffer":190,"buffer-xor":371,"cipher-base":372,"dup":197,"inherits":381}],359:[function(require,module,exports){
 arguments[4][198][0].apply(exports,arguments)
-},{"dup":198}],360:[function(require,module,exports){
+},{"./decrypter":360,"./encrypter":361,"./modes":363,"dup":198}],360:[function(require,module,exports){
 arguments[4][199][0].apply(exports,arguments)
-},{"buffer":180,"buffer-xor":361,"dup":199}],361:[function(require,module,exports){
+},{"./aes":357,"./authCipher":358,"./modes":363,"./modes/cbc":364,"./modes/cfb":365,"./modes/cfb1":366,"./modes/cfb8":367,"./modes/ctr":368,"./modes/ecb":369,"./modes/ofb":370,"./streamCipher":373,"buffer":190,"cipher-base":372,"dup":199,"evp_bytestokey":374,"inherits":381}],361:[function(require,module,exports){
 arguments[4][200][0].apply(exports,arguments)
-},{"buffer":180,"dup":200}],362:[function(require,module,exports){
+},{"./aes":357,"./authCipher":358,"./modes":363,"./modes/cbc":364,"./modes/cfb":365,"./modes/cfb1":366,"./modes/cfb8":367,"./modes/ctr":368,"./modes/ecb":369,"./modes/ofb":370,"./streamCipher":373,"buffer":190,"cipher-base":372,"dup":200,"evp_bytestokey":374,"inherits":381}],362:[function(require,module,exports){
 arguments[4][201][0].apply(exports,arguments)
-},{"buffer":180,"dup":201,"inherits":371,"stream":389,"string_decoder":390}],363:[function(require,module,exports){
+},{"buffer":190,"dup":201}],363:[function(require,module,exports){
 arguments[4][202][0].apply(exports,arguments)
-},{"./aes":347,"buffer":180,"cipher-base":362,"dup":202,"inherits":371}],364:[function(require,module,exports){
-arguments[4][213][0].apply(exports,arguments)
-},{"buffer":180,"create-hash/md5":304,"dup":213}],365:[function(require,module,exports){
+},{"dup":202}],364:[function(require,module,exports){
+arguments[4][203][0].apply(exports,arguments)
+},{"buffer-xor":371,"dup":203}],365:[function(require,module,exports){
+arguments[4][204][0].apply(exports,arguments)
+},{"buffer":190,"buffer-xor":371,"dup":204}],366:[function(require,module,exports){
+arguments[4][205][0].apply(exports,arguments)
+},{"buffer":190,"dup":205}],367:[function(require,module,exports){
+arguments[4][206][0].apply(exports,arguments)
+},{"buffer":190,"dup":206}],368:[function(require,module,exports){
+arguments[4][207][0].apply(exports,arguments)
+},{"buffer":190,"buffer-xor":371,"dup":207}],369:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"dup":208}],370:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"buffer":190,"buffer-xor":371,"dup":209}],371:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"buffer":190,"dup":210}],372:[function(require,module,exports){
+arguments[4][211][0].apply(exports,arguments)
+},{"buffer":190,"dup":211,"inherits":381,"stream":399,"string_decoder":400}],373:[function(require,module,exports){
+arguments[4][212][0].apply(exports,arguments)
+},{"./aes":357,"buffer":190,"cipher-base":372,"dup":212,"inherits":381}],374:[function(require,module,exports){
+arguments[4][223][0].apply(exports,arguments)
+},{"buffer":190,"create-hash/md5":314,"dup":223}],375:[function(require,module,exports){
 (function (Buffer){
 var parseKeys = require('parse-asn1');
 var mgf = require('./mgf');
@@ -78779,7 +78459,7 @@ function compare(a, b){
   return dif;
 }
 }).call(this,require("buffer").Buffer)
-},{"./mgf":325,"./withPublic":367,"./xor":368,"bn.js":326,"browserify-rsa":327,"buffer":180,"create-hash":302,"parse-asn1":331}],366:[function(require,module,exports){
+},{"./mgf":335,"./withPublic":377,"./xor":378,"bn.js":336,"browserify-rsa":337,"buffer":190,"create-hash":312,"parse-asn1":341}],376:[function(require,module,exports){
 (function (Buffer){
 var parseKeys = require('parse-asn1');
 var randomBytes = require('randombytes');
@@ -78877,7 +78557,7 @@ function nonZero(len, crypto) {
   return out;
 }
 }).call(this,require("buffer").Buffer)
-},{"./mgf":325,"./withPublic":367,"./xor":368,"bn.js":326,"browserify-rsa":327,"buffer":180,"create-hash":302,"parse-asn1":331,"randombytes":369}],367:[function(require,module,exports){
+},{"./mgf":335,"./withPublic":377,"./xor":378,"bn.js":336,"browserify-rsa":337,"buffer":190,"create-hash":312,"parse-asn1":341,"randombytes":379}],377:[function(require,module,exports){
 (function (Buffer){
 var bn = require('bn.js');
 function withPublic(paddedMsg, key) {
@@ -78890,7 +78570,7 @@ function withPublic(paddedMsg, key) {
 
 module.exports = withPublic;
 }).call(this,require("buffer").Buffer)
-},{"bn.js":326,"buffer":180}],368:[function(require,module,exports){
+},{"bn.js":336,"buffer":190}],378:[function(require,module,exports){
 module.exports = function xor(a, b) {
   var len = a.length;
   var i = -1;
@@ -78899,7 +78579,7 @@ module.exports = function xor(a, b) {
   }
   return a
 };
-},{}],369:[function(require,module,exports){
+},{}],379:[function(require,module,exports){
 (function (process,global,Buffer){
 'use strict';
 
@@ -78931,7 +78611,7 @@ function oldBrowser() {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("buffer").Buffer)
-},{"_process":375,"buffer":180}],370:[function(require,module,exports){
+},{"_process":385,"buffer":190}],380:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -79234,7 +78914,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],371:[function(require,module,exports){
+},{}],381:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -79259,7 +78939,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],372:[function(require,module,exports){
+},{}],382:[function(require,module,exports){
 /**
  * Determine if an object is Buffer
  *
@@ -79278,12 +78958,12 @@ module.exports = function (obj) {
     ))
 }
 
-},{}],373:[function(require,module,exports){
+},{}],383:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],374:[function(require,module,exports){
+},{}],384:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -79511,7 +79191,7 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":375}],375:[function(require,module,exports){
+},{"_process":385}],385:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -79604,10 +79284,10 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],376:[function(require,module,exports){
+},{}],386:[function(require,module,exports){
 module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":377}],377:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":387}],387:[function(require,module,exports){
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -79691,7 +79371,7 @@ function forEach (xs, f) {
   }
 }
 
-},{"./_stream_readable":379,"./_stream_writable":381,"core-util-is":382,"inherits":371,"process-nextick-args":383}],378:[function(require,module,exports){
+},{"./_stream_readable":389,"./_stream_writable":391,"core-util-is":392,"inherits":381,"process-nextick-args":393}],388:[function(require,module,exports){
 // a passthrough stream.
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
@@ -79720,7 +79400,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":380,"core-util-is":382,"inherits":371}],379:[function(require,module,exports){
+},{"./_stream_transform":390,"core-util-is":392,"inherits":381}],389:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -80683,7 +80363,7 @@ function indexOf (xs, x) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":377,"_process":375,"buffer":180,"core-util-is":382,"events":370,"inherits":371,"isarray":373,"process-nextick-args":383,"string_decoder/":390,"util":179}],380:[function(require,module,exports){
+},{"./_stream_duplex":387,"_process":385,"buffer":190,"core-util-is":392,"events":380,"inherits":381,"isarray":383,"process-nextick-args":393,"string_decoder/":400,"util":189}],390:[function(require,module,exports){
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
 // but that's not a great name for it, since that implies a thing where
@@ -80882,7 +80562,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":377,"core-util-is":382,"inherits":371}],381:[function(require,module,exports){
+},{"./_stream_duplex":387,"core-util-is":392,"inherits":381}],391:[function(require,module,exports){
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, cb), and it'll handle all
 // the drain event emission and buffering.
@@ -81404,7 +81084,7 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-},{"./_stream_duplex":377,"buffer":180,"core-util-is":382,"events":370,"inherits":371,"process-nextick-args":383,"util-deprecate":384}],382:[function(require,module,exports){
+},{"./_stream_duplex":387,"buffer":190,"core-util-is":392,"events":380,"inherits":381,"process-nextick-args":393,"util-deprecate":394}],392:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -81514,7 +81194,7 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 }).call(this,{"isBuffer":require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js")})
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":372}],383:[function(require,module,exports){
+},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":382}],393:[function(require,module,exports){
 (function (process){
 'use strict';
 module.exports = nextTick;
@@ -81531,7 +81211,7 @@ function nextTick(fn) {
 }
 
 }).call(this,require('_process'))
-},{"_process":375}],384:[function(require,module,exports){
+},{"_process":385}],394:[function(require,module,exports){
 (function (global){
 
 /**
@@ -81597,10 +81277,10 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],385:[function(require,module,exports){
+},{}],395:[function(require,module,exports){
 module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":378}],386:[function(require,module,exports){
+},{"./lib/_stream_passthrough.js":388}],396:[function(require,module,exports){
 var Stream = (function (){
   try {
     return require('st' + 'ream'); // hack to fix a circular dependency issue when used with browserify
@@ -81614,13 +81294,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":377,"./lib/_stream_passthrough.js":378,"./lib/_stream_readable.js":379,"./lib/_stream_transform.js":380,"./lib/_stream_writable.js":381}],387:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":387,"./lib/_stream_passthrough.js":388,"./lib/_stream_readable.js":389,"./lib/_stream_transform.js":390,"./lib/_stream_writable.js":391}],397:[function(require,module,exports){
 module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":380}],388:[function(require,module,exports){
+},{"./lib/_stream_transform.js":390}],398:[function(require,module,exports){
 module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":381}],389:[function(require,module,exports){
+},{"./lib/_stream_writable.js":391}],399:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -81749,7 +81429,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":370,"inherits":371,"readable-stream/duplex.js":376,"readable-stream/passthrough.js":385,"readable-stream/readable.js":386,"readable-stream/transform.js":387,"readable-stream/writable.js":388}],390:[function(require,module,exports){
+},{"events":380,"inherits":381,"readable-stream/duplex.js":386,"readable-stream/passthrough.js":395,"readable-stream/readable.js":396,"readable-stream/transform.js":397,"readable-stream/writable.js":398}],400:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -81972,14 +81652,14 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":180}],391:[function(require,module,exports){
+},{"buffer":190}],401:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],392:[function(require,module,exports){
+},{}],402:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -82569,7 +82249,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":391,"_process":375,"inherits":371}],393:[function(require,module,exports){
+},{"./support/isBuffer":401,"_process":385,"inherits":381}],403:[function(require,module,exports){
 var indexOf = require('indexof');
 
 var Object_keys = function (obj) {
@@ -82709,7 +82389,7 @@ exports.createContext = Script.createContext = function (context) {
     return copy;
 };
 
-},{"indexof":394}],394:[function(require,module,exports){
+},{"indexof":404}],404:[function(require,module,exports){
 
 var indexOf = [].indexOf;
 
@@ -82720,4 +82400,4 @@ module.exports = function(arr, obj){
   }
   return -1;
 };
-},{}]},{},[147]);
+},{}]},{},[157]);
