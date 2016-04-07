@@ -65730,12 +65730,6 @@ module.exports = dl.extend(u, dl);
 (function (global){
 'use strict';
 
-/*
-
-  relies on vega-lite library
-
-  */
-
 var _ = require('underscore');
 var d3 = require('d3');
 var $ = require('jquery');
@@ -65750,6 +65744,38 @@ var md5 = require('md5');
 function isErp(x) {
   // TODO: take from dippl
   return x.support && x.score;
+}
+
+// convert a list of samples to an ERP
+function samplesToErp(xs) {
+  var n = xs.length;
+
+  var frequencies = _.countBy(xs, function (x) {
+    return JSON.stringify(x);
+  });
+  var support = _.keys(frequencies).map(function (x) {
+    return JSON.parse(x);
+  });
+  var probabilities = _.mapObject(frequencies, function (freq, key) {
+    return freq / n;
+  });
+
+  var scorer = function (params, x) {
+    return Math.log(probabilities[JSON.stringify(x)]);
+  };
+
+  var sampler = function (params) {
+    return global.categorical(probabilities, support);
+  };
+
+  var ret = new global.ERP({
+    sample: sampler,
+    score: scorer,
+    support: function () {
+      return support;
+    }
+  });
+  return ret;
 }
 
 // a data frame is an array of objects where
@@ -65848,8 +65874,6 @@ kindPrinter.c = function (types, support, scores) {
   bar(values, probs, { xLabel: fieldName, yLabel: 'frequency' });
 };
 
-// TODO: visualizing [{x: foo}, {x: bar}, {x: baz}]
-// should be the same as visualizing [foo, bar, baz]
 kindPrinter.r = function (types, support, scores) {
   var fieldNames = _.keys(support[0]);
   var fieldName = fieldNames[0];
@@ -66114,22 +66138,36 @@ kindPrinter.crr = function (types, support, scores) {
   renderSpec(vlSpec);
 };
 
-kindPrinter.rrr = function (types, support, scores) {
+// TODO: also expose as viz.parcoords
+var parallelCoordinates = function (types, support, scores) {
   var fieldNames = _.keys(support[0]);
-  var field1Name = fieldNames[0];
-  var field2Name = fieldNames[1];
-  var field3Name = fieldNames[2];
 
   var data = _.zip(support, scores).map(function (x) {
     return _.extend({ prob: Math.exp(x[1]) }, x[0]);
   });
 
-  var overallScale = { name: "ord",
+  var overallScale = {
+    name: "ord",
     type: "ordinal",
     points: true,
     range: "width",
     domain: fieldNames
   };
+
+  var probWidthScale = {
+    name: 'probWidth',
+    type: "linear",
+    range: [1, 3],
+    domain: { data: 'values', field: 'prob' }
+  };
+
+  var probOpacityScale = {
+    name: 'probOpacity',
+    type: "log",
+    range: [0.2, 1],
+    domain: { data: 'values', field: 'prob' }
+  };
+
   var individualScales = _.map(fieldNames, function (name) {
     return {
       name: name,
@@ -66151,24 +66189,31 @@ kindPrinter.rrr = function (types, support, scores) {
 
   var vegaSpec = {
     data: [{ name: 'values', values: data }, { name: 'fields', values: fieldNames }],
-    scales: [overallScale].concat(individualScales),
+    scales: [overallScale, probWidthScale, probOpacityScale].concat(individualScales),
     axes: individualAxes,
-    "marks": [{
-      "type": "group",
-      "from": { "data": "values" },
-      "marks": [{
-        "type": "line",
-        "from": { "data": "fields" },
-        "properties": {
-          "enter": {
-            "x": { "scale": "ord", "field": "data" },
-            "y": {
-              "scale": { "datum": "data" },
-              "field": { "parent": { "datum": "data" } }
+    marks: [{
+      type: "group",
+      from: { data: "values" },
+      marks: [{
+        type: "line",
+        from: { data: "fields" },
+        properties: {
+          enter: {
+            x: { scale: "ord", field: "data" },
+            y: {
+              scale: { datum: "data" },
+              field: { parent: { datum: "data" } }
             },
-            "stroke": { "value": "steelblue" },
-            "strokeWidth": { "value": 1 },
-            "strokeOpacity": { "value": 0.3 }
+            stroke: { value: "steelblue" },
+            strokeWidth: {
+              field: { "parent": "prob" },
+              scale: "probWidth"
+            },
+            strokeOpacity: {
+              field: { "parent": "prob" },
+              scale: "probOpacity"
+            }
+
           }
         }
       }]
@@ -66188,8 +66233,6 @@ kindPrinter.rrr = function (types, support, scores) {
       }
     }]
   };
-
-  // TODO: render vega spec (not vega-lite)
   renderSpec(vegaSpec, "regularVega");
 };
 
@@ -66265,12 +66308,15 @@ var vegaPrint = function (obj) {
     return str.substring(0, 1);
   }).sort().join('');
 
-  // TODO: switch to warning rather than error
-  // (and maybe use wpEditor.put to get data)
-  if (_.has(kindPrinter, dfKind)) {
+  // HACK: use parallel coords for rn where n >= 3
+  if (dfKind.indexOf('c') == -1 && dfKind.length >= 3) {
+    parallelCoordinates(columnTypesDict, supportStringified, scores);
+  } else if (_.has(kindPrinter, dfKind)) {
     // NB: passes in supportStringified, not support
     kindPrinter[dfKind](columnTypesDict, supportStringified, scores);
   } else {
+    // TODO: switch to warning rather than error
+    // (and maybe use wpEditor.put to store the data)
     console.log(dfKind);
     throw new Error('viz.print() doesn\'t know how to render objects of kind ' + dfKind);
   }
@@ -66290,23 +66336,20 @@ var GraphComponent = React.createClass({
     alert('not yet implemented');
   },
   render: function () {
-    // TODO: data that flows into vega-lite spec is already transformed..
-    // also add option to download the raw data?
-
-    var dataStringified = JSON.stringify(this.props.data, null, 2);
-    var blob = new Blob([dataStringified], { type: 'application/json' });
-    var dataUrl = URL.createObjectURL(blob);
-
+    // TODO: use a common hash and different suffixes?
+    // TODO: don't run these computations until they click the wrench? (save memory, cycles)
+    var dataStringified = JSON.stringify(this.props.spec.data[0].values, null, 2);
+    var dataBlob = new Blob([dataStringified], { type: 'application/json' });
+    var dataUrl = URL.createObjectURL(dataBlob);
     var dataName = md5(dataStringified).substring(0, 6) + ".json";
 
+    var vegaStringified = JSON.stringify(this.props.spec, null, 2);
+    var vegaBlob = new Blob([vegaStringified], { type: 'application/json' });
+    var vegaUrl = URL.createObjectURL(vegaBlob);
+    var vegaName = md5(vegaStringified).substring(0, 6) + ".vega.json";
+
     var graphUrl = this.state.view == 0 ? null : this.state.view.toImageURL('svg');
-
     var graphName = graphUrl == null ? null : md5(graphUrl || "").substring(0, 6) + '.svg';
-
-    // var dataContent = (this.state.view == 0
-    //                    ? null
-    //                    : this.state.v + ".csv"
-    //                   )
 
     // NB: download doesn't work perfectly in safari (it just spawns the picture in a new tab)
     // but that's how it works for the vega online editor too, so leave it here for now
@@ -66336,6 +66379,15 @@ var GraphComponent = React.createClass({
               'a',
               { href: dataUrl, download: dataName, target: '_blank' },
               'download data'
+            )
+          ),
+          React.createElement(
+            'li',
+            null,
+            React.createElement(
+              'a',
+              { href: vegaUrl, download: vegaName, target: '_blank' },
+              'download vega'
             )
           ),
           React.createElement(
@@ -66377,7 +66429,7 @@ function renderSpec(spec, regularVega) {
 
   var resultContainer = wpEditor.makeResultContainer();
 
-  var r = React.createElement(GraphComponent, { data: vgSpec.data[0].values });
+  var r = React.createElement(GraphComponent, { spec: vgSpec });
 
   // different possible architectures:
   // - render before making React component, call update(), and pass result as prop
@@ -66390,9 +66442,11 @@ function renderSpec(spec, regularVega) {
   ReactDOM.render(r, resultContainer, function () {
     var comp = this;
     var node = this.refs.content;
+    $(node).text('   rendering...');
 
     vg.parse.spec(vgSpec, function (error, chart) {
       $(node).empty();
+
       comp.setState({ view: chart({ el: node, renderer: 'svg' }).update() });
     });
   });
@@ -66402,54 +66456,103 @@ function renderSpec(spec, regularVega) {
 // bar([{<key1>: ..., <key2>: ...])
 // and we map key1 to x, key2 to y
 //.. i wish javascript had types and multiple dispatch
-var bar = function (xs, ys, opts) {
-  opts = _.defaults(opts || {}, { xLabel: 'x',
-    yLabel: 'y' });
+function bar(xs, ys, options) {
+  options = _.defaults(options || {}, { xLabel: 'x',
+    yLabel: 'y',
+    horizontal: false,
+    xType: 'nominal'
+  });
 
   var data = _.zip(xs, ys).map(function (pair) {
     return { x: pair[0], y: pair[1] };
   });
 
-  var vlSpec = {
-    "data": { "values": data },
-    "mark": "bar",
-    encoding: {
-      x: { "type": "nominal", "field": "x", axis: { title: opts.xLabel } },
-      y: { "type": "quantitative", "field": "y", axis: { title: opts.yLabel } }
-    },
-    config: { numberFormat: "f" }
-  };
+  var vlSpec;
+  if (options.horizontal) {
+    vlSpec = {
+      "data": { "values": data },
+      "mark": "bar",
+      encoding: {
+        x: { "type": "quantitative", "field": "y", axis: { title: options.xLabel } },
+        y: { "type": options.xType, "field": "x", axis: { title: options.yLabel } }
+      }
+    };
+  } else {
+    vlSpec = {
+      "data": { "values": data },
+      "mark": "bar",
+      encoding: {
+        x: { "type": options.xType, "field": "x", axis: { title: options.xLabel } },
+        y: { "type": "quantitative", "field": "y", axis: { title: options.yLabel } }
+      }
+    };
+  }
 
   renderSpec(vlSpec);
-};
+}
 
-// currently hist operates on a collection of samples as well
-// (e.g., from repeat)
-var hist = function (x) {
-  if (isErp(x)) {
-    var erp = x;
-    var labels = erp.support();
-    var labelsStringified = labels.map(function (x) {
-      return JSON.stringify(x);
-    });
-    var probs = labels.map(function (x) {
-      return Math.exp(erp.score(null, x));
-    });
-    bar(labelsStringified, probs, { xLabel: 'Value', yLabel: 'Probability' });
+// currently hist operates on a collection of samples as well (e.g., from repeat)
+function hist(obj, options) {
+  options = _.defaults(options || {}, { numBins: 30 });
+
+  var erp;
+  if (_.isArray(obj)) {
+    erp = samplesToErp(obj);
+  } else if (isErp(obj)) {
+    erp = obj;
   } else {
-    var samples = x;
-    var frequencyDict = _(samples).countBy(function (x) {
-      return typeof x === 'string' ? x : JSON.stringify(x);
-    });
-    var labels = _(frequencyDict).keys();
-    var counts = _(frequencyDict).values();
-    bar(labels, counts, { xLabel: 'Value', yLabel: 'Frequency' });
+    throw new Error('hist takes an ERP or a list of samples as an argument');
   }
+
+  var support = erp.support();
+  var probs = support.map(function (x) {
+    return Math.exp(erp.score(null, x));
+  });
+  if (typeof support[0] == 'number') {
+    var min = _.min(support),
+        max = _.max(support),
+        binWidth = (max - min) / options.numBins;
+
+    // OPTIMIZE
+    var bins = [];
+    for (var i = 0; i < options.numBins; i++) {
+      var currentBin = {
+        lower: min + i * binWidth,
+        upper: min + (i + 1) * binWidth
+      };
+      currentBin.entries = _.filter(support, function (x) {
+        return x >= currentBin.lower && x < currentBin.upper;
+      });
+      bins.push(currentBin);
+    }
+
+    // make sure max point gets into histogram
+    bins[bins.length - 1].upper += Number.EPSILON;
+
+    var binProbs = bins.map(function (bin) {
+      return util.sum(_.map(bin.entries, function (x) {
+        return Math.exp(erp.score(null, x));
+      }));
+    });
+
+    // TODO: do ticks based on bin boundaries, rather than showing bin means, as i've done here
+    var binLabels = _.map(bins, function (bin) {
+      return ((bin.upper + bin.lower) / 2).toExponential(2);
+    });
+
+    bar(binLabels, binProbs, { xLabel: 'Bin mean', yLabel: 'Probability', xType: 'quantitative' });
+
+    return;
+  }
+
+  var supportStringified = support.map(stringifyIfObject);
+
+  bar(supportStringified, probs, { xLabel: 'Value', yLabel: 'Probability' });
 };
 
 // TODO: rename to scatter after porting erin's vizPrint code to vega
-var _scatter = function (xs, ys, opts) {
-  opts = _.defaults(opts || {}, { xLabel: 'x',
+var _scatter = function (xs, ys, options) {
+  options = _.defaults(options || {}, { xLabel: 'x',
     yLabel: 'y' });
 
   var data = _.zip(xs, ys).map(function (pair) {
@@ -66460,27 +66563,36 @@ var _scatter = function (xs, ys, opts) {
     "data": { "values": data },
     "mark": "point",
     "encoding": {
-      "x": { "field": "x", "type": "quantitative", axis: { title: opts.xLabel } },
-      "y": { "field": "y", "type": "quantitative", axis: { title: opts.yLabel } }
+      "x": { "field": "x", "type": "quantitative", axis: { title: options.xLabel } },
+      "y": { "field": "y", "type": "quantitative", axis: { title: options.yLabel } }
     }
   };
 
   renderSpec(vlSpec);
 };
 
-// TODO: density visualizations can be misleading at the bounds
 // input: a list of samples and, optionally, a kernel function
-// output: a list of estimated densities (range is min to max and number
-// of bins is (max-min) / (1.06 * s * n^(-.02))
-var kde = function (samps, kernel) {
-  if (kernel === undefined || typeof kernel !== 'function') {
+// output: a list of estimated densities (range is min to max and number of bins is 100)
+// TODO: make numBins and bandwidth options (with visible vega knobs?)
+function kde(samps, options) {
+  options = _.defaults(options || {}, { bounds: 'auto',
+    kernel: 'epanechnikov'
+  });
+
+  var kernel;
+  // TODO: add more kernels
+  if (options.kernel === 'epanechnikov') {
     kernel = function (u) {
       return Math.abs(u) <= 1 ? .75 * (1 - u * u) : 0;
     };
+  } else if (typeof options.kernel == 'function') {
+    kernel = options.kernel;
   }
 
   // get optimal bandwidth
   // HT http://en.wikipedia.org/wiki/Kernel_density_estimation#Practical_estimation_of_the_bandwidth
+  // to support ERP as argument, we need to know the number of samples from an ERP
+  // (TODO: submit PR for webppl where Histogram.prototype.toERP preserves this info)
   var n = samps.length;
   var mean = samps.reduce(function (x, y) {
     return x + y;
@@ -66492,47 +66604,72 @@ var kde = function (samps, kernel) {
 
   var bandwidth = 1.06 * s * Math.pow(n, -0.2);
 
-  var min = _.min(samps);
-  var max = _.max(samps);
+  var min, max;
+  if (options.bounds == 'auto') {
+    min = _.min(samps);
+    max = _.max(samps);
+  } else {
+    min = options.bounds[0];
+    max = options.bounds[1];
+  }
 
-  var numBins = (max - min) / bandwidth;
+  var numBins = 100;
+  var binWidth = (max - min) / numBins;
 
   var results = [];
 
   for (var i = 0; i <= numBins; i++) {
-    var x = min + bandwidth * i;
+    var x = min + i * binWidth;
     var kernelSum = 0;
-    for (var j = 0; j < samps.length; j++) {
+    for (var j = 0, jj = samps.length; j < jj; j++) {
       kernelSum += kernel((x - samps[j]) / bandwidth);
     }
     results.push({ item: x, density: kernelSum / (n * bandwidth) });
   }
   return results;
-};
+}
 
 var kde2d = function (samps) {}
 // mimics kde2d from the MASS package in R
 // uses axis-aligned gaussian kernel
 
 // TODO: should you be able to pass this an erp too?
-;var density = function (samples) {
-  var densityEstimate = kde(samples);
+// TODO: rename as kde
+;function density(samples, options) {
+  options = _.defaults(options || {}, { bounds: 'auto' });
+
+  var min, max;
+  if (options.bounds == 'auto') {
+    min = _.min(samples);
+    max = _.max(samples);
+  } else {
+    min = options.bounds[0];
+    max = options.bounds[1];
+  }
+
+  var densityEstimate = kde(samples, options);
 
   var vlSpec = {
     "data": { values: densityEstimate },
     "mark": "area",
     "encoding": {
-      "x": { "field": "item", "type": "quantitative", axis: { title: 'Value' } },
+      "x": { "field": "item",
+        "type": "quantitative",
+        axis: { title: 'Value' },
+        scale: { domain: [min, max] }
+      },
       "y": { "field": "density", "type": "quantitative", axis: { title: 'Density' } }
     },
     "config": { "mark": { "interpolate": "monotone" } }
   };
 
   renderSpec(vlSpec);
-};
+}
 
 // TODO: show points
-var line = function (xs, ys) {
+var line = function (xs, ys, options) {
+  options = _.defaults(options || {}, { xLabel: 'x',
+    yLabel: 'y' });
   var data = _.zip(xs, ys).map(function (pair) {
     return { x: pair[0], y: pair[1] };
   });
@@ -66541,8 +66678,8 @@ var line = function (xs, ys) {
     "data": { values: data },
     "mark": "line",
     "encoding": {
-      "x": { "field": "x", "type": "quantitative", axis: { title: 'x' } },
-      "y": { "field": "y", "type": "quantitative", axis: { title: 'y' } }
+      "x": { "field": "x", "type": "quantitative", axis: { title: options.xLabel } },
+      "y": { "field": "y", "type": "quantitative", axis: { title: options.yLabel } }
     }
   };
 
@@ -66552,39 +66689,46 @@ var line = function (xs, ys) {
 // visualize an erp as a table
 // TODO: if support items all have the same keys, expand them out
 // TODO, maybe one day: make this a fancy react widget with sortable columns
+// TODO: support a data frame structure as input
 // and smart hiding if there are too many rows
-var table = function (obj, options) {
+function table(obj, options) {
   //wpEditor is not present if not run in the browser
   if (typeof wpEditor === 'undefined') {
     console.log("viz.print: no wpEditor, not drawing");
     return;
   }
 
-  if (options === undefined) options = {};
-  options = _.defaults(options, { log: false });
+  options = _.defaults(options || {}, { log: false });
 
-  if (isErp(obj)) {
-    var support = obj.support();
-    var scores = support.map(function (state) {
-      return obj.score(null, state);
-    });
-
-    var sortedZipped = _.sortBy(_.zip(support, scores), function (z) {
-      return -z[1];
-    });
-
-    var tableString = '<table class="wviz-table"><tr><th>state</th><th>' + (options.log ? 'log probability' : 'probability') + '</th>';
-
-    sortedZipped.forEach(function (pair) {
-      var state = pair[0];
-      var score = pair[1];
-      tableString += "<tr><td>" + JSON.stringify(state) + "</td><td>" + (options.log ? score : Math.exp(score)) + "</td>";
-    });
-
-    var resultContainer = wpEditor.makeResultContainer();
-    resultContainer.innerHTML = tableString;
+  var erp;
+  if (_.isArray(obj)) {
+    erp = samplesToErp(obj);
+  } else if (isErp(obj)) {
+    erp = obj;
+  } else {
+    throw new Error('table takes an ERP or a list of samples as an argument');
   }
-};
+
+  var support = erp.support();
+  var scores = support.map(function (state) {
+    return erp.score(null, state);
+  });
+
+  var sortedZipped = _.sortBy(_.zip(support, scores), function (z) {
+    return -z[1];
+  });
+
+  var tableString = '<table class="wviz-table"><tr><th>state</th><th>' + (options.log ? 'log probability' : 'probability') + '</th>';
+
+  sortedZipped.forEach(function (pair) {
+    var state = pair[0];
+    var score = pair[1];
+    tableString += "<tr><td>" + JSON.stringify(state) + "</td><td>" + (options.log ? score : Math.exp(score)) + "</td>";
+  });
+
+  var resultContainer = wpEditor.makeResultContainer();
+  resultContainer.innerHTML = tableString;
+}
 
 global.viz = {
   print: print,
