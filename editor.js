@@ -71249,7 +71249,11 @@ var setupCode = function (preEl, options) {
     language: options.language
   });
 
+  // TODO: figure out if this is an anti-pattern
+  var ret = {};
+
   ReactDOM.render(r, editorDiv, function () {
+    ret = this;
     var cm = this.refs.editor.codeMirror;
     requestAnimationFrame(function () {
       parentDiv.replaceChild(editorDiv, preEl);
@@ -71266,6 +71270,8 @@ var setupCode = function (preEl, options) {
       }
     });
   });
+
+  return ret;
 };
 
 var numTopStoreKeys = 0;
