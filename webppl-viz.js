@@ -66197,7 +66197,7 @@ kindPrinter.c = function (types, support, scores) {
     return Math.exp(score);
   });
 
-  bar(values, probs, { xLabel: fieldName, yLabel: 'frequency' });
+  barDispatch(values, probs, { xLabel: fieldName, yLabel: 'frequency' });
 };
 
 kindPrinter.r = function (types, support, scores) {
