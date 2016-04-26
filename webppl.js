@@ -767,7 +767,7 @@ TensorNode.prototype.copy = function(other) {
 	this.x = other.x.clone();
 	this.dx = other.dx.clone();
 };
-Tensor.prototype.clone = function() {
+TensorNode.prototype.clone = function() {
 	var node = Object.create(Tensor.prototype);
 	node.copy(this);
 	return node;
@@ -778,7 +778,7 @@ TensorNode.prototype.refCopy = function(other) {
 	this.dx = other.dx.refClone();
 };
 TensorNode.prototype.refClone = function() {
-	var node = Object.create(Tensor.prototype);
+	var node = Object.create(TensorNode.prototype);
 	node.refCopy(this);
 	return node;
 };
@@ -999,14 +999,14 @@ Tensor.prototype.refCopy = function(other) {
 	this.dims = other.dims;
 	this.length = other.length;
 	this.data = other.data;
+	return this;
 }
 
 // Create a new Tensor object that refers to the same backing store
 //    as this Tensor object
 Tensor.prototype.refClone = function() {
 	var t = Object.create(Tensor.prototype);
-	t.reference(this);
-	return t;
+	return t.refCopy(this);
 };
 
 
@@ -29216,7 +29216,7 @@ arguments[4][90][0].apply(exports,arguments)
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
   typeof define === 'function' && define.amd ? define(factory) :
-  global.Immutable = factory();
+  (global.Immutable = factory());
 }(this, function () { 'use strict';var SLICE$0 = Array.prototype.slice;
 
   function createClass(ctor, superClass) {
@@ -30111,7 +30111,7 @@ arguments[4][90][0].apply(exports,arguments)
       }
       return 'Range [ ' +
         this._start + '...' + this._end +
-        (this._step > 1 ? ' by ' + this._step : '') +
+        (this._step !== 1 ? ' by ' + this._step : '') +
       ' ]';
     };
 
@@ -30243,6 +30243,9 @@ arguments[4][90][0].apply(exports,arguments)
     }
     var type = typeof o;
     if (type === 'number') {
+      if (o !== o || o === Infinity) {
+        return 0;
+      }
       var h = o | 0;
       if (h !== o) {
         h ^= o * 0xFFFFFFFF;
@@ -30427,6 +30430,17 @@ arguments[4][90][0].apply(exports,arguments)
           iter.forEach(function(v, k)  {return map.set(k, v)});
         });
     }
+
+    Map.of = function() {var keyValues = SLICE$0.call(arguments, 0);
+      return emptyMap().withMutations(function(map ) {
+        for (var i = 0; i < keyValues.length; i += 2) {
+          if (i + 1 >= keyValues.length) {
+            throw new Error('Missing value for key: ' + keyValues[i]);
+          }
+          map.set(keyValues[i], keyValues[i + 1]);
+        }
+      });
+    };
 
     Map.prototype.toString = function() {
       return this.__toString('Map {', '}');
@@ -32340,7 +32354,11 @@ arguments[4][90][0].apply(exports,arguments)
       begin = begin | 0;
     }
     if (end !== undefined) {
-      end = end | 0;
+      if (end === Infinity) {
+        end = originalSize;
+      } else {
+        end = end | 0;
+      }
     }
 
     if (wholeSlice(begin, end, originalSize)) {
@@ -32876,6 +32894,12 @@ arguments[4][90][0].apply(exports,arguments)
     Record.prototype.set = function(k, v) {
       if (!this.has(k)) {
         throw new Error('Cannot set unknown key "' + k + '" on ' + recordName(this));
+      }
+      if (this._map && !this._map.has(k)) {
+        var defaultVal = this._defaultValues[k];
+        if (v === defaultVal) {
+          return this;
+        }
       }
       var newMap = this._map && this._map.set(k, v);
       if (this.__ownerID || newMap === this._map) {
@@ -33560,21 +33584,6 @@ arguments[4][90][0].apply(exports,arguments)
       return entry ? entry[1] : notSetValue;
     },
 
-    findEntry: function(predicate, context) {
-      var found;
-      this.__iterate(function(v, k, c)  {
-        if (predicate.call(context, v, k, c)) {
-          found = [k, v];
-          return false;
-        }
-      });
-      return found;
-    },
-
-    findLastEntry: function(predicate, context) {
-      return this.toSeq().reverse().findEntry(predicate, context);
-    },
-
     forEach: function(sideEffect, context) {
       assertNotInfinite(this.size);
       return this.__iterate(context ? sideEffect.bind(context) : sideEffect);
@@ -33685,8 +33694,32 @@ arguments[4][90][0].apply(exports,arguments)
       return this.filter(not(predicate), context);
     },
 
+    findEntry: function(predicate, context, notSetValue) {
+      var found = notSetValue;
+      this.__iterate(function(v, k, c)  {
+        if (predicate.call(context, v, k, c)) {
+          found = [k, v];
+          return false;
+        }
+      });
+      return found;
+    },
+
+    findKey: function(predicate, context) {
+      var entry = this.findEntry(predicate, context);
+      return entry && entry[0];
+    },
+
     findLast: function(predicate, context, notSetValue) {
       return this.toKeyedSeq().reverse().find(predicate, context, notSetValue);
+    },
+
+    findLastEntry: function(predicate, context, notSetValue) {
+      return this.toKeyedSeq().reverse().findEntry(predicate, context, notSetValue);
+    },
+
+    findLastKey: function(predicate, context) {
+      return this.toKeyedSeq().reverse().findKey(predicate, context);
     },
 
     first: function() {
@@ -33747,12 +33780,20 @@ arguments[4][90][0].apply(exports,arguments)
       return iter.isSubset(this);
     },
 
+    keyOf: function(searchValue) {
+      return this.findKey(function(value ) {return is(value, searchValue)});
+    },
+
     keySeq: function() {
       return this.toSeq().map(keyMapper).toIndexedSeq();
     },
 
     last: function() {
       return this.toSeq().reverse().first();
+    },
+
+    lastKeyOf: function(searchValue) {
+      return this.toKeyedSeq().reverse().keyOf(searchValue);
     },
 
     max: function(comparator) {
@@ -33845,58 +33886,12 @@ arguments[4][90][0].apply(exports,arguments)
   IterablePrototype.chain = IterablePrototype.flatMap;
   IterablePrototype.contains = IterablePrototype.includes;
 
-  // Temporary warning about using length
-  (function () {
-    try {
-      Object.defineProperty(IterablePrototype, 'length', {
-        get: function () {
-          if (!Iterable.noLengthWarning) {
-            var stack;
-            try {
-              throw new Error();
-            } catch (error) {
-              stack = error.stack;
-            }
-            if (stack.indexOf('_wrapObject') === -1) {
-              console && console.warn && console.warn(
-                'iterable.length has been deprecated, '+
-                'use iterable.size or iterable.count(). '+
-                'This warning will become a silent error in a future version. ' +
-                stack
-              );
-              return this.size;
-            }
-          }
-        }
-      });
-    } catch (e) {}
-  })();
-
-
-
   mixin(KeyedIterable, {
 
     // ### More sequential methods
 
     flip: function() {
       return reify(this, flipFactory(this));
-    },
-
-    findKey: function(predicate, context) {
-      var entry = this.findEntry(predicate, context);
-      return entry && entry[0];
-    },
-
-    findLastKey: function(predicate, context) {
-      return this.toSeq().reverse().findKey(predicate, context);
-    },
-
-    keyOf: function(searchValue) {
-      return this.findKey(function(value ) {return is(value, searchValue)});
-    },
-
-    lastKeyOf: function(searchValue) {
-      return this.findLastKey(function(value ) {return is(value, searchValue)});
     },
 
     mapEntries: function(mapper, context) {var this$0 = this;
@@ -33947,16 +33942,13 @@ arguments[4][90][0].apply(exports,arguments)
     },
 
     indexOf: function(searchValue) {
-      var key = this.toKeyedSeq().keyOf(searchValue);
+      var key = this.keyOf(searchValue);
       return key === undefined ? -1 : key;
     },
 
     lastIndexOf: function(searchValue) {
-      var key = this.toKeyedSeq().reverse().keyOf(searchValue);
+      var key = this.lastKeyOf(searchValue);
       return key === undefined ? -1 : key;
-
-      // var index =
-      // return this.toSeq().reverse().indexOf(searchValue);
     },
 
     reverse: function() {
@@ -33990,8 +33982,8 @@ arguments[4][90][0].apply(exports,arguments)
     // ### More collection methods
 
     findLastIndex: function(predicate, context) {
-      var key = this.toKeyedSeq().findLastKey(predicate, context);
-      return key === undefined ? -1 : key;
+      var entry = this.findLastEntry(predicate, context);
+      return entry ? entry[0] : -1;
     },
 
     first: function() {
@@ -34030,6 +34022,10 @@ arguments[4][90][0].apply(exports,arguments)
         interleaved.size = zipped.size * iterables.length;
       }
       return reify(this, interleaved);
+    },
+
+    keySeq: function() {
+      return Range(0, this.size);
     },
 
     last: function() {
@@ -34080,6 +34076,7 @@ arguments[4][90][0].apply(exports,arguments)
   });
 
   SetIterable.prototype.has = IterablePrototype.includes;
+  SetIterable.prototype.contains = SetIterable.prototype.includes;
 
 
   // Mixin subclasses
@@ -34116,7 +34113,7 @@ arguments[4][90][0].apply(exports,arguments)
   }
 
   function quoteString(value) {
-    return typeof value === 'string' ? JSON.stringify(value) : value;
+    return typeof value === 'string' ? JSON.stringify(value) : String(value);
   }
 
   function defaultZipper() {
@@ -57205,7 +57202,7 @@ var naming = require('./transforms/naming').naming;
 var thunkify = require('./syntax').thunkify;
 var cps = require('./transforms/cps').cps;
 var analyze = require('./analysis/main').analyze;
-var version = 'v0.6.1-13ad381';
+var version = 'v0.6.2-4d0ec8e';
 var packages = [];
 var load = _.once(function () {
     packages.forEach(function (pkg) {
@@ -57248,8 +57245,7 @@ global.webppl = {
     compile: compile,
     cps: webpplCPS,
     naming: webpplNaming,
-    analyze: analyze,
-    _main: webppl
+    analyze: analyze
 };
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./analysis/main":157,"./main":178,"./syntax":180,"./transforms/cps":183,"./transforms/naming":185,"./transforms/optimize":186,"escodegen":27,"esprima":97,"fs":191,"underscore":151}],162:[function(require,module,exports){
@@ -59266,12 +59262,12 @@ module.exports = function(env) {
     // variables.
     this.prevTrace = trace;
     this.trace = this.prevTrace.fresh();
-    // Once the WebPPL program has finished we need to call k to
+    // Once the WebPPL program has finished we need to call cont to
     // continue inference. Since the program will call env.exit once
-    // finished, we save k here in order to resume inference as
+    // finished, we save cont here in order to resume inference as
     // desired. Note that we can't pass a continuation other than
     // env.exit to the program. This is because the continuation is
-    // store as part of the trace, and when invoked by a different
+    // stored as part of the trace, and when invoked by a different
     // MCMC kernel execution would jump back here.
     this.positionStepCont = cont;
     return this.trace.continue();
@@ -59286,7 +59282,7 @@ module.exports = function(env) {
       assert(!this.trace.isComplete());
     }
     var cont = this.positionStepCont;
-    this.thisPositionStepCont = undefined;
+    this.positionStepCont = undefined;
     return cont(this.trace);
   };
 
