@@ -66949,7 +66949,7 @@ function barDfs(df, options) {
     vlSpec.encoding.column = {
       "field": xName, "type": "ordinal",
       "scale": { "padding": 4 },
-      "axis": { "orient": "bottom", "axisWidth": 1, "offset": -8 }
+      "axis": { "orient": "bottom", "axisWidth": 1, "offset": -8, "labelAngle": 270 }
     };
 
     vlSpec.encoding.x = {
