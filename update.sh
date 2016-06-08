@@ -1,3 +1,3 @@
 #!/bin/bash
 
-rsync -rL ../wviz/demo/ .
+rsync -rL ../viz/demo/ .
