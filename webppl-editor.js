@@ -45118,7 +45118,9 @@ var CodeEditor = React.createClass({
   },
   // ------------------------------------------------------------
   cancelRun: function () {
-    this.runner.__cancel__ = true;
+    if (this.runner) {
+      this.runner.__cancel__ = true;
+    }
     this.addResult({ type: 'text', message: '[Execution canceled]' });
     this.endJob();
   },
@@ -45231,6 +45233,7 @@ var CodeEditor = React.createClass({
             compileCache[code] = webppl.compile(code, { sourceMap: true });
           } catch (e) {
             handleError(e);
+            return;
           }
         }
 
@@ -45272,6 +45275,9 @@ var CodeEditor = React.createClass({
     if (jobsQueue.length == 1) {
       job();
     }
+  },
+  getCode: function () {
+    return this.refs.editor ? this.refs.editor.getCodeMirror().getValue() : this.props.code;
   },
   addResult: function (result) {
     // discovered alternate form of setState on my own
@@ -45437,15 +45443,14 @@ var wpEditor = {
   }
 };
 
-// behave both as a browser library and a node module
-// (HT underscore library)
-if (typeof window === 'object') {
-  global.wpEditor = wpEditor;
-} else {
+if (typeof exports !== 'undefined') {
   if (typeof module !== 'undefined' && module.exports) {
     exports = module.exports = wpEditor;
   }
-  exports.wpEditor = wpEditor;
+}
+
+if (typeof window !== 'undefined') {
+  window.wpEditor = wpEditor;
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
@@ -45453,12 +45458,20 @@ if (typeof window === 'object') {
 // shim for using process in browser
 
 var process = module.exports = {};
+
+// cached from whatever global is present so that test runners that stub it don't break things.
+var cachedSetTimeout = setTimeout;
+var cachedClearTimeout = clearTimeout;
+
 var queue = [];
 var draining = false;
 var currentQueue;
 var queueIndex = -1;
 
 function cleanUpNextTick() {
+    if (!draining || !currentQueue) {
+        return;
+    }
     draining = false;
     if (currentQueue.length) {
         queue = currentQueue.concat(queue);
@@ -45474,7 +45487,7 @@ function drainQueue() {
     if (draining) {
         return;
     }
-    var timeout = setTimeout(cleanUpNextTick);
+    var timeout = cachedSetTimeout(cleanUpNextTick);
     draining = true;
 
     var len = queue.length;
@@ -45491,7 +45504,7 @@ function drainQueue() {
     }
     currentQueue = null;
     draining = false;
-    clearTimeout(timeout);
+    cachedClearTimeout(timeout);
 }
 
 process.nextTick = function (fun) {
@@ -45503,7 +45516,7 @@ process.nextTick = function (fun) {
     }
     queue.push(new Item(fun, args));
     if (queue.length === 1 && !draining) {
-        setTimeout(drainQueue, 0);
+        cachedSetTimeout(drainQueue, 0);
     }
 };
 

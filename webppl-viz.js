@@ -1,4 +1,1959 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+var charenc = {
+  // UTF-8 encoding
+  utf8: {
+    // Convert a string to a byte array
+    stringToBytes: function(str) {
+      return charenc.bin.stringToBytes(unescape(encodeURIComponent(str)));
+    },
+
+    // Convert a byte array to a string
+    bytesToString: function(bytes) {
+      return decodeURIComponent(escape(charenc.bin.bytesToString(bytes)));
+    }
+  },
+
+  // Binary encoding
+  bin: {
+    // Convert a string to a byte array
+    stringToBytes: function(str) {
+      for (var bytes = [], i = 0; i < str.length; i++)
+        bytes.push(str.charCodeAt(i) & 0xFF);
+      return bytes;
+    },
+
+    // Convert a byte array to a string
+    bytesToString: function(bytes) {
+      for (var str = [], i = 0; i < bytes.length; i++)
+        str.push(String.fromCharCode(bytes[i]));
+      return str.join('');
+    }
+  }
+};
+
+module.exports = charenc;
+
+},{}],2:[function(require,module,exports){
+(function() {
+  var base64map
+      = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',
+
+  crypt = {
+    // Bit-wise rotation left
+    rotl: function(n, b) {
+      return (n << b) | (n >>> (32 - b));
+    },
+
+    // Bit-wise rotation right
+    rotr: function(n, b) {
+      return (n << (32 - b)) | (n >>> b);
+    },
+
+    // Swap big-endian to little-endian and vice versa
+    endian: function(n) {
+      // If number given, swap endian
+      if (n.constructor == Number) {
+        return crypt.rotl(n, 8) & 0x00FF00FF | crypt.rotl(n, 24) & 0xFF00FF00;
+      }
+
+      // Else, assume array and swap all items
+      for (var i = 0; i < n.length; i++)
+        n[i] = crypt.endian(n[i]);
+      return n;
+    },
+
+    // Generate an array of any length of random bytes
+    randomBytes: function(n) {
+      for (var bytes = []; n > 0; n--)
+        bytes.push(Math.floor(Math.random() * 256));
+      return bytes;
+    },
+
+    // Convert a byte array to big-endian 32-bit words
+    bytesToWords: function(bytes) {
+      for (var words = [], i = 0, b = 0; i < bytes.length; i++, b += 8)
+        words[b >>> 5] |= bytes[i] << (24 - b % 32);
+      return words;
+    },
+
+    // Convert big-endian 32-bit words to a byte array
+    wordsToBytes: function(words) {
+      for (var bytes = [], b = 0; b < words.length * 32; b += 8)
+        bytes.push((words[b >>> 5] >>> (24 - b % 32)) & 0xFF);
+      return bytes;
+    },
+
+    // Convert a byte array to a hex string
+    bytesToHex: function(bytes) {
+      for (var hex = [], i = 0; i < bytes.length; i++) {
+        hex.push((bytes[i] >>> 4).toString(16));
+        hex.push((bytes[i] & 0xF).toString(16));
+      }
+      return hex.join('');
+    },
+
+    // Convert a hex string to a byte array
+    hexToBytes: function(hex) {
+      for (var bytes = [], c = 0; c < hex.length; c += 2)
+        bytes.push(parseInt(hex.substr(c, 2), 16));
+      return bytes;
+    },
+
+    // Convert a byte array to a base-64 string
+    bytesToBase64: function(bytes) {
+      for (var base64 = [], i = 0; i < bytes.length; i += 3) {
+        var triplet = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+        for (var j = 0; j < 4; j++)
+          if (i * 8 + j * 6 <= bytes.length * 8)
+            base64.push(base64map.charAt((triplet >>> 6 * (3 - j)) & 0x3F));
+          else
+            base64.push('=');
+      }
+      return base64.join('');
+    },
+
+    // Convert a base-64 string to a byte array
+    base64ToBytes: function(base64) {
+      // Remove non-base-64 characters
+      base64 = base64.replace(/[^A-Z0-9+\/]/ig, '');
+
+      for (var bytes = [], i = 0, imod4 = 0; i < base64.length;
+          imod4 = ++i % 4) {
+        if (imod4 == 0) continue;
+        bytes.push(((base64map.indexOf(base64.charAt(i - 1))
+            & (Math.pow(2, -2 * imod4 + 8) - 1)) << (imod4 * 2))
+            | (base64map.indexOf(base64.charAt(i)) >>> (6 - imod4 * 2)));
+      }
+      return bytes;
+    }
+  };
+
+  module.exports = crypt;
+})();
+
+},{}],3:[function(require,module,exports){
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define(['exports'], factory) :
+  (factory((global.d3_dsv = {})));
+}(this, function (exports) { 'use strict';
+
+  function dsv(delimiter) {
+    return new Dsv(delimiter);
+  }
+
+  function objectConverter(columns) {
+    return new Function("d", "return {" + columns.map(function(name, i) {
+      return JSON.stringify(name) + ": d[" + i + "]";
+    }).join(",") + "}");
+  }
+
+  function customConverter(columns, f) {
+    var object = objectConverter(columns);
+    return function(row, i) {
+      return f(object(row), i, columns);
+    };
+  }
+
+  // Compute unique columns in order of discovery.
+  function inferColumns(rows) {
+    var columnSet = Object.create(null),
+        columns = [];
+
+    rows.forEach(function(row) {
+      for (var column in row) {
+        if (!(column in columnSet)) {
+          columns.push(columnSet[column] = column);
+        }
+      }
+    });
+
+    return columns;
+  }
+
+  function Dsv(delimiter) {
+    var reFormat = new RegExp("[\"" + delimiter + "\n]"),
+        delimiterCode = delimiter.charCodeAt(0);
+
+    this.parse = function(text, f) {
+      var convert, columns, rows = this.parseRows(text, function(row, i) {
+        if (convert) return convert(row, i - 1);
+        columns = row, convert = f ? customConverter(row, f) : objectConverter(row);
+      });
+      rows.columns = columns;
+      return rows;
+    };
+
+    this.parseRows = function(text, f) {
+      var EOL = {}, // sentinel value for end-of-line
+          EOF = {}, // sentinel value for end-of-file
+          rows = [], // output rows
+          N = text.length,
+          I = 0, // current character index
+          n = 0, // the current line number
+          t, // the current token
+          eol; // is the current token followed by EOL?
+
+      function token() {
+        if (I >= N) return EOF; // special case: end of file
+        if (eol) return eol = false, EOL; // special case: end of line
+
+        // special case: quotes
+        var j = I, c;
+        if (text.charCodeAt(j) === 34) {
+          var i = j;
+          while (i++ < N) {
+            if (text.charCodeAt(i) === 34) {
+              if (text.charCodeAt(i + 1) !== 34) break;
+              ++i;
+            }
+          }
+          I = i + 2;
+          c = text.charCodeAt(i + 1);
+          if (c === 13) {
+            eol = true;
+            if (text.charCodeAt(i + 2) === 10) ++I;
+          } else if (c === 10) {
+            eol = true;
+          }
+          return text.slice(j + 1, i).replace(/""/g, "\"");
+        }
+
+        // common case: find next delimiter or newline
+        while (I < N) {
+          var k = 1;
+          c = text.charCodeAt(I++);
+          if (c === 10) eol = true; // \n
+          else if (c === 13) { eol = true; if (text.charCodeAt(I) === 10) ++I, ++k; } // \r|\r\n
+          else if (c !== delimiterCode) continue;
+          return text.slice(j, I - k);
+        }
+
+        // special case: last token before EOF
+        return text.slice(j);
+      }
+
+      while ((t = token()) !== EOF) {
+        var a = [];
+        while (t !== EOL && t !== EOF) {
+          a.push(t);
+          t = token();
+        }
+        if (f && (a = f(a, n++)) == null) continue;
+        rows.push(a);
+      }
+
+      return rows;
+    }
+
+    this.format = function(rows, columns) {
+      if (columns == null) columns = inferColumns(rows);
+      return [columns.map(formatValue).join(delimiter)].concat(rows.map(function(row) {
+        return columns.map(function(column) {
+          return formatValue(row[column]);
+        }).join(delimiter);
+      })).join("\n");
+    };
+
+    this.formatRows = function(rows) {
+      return rows.map(formatRow).join("\n");
+    };
+
+    function formatRow(row) {
+      return row.map(formatValue).join(delimiter);
+    }
+
+    function formatValue(text) {
+      return reFormat.test(text) ? "\"" + text.replace(/\"/g, "\"\"") + "\"" : text;
+    }
+  }
+
+  dsv.prototype = Dsv.prototype;
+
+  var csv = dsv(",");
+  var tsv = dsv("\t");
+
+  var version = "0.1.14";
+
+  exports.version = version;
+  exports.dsv = dsv;
+  exports.csv = csv;
+  exports.tsv = tsv;
+
+}));
+},{}],4:[function(require,module,exports){
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define('d3-format', ['exports'], factory) :
+  factory((global.d3_format = {}));
+}(this, function (exports) { 'use strict';
+
+  // Computes the decimal coefficient and exponent of the specified number x with
+  // significant digits p, where x is positive and p is in [1, 21] or undefined.
+  // For example, formatDecimal(1.23) returns ["123", 0].
+  function formatDecimal(x, p) {
+    if ((i = (x = p ? x.toExponential(p - 1) : x.toExponential()).indexOf("e")) < 0) return null; // NaN, ±Infinity
+    var i, coefficient = x.slice(0, i);
+
+    // The string returned by toExponential either has the form \d\.\d+e[-+]\d+
+    // (e.g., 1.2e+3) or the form \de[-+]\d+ (e.g., 1e+3).
+    return [
+      coefficient.length > 1 ? coefficient[0] + coefficient.slice(2) : coefficient,
+      +x.slice(i + 1)
+    ];
+  };
+
+  function exponent(x) {
+    return x = formatDecimal(Math.abs(x)), x ? x[1] : NaN;
+  };
+
+  function formatGroup(grouping, thousands) {
+    return function(value, width) {
+      var i = value.length,
+          t = [],
+          j = 0,
+          g = grouping[0],
+          length = 0;
+
+      while (i > 0 && g > 0) {
+        if (length + g + 1 > width) g = Math.max(1, width - length);
+        t.push(value.substring(i -= g, i + g));
+        if ((length += g + 1) > width) break;
+        g = grouping[j = (j + 1) % grouping.length];
+      }
+
+      return t.reverse().join(thousands);
+    };
+  };
+
+  var prefixExponent;
+
+  function formatPrefixAuto(x, p) {
+    var d = formatDecimal(x, p);
+    if (!d) return x + "";
+    var coefficient = d[0],
+        exponent = d[1],
+        i = exponent - (prefixExponent = Math.max(-8, Math.min(8, Math.floor(exponent / 3))) * 3) + 1,
+        n = coefficient.length;
+    return i === n ? coefficient
+        : i > n ? coefficient + new Array(i - n + 1).join("0")
+        : i > 0 ? coefficient.slice(0, i) + "." + coefficient.slice(i)
+        : "0." + new Array(1 - i).join("0") + formatDecimal(x, Math.max(0, p + i - 1))[0]; // less than 1y!
+  };
+
+  function formatRounded(x, p) {
+    var d = formatDecimal(x, p);
+    if (!d) return x + "";
+    var coefficient = d[0],
+        exponent = d[1];
+    return exponent < 0 ? "0." + new Array(-exponent).join("0") + coefficient
+        : coefficient.length > exponent + 1 ? coefficient.slice(0, exponent + 1) + "." + coefficient.slice(exponent + 1)
+        : coefficient + new Array(exponent - coefficient.length + 2).join("0");
+  };
+
+  function formatDefault(x, p) {
+    x = x.toPrecision(p);
+
+    out: for (var n = x.length, i = 1, i0 = -1, i1; i < n; ++i) {
+      switch (x[i]) {
+        case ".": i0 = i1 = i; break;
+        case "0": if (i0 === 0) i0 = i; i1 = i; break;
+        case "e": break out;
+        default: if (i0 > 0) i0 = 0; break;
+      }
+    }
+
+    return i0 > 0 ? x.slice(0, i0) + x.slice(i1 + 1) : x;
+  };
+
+  var formatTypes = {
+    "": formatDefault,
+    "%": function(x, p) { return (x * 100).toFixed(p); },
+    "b": function(x) { return Math.round(x).toString(2); },
+    "c": function(x) { return x + ""; },
+    "d": function(x) { return Math.round(x).toString(10); },
+    "e": function(x, p) { return x.toExponential(p); },
+    "f": function(x, p) { return x.toFixed(p); },
+    "g": function(x, p) { return x.toPrecision(p); },
+    "o": function(x) { return Math.round(x).toString(8); },
+    "p": function(x, p) { return formatRounded(x * 100, p); },
+    "r": formatRounded,
+    "s": formatPrefixAuto,
+    "X": function(x) { return Math.round(x).toString(16).toUpperCase(); },
+    "x": function(x) { return Math.round(x).toString(16); }
+  };
+
+  // [[fill]align][sign][symbol][0][width][,][.precision][type]
+  var re = /^(?:(.)?([<>=^]))?([+\-\( ])?([$#])?(0)?(\d+)?(,)?(\.\d+)?([a-z%])?$/i;
+
+  function formatSpecifier(specifier) {
+    return new FormatSpecifier(specifier);
+  };
+
+  function FormatSpecifier(specifier) {
+    if (!(match = re.exec(specifier))) throw new Error("invalid format: " + specifier);
+
+    var match,
+        fill = match[1] || " ",
+        align = match[2] || ">",
+        sign = match[3] || "-",
+        symbol = match[4] || "",
+        zero = !!match[5],
+        width = match[6] && +match[6],
+        comma = !!match[7],
+        precision = match[8] && +match[8].slice(1),
+        type = match[9] || "";
+
+    // The "n" type is an alias for ",g".
+    if (type === "n") comma = true, type = "g";
+
+    // Map invalid types to the default format.
+    else if (!formatTypes[type]) type = "";
+
+    // If zero fill is specified, padding goes after sign and before digits.
+    if (zero || (fill === "0" && align === "=")) zero = true, fill = "0", align = "=";
+
+    this.fill = fill;
+    this.align = align;
+    this.sign = sign;
+    this.symbol = symbol;
+    this.zero = zero;
+    this.width = width;
+    this.comma = comma;
+    this.precision = precision;
+    this.type = type;
+  }
+
+  FormatSpecifier.prototype.toString = function() {
+    return this.fill
+        + this.align
+        + this.sign
+        + this.symbol
+        + (this.zero ? "0" : "")
+        + (this.width == null ? "" : Math.max(1, this.width | 0))
+        + (this.comma ? "," : "")
+        + (this.precision == null ? "" : "." + Math.max(0, this.precision | 0))
+        + this.type;
+  };
+
+  var prefixes = ["y","z","a","f","p","n","µ","m","","k","M","G","T","P","E","Z","Y"];
+
+  function identity(x) {
+    return x;
+  }
+
+  function locale(locale) {
+    var group = locale.grouping && locale.thousands ? formatGroup(locale.grouping, locale.thousands) : identity,
+        currency = locale.currency,
+        decimal = locale.decimal;
+
+    function format(specifier) {
+      specifier = formatSpecifier(specifier);
+
+      var fill = specifier.fill,
+          align = specifier.align,
+          sign = specifier.sign,
+          symbol = specifier.symbol,
+          zero = specifier.zero,
+          width = specifier.width,
+          comma = specifier.comma,
+          precision = specifier.precision,
+          type = specifier.type;
+
+      // Compute the prefix and suffix.
+      // For SI-prefix, the suffix is lazily computed.
+      var prefix = symbol === "$" ? currency[0] : symbol === "#" && /[boxX]/.test(type) ? "0" + type.toLowerCase() : "",
+          suffix = symbol === "$" ? currency[1] : /[%p]/.test(type) ? "%" : "";
+
+      // What format function should we use?
+      // Is this an integer type?
+      // Can this type generate exponential notation?
+      var formatType = formatTypes[type],
+          maybeSuffix = !type || /[defgprs%]/.test(type);
+
+      // Set the default precision if not specified,
+      // or clamp the specified precision to the supported range.
+      // For significant precision, it must be in [1, 21].
+      // For fixed precision, it must be in [0, 20].
+      precision = precision == null ? (type ? 6 : 12)
+          : /[gprs]/.test(type) ? Math.max(1, Math.min(21, precision))
+          : Math.max(0, Math.min(20, precision));
+
+      return function(value) {
+        var valuePrefix = prefix,
+            valueSuffix = suffix;
+
+        if (type === "c") {
+          valueSuffix = formatType(value) + valueSuffix;
+          value = "";
+        } else {
+          value = +value;
+
+          // Convert negative to positive, and compute the prefix.
+          // Note that -0 is not less than 0, but 1 / -0 is!
+          var valueNegative = (value < 0 || 1 / value < 0) && (value *= -1, true);
+
+          // Perform the initial formatting.
+          value = formatType(value, precision);
+
+          // If the original value was negative, it may be rounded to zero during
+          // formatting; treat this as (positive) zero.
+          if (valueNegative) {
+            var i = -1, n = value.length, c;
+            valueNegative = false;
+            while (++i < n) {
+              if (c = value.charCodeAt(i), (48 < c && c < 58)
+                  || (type === "x" && 96 < c && c < 103)
+                  || (type === "X" && 64 < c && c < 71)) {
+                valueNegative = true;
+                break;
+              }
+            }
+          }
+
+          // Compute the prefix and suffix.
+          valuePrefix = (valueNegative ? (sign === "(" ? sign : "-") : sign === "-" || sign === "(" ? "" : sign) + valuePrefix;
+          valueSuffix = valueSuffix + (type === "s" ? prefixes[8 + prefixExponent / 3] : "") + (valueNegative && sign === "(" ? ")" : "");
+
+          // Break the formatted value into the integer “value” part that can be
+          // grouped, and fractional or exponential “suffix” part that is not.
+          if (maybeSuffix) {
+            var i = -1, n = value.length, c;
+            while (++i < n) {
+              if (c = value.charCodeAt(i), 48 > c || c > 57) {
+                valueSuffix = (c === 46 ? decimal + value.slice(i + 1) : value.slice(i)) + valueSuffix;
+                value = value.slice(0, i);
+                break;
+              }
+            }
+          }
+        }
+
+        // If the fill character is not "0", grouping is applied before padding.
+        if (comma && !zero) value = group(value, Infinity);
+
+        // Compute the padding.
+        var length = valuePrefix.length + value.length + valueSuffix.length,
+            padding = length < width ? new Array(width - length + 1).join(fill) : "";
+
+        // If the fill character is "0", grouping is applied after padding.
+        if (comma && zero) value = group(padding + value, padding.length ? width - valueSuffix.length : Infinity), padding = "";
+
+        // Reconstruct the final output based on the desired alignment.
+        switch (align) {
+          case "<": return valuePrefix + value + valueSuffix + padding;
+          case "=": return valuePrefix + padding + value + valueSuffix;
+          case "^": return padding.slice(0, length = padding.length >> 1) + valuePrefix + value + valueSuffix + padding.slice(length);
+        }
+        return padding + valuePrefix + value + valueSuffix;
+      };
+    }
+
+    function formatPrefix(specifier, value) {
+      var f = format((specifier = formatSpecifier(specifier), specifier.type = "f", specifier)),
+          e = Math.max(-8, Math.min(8, Math.floor(exponent(value) / 3))) * 3,
+          k = Math.pow(10, -e),
+          prefix = prefixes[8 + e / 3];
+      return function(value) {
+        return f(k * value) + prefix;
+      };
+    }
+
+    return {
+      format: format,
+      formatPrefix: formatPrefix
+    };
+  };
+
+  var defaultLocale = locale({
+    decimal: ".",
+    thousands: ",",
+    grouping: [3],
+    currency: ["$", ""]
+  });
+
+  var caES = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["", "\xa0€"]
+  });
+
+  var csCZ = locale({
+    decimal: ",",
+    thousands: "\xa0",
+    grouping: [3],
+    currency: ["", "\xa0Kč"],
+  });
+
+  var deCH = locale({
+    decimal: ",",
+    thousands: "'",
+    grouping: [3],
+    currency: ["", "\xa0CHF"]
+  });
+
+  var deDE = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["", "\xa0€"]
+  });
+
+  var enCA = locale({
+    decimal: ".",
+    thousands: ",",
+    grouping: [3],
+    currency: ["$", ""]
+  });
+
+  var enGB = locale({
+    decimal: ".",
+    thousands: ",",
+    grouping: [3],
+    currency: ["£", ""]
+  });
+
+  var esES = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["", "\xa0€"]
+  });
+
+  var fiFI = locale({
+    decimal: ",",
+    thousands: "\xa0",
+    grouping: [3],
+    currency: ["", "\xa0€"]
+  });
+
+  var frCA = locale({
+    decimal: ",",
+    thousands: "\xa0",
+    grouping: [3],
+    currency: ["", "$"]
+  });
+
+  var frFR = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["", "\xa0€"]
+  });
+
+  var heIL = locale({
+    decimal: ".",
+    thousands: ",",
+    grouping: [3],
+    currency: ["₪", ""]
+  });
+
+  var huHU = locale({
+    decimal: ",",
+    thousands: "\xa0",
+    grouping: [3],
+    currency: ["", "\xa0Ft"]
+  });
+
+  var itIT = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["€", ""]
+  });
+
+  var jaJP = locale({
+    decimal: ".",
+    thousands: ",",
+    grouping: [3],
+    currency: ["", "円"]
+  });
+
+  var koKR = locale({
+    decimal: ".",
+    thousands: ",",
+    grouping: [3],
+    currency: ["₩", ""]
+  });
+
+  var mkMK = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["", "\xa0ден."]
+  });
+
+  var nlNL = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["€\xa0", ""]
+  });
+
+  var plPL = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["", "zł"]
+  });
+
+  var ptBR = locale({
+    decimal: ",",
+    thousands: ".",
+    grouping: [3],
+    currency: ["R$", ""]
+  });
+
+  var ruRU = locale({
+    decimal: ",",
+    thousands: "\xa0",
+    grouping: [3],
+    currency: ["", "\xa0руб."]
+  });
+
+  var svSE = locale({
+    decimal: ",",
+    thousands: "\xa0",
+    grouping: [3],
+    currency: ["", "SEK"]
+  });
+
+  var zhCN = locale({
+    decimal: ".",
+    thousands: ",",
+    grouping: [3],
+    currency: ["¥", ""]
+  });
+
+  function precisionFixed(step) {
+    return Math.max(0, -exponent(Math.abs(step)));
+  };
+
+  function precisionPrefix(step, value) {
+    return Math.max(0, Math.max(-8, Math.min(8, Math.floor(exponent(value) / 3))) * 3 - exponent(Math.abs(step)));
+  };
+
+  function precisionRound(step, max) {
+    step = Math.abs(step), max = Math.abs(max) - step;
+    return Math.max(0, exponent(max) - exponent(step)) + 1;
+  };
+
+  var format = defaultLocale.format;
+  var formatPrefix = defaultLocale.formatPrefix;
+
+  var version = "0.4.2";
+
+  exports.version = version;
+  exports.format = format;
+  exports.formatPrefix = formatPrefix;
+  exports.locale = locale;
+  exports.localeCaEs = caES;
+  exports.localeCsCz = csCZ;
+  exports.localeDeCh = deCH;
+  exports.localeDeDe = deDE;
+  exports.localeEnCa = enCA;
+  exports.localeEnGb = enGB;
+  exports.localeEnUs = defaultLocale;
+  exports.localeEsEs = esES;
+  exports.localeFiFi = fiFI;
+  exports.localeFrCa = frCA;
+  exports.localeFrFr = frFR;
+  exports.localeHeIl = heIL;
+  exports.localeHuHu = huHU;
+  exports.localeItIt = itIT;
+  exports.localeJaJp = jaJP;
+  exports.localeKoKr = koKR;
+  exports.localeMkMk = mkMK;
+  exports.localeNlNl = nlNL;
+  exports.localePlPl = plPL;
+  exports.localePtBr = ptBR;
+  exports.localeRuRu = ruRU;
+  exports.localeSvSe = svSE;
+  exports.localeZhCn = zhCN;
+  exports.formatSpecifier = formatSpecifier;
+  exports.precisionFixed = precisionFixed;
+  exports.precisionPrefix = precisionPrefix;
+  exports.precisionRound = precisionRound;
+
+}));
+},{}],5:[function(require,module,exports){
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('d3-time')) :
+  typeof define === 'function' && define.amd ? define('d3-time-format', ['exports', 'd3-time'], factory) :
+  factory((global.d3_time_format = {}),global.d3_time);
+}(this, function (exports,d3Time) { 'use strict';
+
+  function localDate(d) {
+    if (0 <= d.y && d.y < 100) {
+      var date = new Date(-1, d.m, d.d, d.H, d.M, d.S, d.L);
+      date.setFullYear(d.y);
+      return date;
+    }
+    return new Date(d.y, d.m, d.d, d.H, d.M, d.S, d.L);
+  }
+
+  function utcDate(d) {
+    if (0 <= d.y && d.y < 100) {
+      var date = new Date(Date.UTC(-1, d.m, d.d, d.H, d.M, d.S, d.L));
+      date.setUTCFullYear(d.y);
+      return date;
+    }
+    return new Date(Date.UTC(d.y, d.m, d.d, d.H, d.M, d.S, d.L));
+  }
+
+  function newYear(y) {
+    return {y: y, m: 0, d: 1, H: 0, M: 0, S: 0, L: 0};
+  }
+
+  function locale$1(locale) {
+    var locale_dateTime = locale.dateTime,
+        locale_date = locale.date,
+        locale_time = locale.time,
+        locale_periods = locale.periods,
+        locale_weekdays = locale.days,
+        locale_shortWeekdays = locale.shortDays,
+        locale_months = locale.months,
+        locale_shortMonths = locale.shortMonths;
+
+    var periodRe = formatRe(locale_periods),
+        periodLookup = formatLookup(locale_periods),
+        weekdayRe = formatRe(locale_weekdays),
+        weekdayLookup = formatLookup(locale_weekdays),
+        shortWeekdayRe = formatRe(locale_shortWeekdays),
+        shortWeekdayLookup = formatLookup(locale_shortWeekdays),
+        monthRe = formatRe(locale_months),
+        monthLookup = formatLookup(locale_months),
+        shortMonthRe = formatRe(locale_shortMonths),
+        shortMonthLookup = formatLookup(locale_shortMonths);
+
+    var formats = {
+      "a": formatShortWeekday,
+      "A": formatWeekday,
+      "b": formatShortMonth,
+      "B": formatMonth,
+      "c": null,
+      "d": formatDayOfMonth,
+      "e": formatDayOfMonth,
+      "H": formatHour24,
+      "I": formatHour12,
+      "j": formatDayOfYear,
+      "L": formatMilliseconds,
+      "m": formatMonthNumber,
+      "M": formatMinutes,
+      "p": formatPeriod,
+      "S": formatSeconds,
+      "U": formatWeekNumberSunday,
+      "w": formatWeekdayNumber,
+      "W": formatWeekNumberMonday,
+      "x": null,
+      "X": null,
+      "y": formatYear,
+      "Y": formatFullYear,
+      "Z": formatZone,
+      "%": formatLiteralPercent
+    };
+
+    var utcFormats = {
+      "a": formatUTCShortWeekday,
+      "A": formatUTCWeekday,
+      "b": formatUTCShortMonth,
+      "B": formatUTCMonth,
+      "c": null,
+      "d": formatUTCDayOfMonth,
+      "e": formatUTCDayOfMonth,
+      "H": formatUTCHour24,
+      "I": formatUTCHour12,
+      "j": formatUTCDayOfYear,
+      "L": formatUTCMilliseconds,
+      "m": formatUTCMonthNumber,
+      "M": formatUTCMinutes,
+      "p": formatUTCPeriod,
+      "S": formatUTCSeconds,
+      "U": formatUTCWeekNumberSunday,
+      "w": formatUTCWeekdayNumber,
+      "W": formatUTCWeekNumberMonday,
+      "x": null,
+      "X": null,
+      "y": formatUTCYear,
+      "Y": formatUTCFullYear,
+      "Z": formatUTCZone,
+      "%": formatLiteralPercent
+    };
+
+    var parses = {
+      "a": parseShortWeekday,
+      "A": parseWeekday,
+      "b": parseShortMonth,
+      "B": parseMonth,
+      "c": parseLocaleDateTime,
+      "d": parseDayOfMonth,
+      "e": parseDayOfMonth,
+      "H": parseHour24,
+      "I": parseHour24,
+      "j": parseDayOfYear,
+      "L": parseMilliseconds,
+      "m": parseMonthNumber,
+      "M": parseMinutes,
+      "p": parsePeriod,
+      "S": parseSeconds,
+      "U": parseWeekNumberSunday,
+      "w": parseWeekdayNumber,
+      "W": parseWeekNumberMonday,
+      "x": parseLocaleDate,
+      "X": parseLocaleTime,
+      "y": parseYear,
+      "Y": parseFullYear,
+      "Z": parseZone,
+      "%": parseLiteralPercent
+    };
+
+    // These recursive directive definitions must be deferred.
+    formats.x = newFormat(locale_date, formats);
+    formats.X = newFormat(locale_time, formats);
+    formats.c = newFormat(locale_dateTime, formats);
+    utcFormats.x = newFormat(locale_date, utcFormats);
+    utcFormats.X = newFormat(locale_time, utcFormats);
+    utcFormats.c = newFormat(locale_dateTime, utcFormats);
+
+    function newFormat(specifier, formats) {
+      return function(date) {
+        var string = [],
+            i = -1,
+            j = 0,
+            n = specifier.length,
+            c,
+            pad,
+            format;
+
+        if (!(date instanceof Date)) date = new Date(+date);
+
+        while (++i < n) {
+          if (specifier.charCodeAt(i) === 37) {
+            string.push(specifier.slice(j, i));
+            if ((pad = pads[c = specifier.charAt(++i)]) != null) c = specifier.charAt(++i);
+            else pad = c === "e" ? " " : "0";
+            if (format = formats[c]) c = format(date, pad);
+            string.push(c);
+            j = i + 1;
+          }
+        }
+
+        string.push(specifier.slice(j, i));
+        return string.join("");
+      };
+    }
+
+    function newParse(specifier, newDate) {
+      return function(string) {
+        var d = newYear(1900),
+            i = parseSpecifier(d, specifier, string += "", 0);
+        if (i != string.length) return null;
+
+        // The am-pm flag is 0 for AM, and 1 for PM.
+        if ("p" in d) d.H = d.H % 12 + d.p * 12;
+
+        // Convert day-of-week and week-of-year to day-of-year.
+        if ("W" in d || "U" in d) {
+          if (!("w" in d)) d.w = "W" in d ? 1 : 0;
+          var day = "Z" in d ? utcDate(newYear(d.y)).getUTCDay() : newDate(newYear(d.y)).getDay();
+          d.m = 0;
+          d.d = "W" in d ? (d.w + 6) % 7 + d.W * 7 - (day + 5) % 7 : d.w + d.U * 7 - (day + 6) % 7;
+        }
+
+        // If a time zone is specified, all fields are interpreted as UTC and then
+        // offset according to the specified time zone.
+        if ("Z" in d) {
+          d.H += d.Z / 100 | 0;
+          d.M += d.Z % 100;
+          return utcDate(d);
+        }
+
+        // Otherwise, all fields are in local time.
+        return newDate(d);
+      };
+    }
+
+    function parseSpecifier(d, specifier, string, j) {
+      var i = 0,
+          n = specifier.length,
+          m = string.length,
+          c,
+          parse;
+
+      while (i < n) {
+        if (j >= m) return -1;
+        c = specifier.charCodeAt(i++);
+        if (c === 37) {
+          c = specifier.charAt(i++);
+          parse = parses[c in pads ? specifier.charAt(i++) : c];
+          if (!parse || ((j = parse(d, string, j)) < 0)) return -1;
+        } else if (c != string.charCodeAt(j++)) {
+          return -1;
+        }
+      }
+
+      return j;
+    }
+
+    function parsePeriod(d, string, i) {
+      var n = periodRe.exec(string.slice(i));
+      return n ? (d.p = periodLookup[n[0].toLowerCase()], i + n[0].length) : -1;
+    }
+
+    function parseShortWeekday(d, string, i) {
+      var n = shortWeekdayRe.exec(string.slice(i));
+      return n ? (d.w = shortWeekdayLookup[n[0].toLowerCase()], i + n[0].length) : -1;
+    }
+
+    function parseWeekday(d, string, i) {
+      var n = weekdayRe.exec(string.slice(i));
+      return n ? (d.w = weekdayLookup[n[0].toLowerCase()], i + n[0].length) : -1;
+    }
+
+    function parseShortMonth(d, string, i) {
+      var n = shortMonthRe.exec(string.slice(i));
+      return n ? (d.m = shortMonthLookup[n[0].toLowerCase()], i + n[0].length) : -1;
+    }
+
+    function parseMonth(d, string, i) {
+      var n = monthRe.exec(string.slice(i));
+      return n ? (d.m = monthLookup[n[0].toLowerCase()], i + n[0].length) : -1;
+    }
+
+    function parseLocaleDateTime(d, string, i) {
+      return parseSpecifier(d, locale_dateTime, string, i);
+    }
+
+    function parseLocaleDate(d, string, i) {
+      return parseSpecifier(d, locale_date, string, i);
+    }
+
+    function parseLocaleTime(d, string, i) {
+      return parseSpecifier(d, locale_time, string, i);
+    }
+
+    function formatShortWeekday(d) {
+      return locale_shortWeekdays[d.getDay()];
+    }
+
+    function formatWeekday(d) {
+      return locale_weekdays[d.getDay()];
+    }
+
+    function formatShortMonth(d) {
+      return locale_shortMonths[d.getMonth()];
+    }
+
+    function formatMonth(d) {
+      return locale_months[d.getMonth()];
+    }
+
+    function formatPeriod(d) {
+      return locale_periods[+(d.getHours() >= 12)];
+    }
+
+    function formatUTCShortWeekday(d) {
+      return locale_shortWeekdays[d.getUTCDay()];
+    }
+
+    function formatUTCWeekday(d) {
+      return locale_weekdays[d.getUTCDay()];
+    }
+
+    function formatUTCShortMonth(d) {
+      return locale_shortMonths[d.getUTCMonth()];
+    }
+
+    function formatUTCMonth(d) {
+      return locale_months[d.getUTCMonth()];
+    }
+
+    function formatUTCPeriod(d) {
+      return locale_periods[+(d.getUTCHours() >= 12)];
+    }
+
+    return {
+      format: function(specifier) {
+        var f = newFormat(specifier += "", formats);
+        f.parse = newParse(specifier, localDate);
+        f.toString = function() { return specifier; };
+        return f;
+      },
+      utcFormat: function(specifier) {
+        var f = newFormat(specifier += "", utcFormats);
+        f.parse = newParse(specifier, utcDate);
+        f.toString = function() { return specifier; };
+        return f;
+      }
+    };
+  };
+
+  var pads = {"-": "", "_": " ", "0": "0"};
+  var numberRe = /^\s*\d+/;
+  var percentRe = /^%/;
+  var requoteRe = /[\\\^\$\*\+\?\|\[\]\(\)\.\{\}]/g;
+  function pad(value, fill, width) {
+    var sign = value < 0 ? "-" : "",
+        string = (sign ? -value : value) + "",
+        length = string.length;
+    return sign + (length < width ? new Array(width - length + 1).join(fill) + string : string);
+  }
+
+  function requote(s) {
+    return s.replace(requoteRe, "\\$&");
+  }
+
+  function formatRe(names) {
+    return new RegExp("^(?:" + names.map(requote).join("|") + ")", "i");
+  }
+
+  function formatLookup(names) {
+    var map = {}, i = -1, n = names.length;
+    while (++i < n) map[names[i].toLowerCase()] = i;
+    return map;
+  }
+
+  function parseWeekdayNumber(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 1));
+    return n ? (d.w = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseWeekNumberSunday(d, string, i) {
+    var n = numberRe.exec(string.slice(i));
+    return n ? (d.U = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseWeekNumberMonday(d, string, i) {
+    var n = numberRe.exec(string.slice(i));
+    return n ? (d.W = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseFullYear(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 4));
+    return n ? (d.y = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseYear(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 2));
+    return n ? (d.y = +n[0] + (+n[0] > 68 ? 1900 : 2000), i + n[0].length) : -1;
+  }
+
+  function parseZone(d, string, i) {
+    var n = /^(Z)|([+-]\d\d)(?:\:?(\d\d))?/.exec(string.slice(i, i + 6));
+    return n ? (d.Z = n[1] ? 0 : -(n[2] + (n[3] || "00")), i + n[0].length) : -1;
+  }
+
+  function parseMonthNumber(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 2));
+    return n ? (d.m = n[0] - 1, i + n[0].length) : -1;
+  }
+
+  function parseDayOfMonth(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 2));
+    return n ? (d.d = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseDayOfYear(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 3));
+    return n ? (d.m = 0, d.d = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseHour24(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 2));
+    return n ? (d.H = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseMinutes(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 2));
+    return n ? (d.M = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseSeconds(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 2));
+    return n ? (d.S = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseMilliseconds(d, string, i) {
+    var n = numberRe.exec(string.slice(i, i + 3));
+    return n ? (d.L = +n[0], i + n[0].length) : -1;
+  }
+
+  function parseLiteralPercent(d, string, i) {
+    var n = percentRe.exec(string.slice(i, i + 1));
+    return n ? i + n[0].length : -1;
+  }
+
+  function formatDayOfMonth(d, p) {
+    return pad(d.getDate(), p, 2);
+  }
+
+  function formatHour24(d, p) {
+    return pad(d.getHours(), p, 2);
+  }
+
+  function formatHour12(d, p) {
+    return pad(d.getHours() % 12 || 12, p, 2);
+  }
+
+  function formatDayOfYear(d, p) {
+    return pad(1 + d3Time.day.count(d3Time.year(d), d), p, 3);
+  }
+
+  function formatMilliseconds(d, p) {
+    return pad(d.getMilliseconds(), p, 3);
+  }
+
+  function formatMonthNumber(d, p) {
+    return pad(d.getMonth() + 1, p, 2);
+  }
+
+  function formatMinutes(d, p) {
+    return pad(d.getMinutes(), p, 2);
+  }
+
+  function formatSeconds(d, p) {
+    return pad(d.getSeconds(), p, 2);
+  }
+
+  function formatWeekNumberSunday(d, p) {
+    return pad(d3Time.sunday.count(d3Time.year(d), d), p, 2);
+  }
+
+  function formatWeekdayNumber(d) {
+    return d.getDay();
+  }
+
+  function formatWeekNumberMonday(d, p) {
+    return pad(d3Time.monday.count(d3Time.year(d), d), p, 2);
+  }
+
+  function formatYear(d, p) {
+    return pad(d.getFullYear() % 100, p, 2);
+  }
+
+  function formatFullYear(d, p) {
+    return pad(d.getFullYear() % 10000, p, 4);
+  }
+
+  function formatZone(d) {
+    var z = d.getTimezoneOffset();
+    return (z > 0 ? "-" : (z *= -1, "+"))
+        + pad(z / 60 | 0, "0", 2)
+        + pad(z % 60, "0", 2);
+  }
+
+  function formatUTCDayOfMonth(d, p) {
+    return pad(d.getUTCDate(), p, 2);
+  }
+
+  function formatUTCHour24(d, p) {
+    return pad(d.getUTCHours(), p, 2);
+  }
+
+  function formatUTCHour12(d, p) {
+    return pad(d.getUTCHours() % 12 || 12, p, 2);
+  }
+
+  function formatUTCDayOfYear(d, p) {
+    return pad(1 + d3Time.utcDay.count(d3Time.utcYear(d), d), p, 3);
+  }
+
+  function formatUTCMilliseconds(d, p) {
+    return pad(d.getUTCMilliseconds(), p, 3);
+  }
+
+  function formatUTCMonthNumber(d, p) {
+    return pad(d.getUTCMonth() + 1, p, 2);
+  }
+
+  function formatUTCMinutes(d, p) {
+    return pad(d.getUTCMinutes(), p, 2);
+  }
+
+  function formatUTCSeconds(d, p) {
+    return pad(d.getUTCSeconds(), p, 2);
+  }
+
+  function formatUTCWeekNumberSunday(d, p) {
+    return pad(d3Time.utcSunday.count(d3Time.utcYear(d), d), p, 2);
+  }
+
+  function formatUTCWeekdayNumber(d) {
+    return d.getUTCDay();
+  }
+
+  function formatUTCWeekNumberMonday(d, p) {
+    return pad(d3Time.utcMonday.count(d3Time.utcYear(d), d), p, 2);
+  }
+
+  function formatUTCYear(d, p) {
+    return pad(d.getUTCFullYear() % 100, p, 2);
+  }
+
+  function formatUTCFullYear(d, p) {
+    return pad(d.getUTCFullYear() % 10000, p, 4);
+  }
+
+  function formatUTCZone() {
+    return "+0000";
+  }
+
+  function formatLiteralPercent() {
+    return "%";
+  }
+
+  var locale = locale$1({
+    dateTime: "%a %b %e %X %Y",
+    date: "%m/%d/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    shortDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    shortMonths: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  });
+
+  var caES = locale$1({
+    dateTime: "%A, %e de %B de %Y, %X",
+    date: "%d/%m/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["diumenge", "dilluns", "dimarts", "dimecres", "dijous", "divendres", "dissabte"],
+    shortDays: ["dg.", "dl.", "dt.", "dc.", "dj.", "dv.", "ds."],
+    months: ["gener", "febrer", "març", "abril", "maig", "juny", "juliol", "agost", "setembre", "octubre", "novembre", "desembre"],
+    shortMonths: ["gen.", "febr.", "març", "abr.", "maig", "juny", "jul.", "ag.", "set.", "oct.", "nov.", "des."]
+  });
+
+  var deCH = locale$1({
+    dateTime: "%A, der %e. %B %Y, %X",
+    date: "%d.%m.%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"], // unused
+    days: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+    shortDays: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+    months: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
+    shortMonths: ["Jan", "Feb", "Mrz", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+  });
+
+  var deDE = locale$1({
+    dateTime: "%A, der %e. %B %Y, %X",
+    date: "%d.%m.%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"], // unused
+    days: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+    shortDays: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+    months: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
+    shortMonths: ["Jan", "Feb", "Mrz", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+  });
+
+  var enCA = locale$1({
+    dateTime: "%a %b %e %X %Y",
+    date: "%Y-%m-%d",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    shortDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    shortMonths: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  });
+
+  var enGB = locale$1({
+    dateTime: "%a %e %b %X %Y",
+    date: "%d/%m/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    shortDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    shortMonths: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  });
+
+  var esES = locale$1({
+    dateTime: "%A, %e de %B de %Y, %X",
+    date: "%d/%m/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
+    shortDays: ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"],
+    months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+    shortMonths: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+  });
+
+  var fiFI = locale$1({
+    dateTime: "%A, %-d. %Bta %Y klo %X",
+    date: "%-d.%-m.%Y",
+    time: "%H:%M:%S",
+    periods: ["a.m.", "p.m."],
+    days: ["sunnuntai", "maanantai", "tiistai", "keskiviikko", "torstai", "perjantai", "lauantai"],
+    shortDays: ["Su", "Ma", "Ti", "Ke", "To", "Pe", "La"],
+    months: ["tammikuu", "helmikuu", "maaliskuu", "huhtikuu", "toukokuu", "kesäkuu", "heinäkuu", "elokuu", "syyskuu", "lokakuu", "marraskuu", "joulukuu"],
+    shortMonths: ["Tammi", "Helmi", "Maalis", "Huhti", "Touko", "Kesä", "Heinä", "Elo", "Syys", "Loka", "Marras", "Joulu"]
+  });
+
+  var frCA = locale$1({
+    dateTime: "%a %e %b %Y %X",
+    date: "%Y-%m-%d",
+    time: "%H:%M:%S",
+    periods: ["", ""],
+    days: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
+    shortDays: ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"],
+    months: ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
+    shortMonths: ["jan", "fév", "mar", "avr", "mai", "jui", "jul", "aoû", "sep", "oct", "nov", "déc"]
+  });
+
+  var frFR = locale$1({
+    dateTime: "%A, le %e %B %Y, %X",
+    date: "%d/%m/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"], // unused
+    days: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
+    shortDays: ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."],
+    months: ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
+    shortMonths: ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+  });
+
+  var heIL = locale$1({
+    dateTime: "%A, %e ב%B %Y %X",
+    date: "%d.%m.%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"],
+    shortDays: ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"],
+    months: ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"],
+    shortMonths: ["ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳"]
+  });
+
+  var huHU = locale$1({
+    dateTime: "%Y. %B %-e., %A %X",
+    date: "%Y. %m. %d.",
+    time: "%H:%M:%S",
+    periods: ["de.", "du."], // unused
+    days: ["vasárnap", "hétfő", "kedd", "szerda", "csütörtök", "péntek", "szombat"],
+    shortDays: ["V", "H", "K", "Sze", "Cs", "P", "Szo"],
+    months: ["január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"],
+    shortMonths: ["jan.", "feb.", "már.", "ápr.", "máj.", "jún.", "júl.", "aug.", "szept.", "okt.", "nov.", "dec."]
+  });
+
+  var itIT = locale$1({
+    dateTime: "%A %e %B %Y, %X",
+    date: "%d/%m/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"], // unused
+    days: ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"],
+    shortDays: ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"],
+    months: ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"],
+    shortMonths: ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+  });
+
+  var jaJP = locale$1({
+    dateTime: "%Y %b %e %a %X",
+    date: "%Y/%m/%d",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
+    shortDays: ["日", "月", "火", "水", "木", "金", "土"],
+    months: ["睦月", "如月", "弥生", "卯月", "皐月", "水無月", "文月", "葉月", "長月", "神無月", "霜月", "師走"],
+    shortMonths: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
+  });
+
+  var koKR = locale$1({
+    dateTime: "%Y/%m/%d %a %X",
+    date: "%Y/%m/%d",
+    time: "%H:%M:%S",
+    periods: ["오전", "오후"],
+    days: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
+    shortDays: ["일", "월", "화", "수", "목", "금", "토"],
+    months: ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
+    shortMonths: ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+  });
+
+  var mkMK = locale$1({
+    dateTime: "%A, %e %B %Y г. %X",
+    date: "%d.%m.%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["недела", "понеделник", "вторник", "среда", "четврток", "петок", "сабота"],
+    shortDays: ["нед", "пон", "вто", "сре", "чет", "пет", "саб"],
+    months: ["јануари", "февруари", "март", "април", "мај", "јуни", "јули", "август", "септември", "октомври", "ноември", "декември"],
+    shortMonths: ["јан", "фев", "мар", "апр", "мај", "јун", "јул", "авг", "сеп", "окт", "ное", "дек"]
+  });
+
+  var nlNL = locale$1({
+    dateTime: "%a %e %B %Y %T",
+    date: "%d-%m-%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"], // unused
+    days: ["zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"],
+    shortDays: ["zo", "ma", "di", "wo", "do", "vr", "za"],
+    months: ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"],
+    shortMonths: ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
+  });
+
+  var plPL = locale$1({
+    dateTime: "%A, %e %B %Y, %X",
+    date: "%d/%m/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"], // unused
+    days: ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"],
+    shortDays: ["Niedz.", "Pon.", "Wt.", "Śr.", "Czw.", "Pt.", "Sob."],
+    months: ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"],
+    shortMonths: ["Stycz.", "Luty", "Marz.", "Kwie.", "Maj", "Czerw.", "Lipc.", "Sierp.", "Wrz.", "Paźdz.", "Listop.", "Grudz."]/* In Polish language abbraviated months are not commonly used so there is a dispute about the proper abbraviations. */
+  });
+
+  var ptBR = locale$1({
+    dateTime: "%A, %e de %B de %Y. %X",
+    date: "%d/%m/%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"],
+    shortDays: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
+    months: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
+    shortMonths: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+  });
+
+  var ruRU = locale$1({
+    dateTime: "%A, %e %B %Y г. %X",
+    date: "%d.%m.%Y",
+    time: "%H:%M:%S",
+    periods: ["AM", "PM"],
+    days: ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"],
+    shortDays: ["вс", "пн", "вт", "ср", "чт", "пт", "сб"],
+    months: ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"],
+    shortMonths: ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+  });
+
+  var svSE = locale$1({
+    dateTime: "%A den %d %B %Y %X",
+    date: "%Y-%m-%d",
+    time: "%H:%M:%S",
+    periods: ["fm", "em"],
+    days: ["Söndag", "Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag"],
+    shortDays: ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"],
+    months: ["Januari", "Februari", "Mars", "April", "Maj", "Juni", "Juli", "Augusti", "September", "Oktober", "November", "December"],
+    shortMonths: ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"]
+  });
+
+  var zhCN = locale$1({
+    dateTime: "%a %b %e %X %Y",
+    date: "%Y/%-m/%-d",
+    time: "%H:%M:%S",
+    periods: ["上午", "下午"],
+    days: ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"],
+    shortDays: ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"],
+    months: ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"],
+    shortMonths: ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
+  });
+
+  var isoSpecifier = "%Y-%m-%dT%H:%M:%S.%LZ";
+
+  function formatIsoNative(date) {
+    return date.toISOString();
+  }
+
+  formatIsoNative.parse = function(string) {
+    var date = new Date(string);
+    return isNaN(date) ? null : date;
+  };
+
+  formatIsoNative.toString = function() {
+    return isoSpecifier;
+  };
+
+  var formatIso = Date.prototype.toISOString && +new Date("2000-01-01T00:00:00.000Z")
+      ? formatIsoNative
+      : locale.utcFormat(isoSpecifier);
+
+  var format = locale.format;
+  var utcFormat = locale.utcFormat;
+
+  var version = "0.2.1";
+
+  exports.version = version;
+  exports.format = format;
+  exports.utcFormat = utcFormat;
+  exports.locale = locale$1;
+  exports.localeCaEs = caES;
+  exports.localeDeCh = deCH;
+  exports.localeDeDe = deDE;
+  exports.localeEnCa = enCA;
+  exports.localeEnGb = enGB;
+  exports.localeEnUs = locale;
+  exports.localeEsEs = esES;
+  exports.localeFiFi = fiFI;
+  exports.localeFrCa = frCA;
+  exports.localeFrFr = frFR;
+  exports.localeHeIl = heIL;
+  exports.localeHuHu = huHU;
+  exports.localeItIt = itIT;
+  exports.localeJaJp = jaJP;
+  exports.localeKoKr = koKR;
+  exports.localeMkMk = mkMK;
+  exports.localeNlNl = nlNL;
+  exports.localePlPl = plPL;
+  exports.localePtBr = ptBR;
+  exports.localeRuRu = ruRU;
+  exports.localeSvSe = svSE;
+  exports.localeZhCn = zhCN;
+  exports.isoFormat = formatIso;
+
+}));
+},{"d3-time":6}],6:[function(require,module,exports){
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define('d3-time', ['exports'], factory) :
+  factory((global.d3_time = {}));
+}(this, function (exports) { 'use strict';
+
+  var t0 = new Date;
+  var t1 = new Date;
+  function newInterval(floori, offseti, count, field) {
+
+    function interval(date) {
+      return floori(date = new Date(+date)), date;
+    }
+
+    interval.floor = interval;
+
+    interval.round = function(date) {
+      var d0 = new Date(+date),
+          d1 = new Date(date - 1);
+      floori(d0), floori(d1), offseti(d1, 1);
+      return date - d0 < d1 - date ? d0 : d1;
+    };
+
+    interval.ceil = function(date) {
+      return floori(date = new Date(date - 1)), offseti(date, 1), date;
+    };
+
+    interval.offset = function(date, step) {
+      return offseti(date = new Date(+date), step == null ? 1 : Math.floor(step)), date;
+    };
+
+    interval.range = function(start, stop, step) {
+      var range = [];
+      start = new Date(start - 1);
+      stop = new Date(+stop);
+      step = step == null ? 1 : Math.floor(step);
+      if (!(start < stop) || !(step > 0)) return range; // also handles Invalid Date
+      offseti(start, 1), floori(start);
+      if (start < stop) range.push(new Date(+start));
+      while (offseti(start, step), floori(start), start < stop) range.push(new Date(+start));
+      return range;
+    };
+
+    interval.filter = function(test) {
+      return newInterval(function(date) {
+        while (floori(date), !test(date)) date.setTime(date - 1);
+      }, function(date, step) {
+        while (--step >= 0) while (offseti(date, 1), !test(date));
+      });
+    };
+
+    if (count) {
+      interval.count = function(start, end) {
+        t0.setTime(+start), t1.setTime(+end);
+        floori(t0), floori(t1);
+        return Math.floor(count(t0, t1));
+      };
+
+      interval.every = function(step) {
+        step = Math.floor(step);
+        return !isFinite(step) || !(step > 0) ? null
+            : !(step > 1) ? interval
+            : interval.filter(field
+                ? function(d) { return field(d) % step === 0; }
+                : function(d) { return interval.count(0, d) % step === 0; });
+      };
+    }
+
+    return interval;
+  };
+
+  var millisecond = newInterval(function() {
+    // noop
+  }, function(date, step) {
+    date.setTime(+date + step);
+  }, function(start, end) {
+    return end - start;
+  });
+
+  // An optimized implementation for this simple case.
+  millisecond.every = function(k) {
+    k = Math.floor(k);
+    if (!isFinite(k) || !(k > 0)) return null;
+    if (!(k > 1)) return millisecond;
+    return newInterval(function(date) {
+      date.setTime(Math.floor(date / k) * k);
+    }, function(date, step) {
+      date.setTime(+date + step * k);
+    }, function(start, end) {
+      return (end - start) / k;
+    });
+  };
+
+  var second = newInterval(function(date) {
+    date.setMilliseconds(0);
+  }, function(date, step) {
+    date.setTime(+date + step * 1e3);
+  }, function(start, end) {
+    return (end - start) / 1e3;
+  }, function(date) {
+    return date.getSeconds();
+  });
+
+  var minute = newInterval(function(date) {
+    date.setSeconds(0, 0);
+  }, function(date, step) {
+    date.setTime(+date + step * 6e4);
+  }, function(start, end) {
+    return (end - start) / 6e4;
+  }, function(date) {
+    return date.getMinutes();
+  });
+
+  var hour = newInterval(function(date) {
+    date.setMinutes(0, 0, 0);
+  }, function(date, step) {
+    date.setTime(+date + step * 36e5);
+  }, function(start, end) {
+    return (end - start) / 36e5;
+  }, function(date) {
+    return date.getHours();
+  });
+
+  var day = newInterval(function(date) {
+    date.setHours(0, 0, 0, 0);
+  }, function(date, step) {
+    date.setDate(date.getDate() + step);
+  }, function(start, end) {
+    return (end - start - (end.getTimezoneOffset() - start.getTimezoneOffset()) * 6e4) / 864e5;
+  }, function(date) {
+    return date.getDate() - 1;
+  });
+
+  function weekday(i) {
+    return newInterval(function(date) {
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (date.getDay() + 7 - i) % 7);
+    }, function(date, step) {
+      date.setDate(date.getDate() + step * 7);
+    }, function(start, end) {
+      return (end - start - (end.getTimezoneOffset() - start.getTimezoneOffset()) * 6e4) / 6048e5;
+    });
+  }
+
+  var sunday = weekday(0);
+  var monday = weekday(1);
+  var tuesday = weekday(2);
+  var wednesday = weekday(3);
+  var thursday = weekday(4);
+  var friday = weekday(5);
+  var saturday = weekday(6);
+
+  var month = newInterval(function(date) {
+    date.setHours(0, 0, 0, 0);
+    date.setDate(1);
+  }, function(date, step) {
+    date.setMonth(date.getMonth() + step);
+  }, function(start, end) {
+    return end.getMonth() - start.getMonth() + (end.getFullYear() - start.getFullYear()) * 12;
+  }, function(date) {
+    return date.getMonth();
+  });
+
+  var year = newInterval(function(date) {
+    date.setHours(0, 0, 0, 0);
+    date.setMonth(0, 1);
+  }, function(date, step) {
+    date.setFullYear(date.getFullYear() + step);
+  }, function(start, end) {
+    return end.getFullYear() - start.getFullYear();
+  }, function(date) {
+    return date.getFullYear();
+  });
+
+  var utcSecond = newInterval(function(date) {
+    date.setUTCMilliseconds(0);
+  }, function(date, step) {
+    date.setTime(+date + step * 1e3);
+  }, function(start, end) {
+    return (end - start) / 1e3;
+  }, function(date) {
+    return date.getUTCSeconds();
+  });
+
+  var utcMinute = newInterval(function(date) {
+    date.setUTCSeconds(0, 0);
+  }, function(date, step) {
+    date.setTime(+date + step * 6e4);
+  }, function(start, end) {
+    return (end - start) / 6e4;
+  }, function(date) {
+    return date.getUTCMinutes();
+  });
+
+  var utcHour = newInterval(function(date) {
+    date.setUTCMinutes(0, 0, 0);
+  }, function(date, step) {
+    date.setTime(+date + step * 36e5);
+  }, function(start, end) {
+    return (end - start) / 36e5;
+  }, function(date) {
+    return date.getUTCHours();
+  });
+
+  var utcDay = newInterval(function(date) {
+    date.setUTCHours(0, 0, 0, 0);
+  }, function(date, step) {
+    date.setUTCDate(date.getUTCDate() + step);
+  }, function(start, end) {
+    return (end - start) / 864e5;
+  }, function(date) {
+    return date.getUTCDate() - 1;
+  });
+
+  function utcWeekday(i) {
+    return newInterval(function(date) {
+      date.setUTCHours(0, 0, 0, 0);
+      date.setUTCDate(date.getUTCDate() - (date.getUTCDay() + 7 - i) % 7);
+    }, function(date, step) {
+      date.setUTCDate(date.getUTCDate() + step * 7);
+    }, function(start, end) {
+      return (end - start) / 6048e5;
+    });
+  }
+
+  var utcSunday = utcWeekday(0);
+  var utcMonday = utcWeekday(1);
+  var utcTuesday = utcWeekday(2);
+  var utcWednesday = utcWeekday(3);
+  var utcThursday = utcWeekday(4);
+  var utcFriday = utcWeekday(5);
+  var utcSaturday = utcWeekday(6);
+
+  var utcMonth = newInterval(function(date) {
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(1);
+  }, function(date, step) {
+    date.setUTCMonth(date.getUTCMonth() + step);
+  }, function(start, end) {
+    return end.getUTCMonth() - start.getUTCMonth() + (end.getUTCFullYear() - start.getUTCFullYear()) * 12;
+  }, function(date) {
+    return date.getUTCMonth();
+  });
+
+  var utcYear = newInterval(function(date) {
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCMonth(0, 1);
+  }, function(date, step) {
+    date.setUTCFullYear(date.getUTCFullYear() + step);
+  }, function(start, end) {
+    return end.getUTCFullYear() - start.getUTCFullYear();
+  }, function(date) {
+    return date.getUTCFullYear();
+  });
+
+  var milliseconds = millisecond.range;
+  var seconds = second.range;
+  var minutes = minute.range;
+  var hours = hour.range;
+  var days = day.range;
+  var sundays = sunday.range;
+  var mondays = monday.range;
+  var tuesdays = tuesday.range;
+  var wednesdays = wednesday.range;
+  var thursdays = thursday.range;
+  var fridays = friday.range;
+  var saturdays = saturday.range;
+  var weeks = sunday.range;
+  var months = month.range;
+  var years = year.range;
+
+  var utcMillisecond = millisecond;
+  var utcMilliseconds = milliseconds;
+  var utcSeconds = utcSecond.range;
+  var utcMinutes = utcMinute.range;
+  var utcHours = utcHour.range;
+  var utcDays = utcDay.range;
+  var utcSundays = utcSunday.range;
+  var utcMondays = utcMonday.range;
+  var utcTuesdays = utcTuesday.range;
+  var utcWednesdays = utcWednesday.range;
+  var utcThursdays = utcThursday.range;
+  var utcFridays = utcFriday.range;
+  var utcSaturdays = utcSaturday.range;
+  var utcWeeks = utcSunday.range;
+  var utcMonths = utcMonth.range;
+  var utcYears = utcYear.range;
+
+  var version = "0.1.1";
+
+  exports.version = version;
+  exports.milliseconds = milliseconds;
+  exports.seconds = seconds;
+  exports.minutes = minutes;
+  exports.hours = hours;
+  exports.days = days;
+  exports.sundays = sundays;
+  exports.mondays = mondays;
+  exports.tuesdays = tuesdays;
+  exports.wednesdays = wednesdays;
+  exports.thursdays = thursdays;
+  exports.fridays = fridays;
+  exports.saturdays = saturdays;
+  exports.weeks = weeks;
+  exports.months = months;
+  exports.years = years;
+  exports.utcMillisecond = utcMillisecond;
+  exports.utcMilliseconds = utcMilliseconds;
+  exports.utcSeconds = utcSeconds;
+  exports.utcMinutes = utcMinutes;
+  exports.utcHours = utcHours;
+  exports.utcDays = utcDays;
+  exports.utcSundays = utcSundays;
+  exports.utcMondays = utcMondays;
+  exports.utcTuesdays = utcTuesdays;
+  exports.utcWednesdays = utcWednesdays;
+  exports.utcThursdays = utcThursdays;
+  exports.utcFridays = utcFridays;
+  exports.utcSaturdays = utcSaturdays;
+  exports.utcWeeks = utcWeeks;
+  exports.utcMonths = utcMonths;
+  exports.utcYears = utcYears;
+  exports.millisecond = millisecond;
+  exports.second = second;
+  exports.minute = minute;
+  exports.hour = hour;
+  exports.day = day;
+  exports.sunday = sunday;
+  exports.monday = monday;
+  exports.tuesday = tuesday;
+  exports.wednesday = wednesday;
+  exports.thursday = thursday;
+  exports.friday = friday;
+  exports.saturday = saturday;
+  exports.week = sunday;
+  exports.month = month;
+  exports.year = year;
+  exports.utcSecond = utcSecond;
+  exports.utcMinute = utcMinute;
+  exports.utcHour = utcHour;
+  exports.utcDay = utcDay;
+  exports.utcSunday = utcSunday;
+  exports.utcMonday = utcMonday;
+  exports.utcTuesday = utcTuesday;
+  exports.utcWednesday = utcWednesday;
+  exports.utcThursday = utcThursday;
+  exports.utcFriday = utcFriday;
+  exports.utcSaturday = utcSaturday;
+  exports.utcWeek = utcSunday;
+  exports.utcMonth = utcMonth;
+  exports.utcYear = utcYear;
+  exports.interval = newInterval;
+
+}));
+},{}],7:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.5.17"
@@ -9553,7 +11508,4563 @@
   });
   if (typeof define === "function" && define.amd) this.d3 = d3, define(d3); else if (typeof module === "object" && module.exports) module.exports = d3; else this.d3 = d3;
 }();
-},{}],2:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
+var util = require('./util'),
+    time = require('./time'),
+    utc = time.utc;
+
+var u = module.exports;
+
+u.$year   = util.$func('year', time.year.unit);
+u.$month  = util.$func('month', time.months.unit);
+u.$date   = util.$func('date', time.dates.unit);
+u.$day    = util.$func('day', time.weekdays.unit);
+u.$hour   = util.$func('hour', time.hours.unit);
+u.$minute = util.$func('minute', time.minutes.unit);
+u.$second = util.$func('second', time.seconds.unit);
+
+u.$utcYear   = util.$func('utcYear', utc.year.unit);
+u.$utcMonth  = util.$func('utcMonth', utc.months.unit);
+u.$utcDate   = util.$func('utcDate', utc.dates.unit);
+u.$utcDay    = util.$func('utcDay', utc.weekdays.unit);
+u.$utcHour   = util.$func('utcHour', utc.hours.unit);
+u.$utcMinute = util.$func('utcMinute', utc.minutes.unit);
+u.$utcSecond = util.$func('utcSecond', utc.seconds.unit);
+
+},{"./time":30,"./util":31}],9:[function(require,module,exports){
+var util = require('../util'),
+    Measures = require('./measures'),
+    Collector = require('./collector');
+
+function Aggregator() {
+  this._cells = {};
+  this._aggr = [];
+  this._stream = false;
+}
+
+var Flags = Aggregator.Flags = {
+  ADD_CELL: 1,
+  MOD_CELL: 2
+};
+
+var proto = Aggregator.prototype;
+
+// Parameters
+
+proto.stream = function(v) {
+  if (v == null) return this._stream;
+  this._stream = !!v;
+  this._aggr = [];
+  return this;
+};
+
+// key accessor to use for streaming removes
+proto.key = function(key) {
+  if (key == null) return this._key;
+  this._key = util.$(key);
+  return this;
+};
+
+// Input: array of objects of the form
+// {name: string, get: function}
+proto.groupby = function(dims) {
+  this._dims = util.array(dims).map(function(d, i) {
+    d = util.isString(d) ? {name: d, get: util.$(d)}
+      : util.isFunction(d) ? {name: util.name(d) || d.name || ('_' + i), get: d}
+      : (d.name && util.isFunction(d.get)) ? d : null;
+    if (d == null) throw 'Invalid groupby argument: ' + d;
+    return d;
+  });
+  return this.clear();
+};
+
+// Input: array of objects of the form
+// {name: string, ops: [string, ...]}
+proto.summarize = function(fields) {
+  fields = summarize_args(fields);
+  this._count = true;
+  var aggr = (this._aggr = []),
+      m, f, i, j, op, as, get;
+
+  for (i=0; i<fields.length; ++i) {
+    for (j=0, m=[], f=fields[i]; j<f.ops.length; ++j) {
+      op = f.ops[j];
+      if (op !== 'count') this._count = false;
+      as = (f.as && f.as[j]) || (op + (f.name==='*' ? '' : '_'+f.name));
+      m.push(Measures[op](as));
+    }
+    get = f.get && util.$(f.get) ||
+      (f.name === '*' ? util.identity : util.$(f.name));
+    aggr.push({
+      name: f.name,
+      measures: Measures.create(
+        m,
+        this._stream, // streaming remove flag
+        get,          // input tuple getter
+        this._assign) // output tuple setter
+    });
+  }
+  return this.clear();
+};
+
+// Convenience method to summarize by count
+proto.count = function() {
+  return this.summarize({'*':'count'});
+};
+
+// Override to perform custom tuple value assignment
+proto._assign = function(object, name, value) {
+  object[name] = value;
+};
+
+function summarize_args(fields) {
+  if (util.isArray(fields)) { return fields; }
+  if (fields == null) { return []; }
+  var a = [], name, ops;
+  for (name in fields) {
+    ops = util.array(fields[name]);
+    a.push({name: name, ops: ops});
+  }
+  return a;
+}
+
+// Cell Management
+
+proto.clear = function() {
+  return (this._cells = {}, this);
+};
+
+proto._cellkey = function(x) {
+  var d = this._dims,
+      n = d.length, i,
+      k = String(d[0].get(x));
+  for (i=1; i<n; ++i) {
+    k += '|' + d[i].get(x);
+  }
+  return k;
+};
+
+proto._cell = function(x) {
+  var key = this._dims.length ? this._cellkey(x) : '';
+  return this._cells[key] || (this._cells[key] = this._newcell(x, key));
+};
+
+proto._newcell = function(x, key) {
+  var cell = {
+    num:   0,
+    tuple: this._newtuple(x, key),
+    flag:  Flags.ADD_CELL,
+    aggs:  {}
+  };
+
+  var aggr = this._aggr, i;
+  for (i=0; i<aggr.length; ++i) {
+    cell.aggs[aggr[i].name] = new aggr[i].measures(cell, cell.tuple);
+  }
+  if (cell.collect) {
+    cell.data = new Collector(this._key);
+  }
+  return cell;
+};
+
+proto._newtuple = function(x) {
+  var dims = this._dims,
+      t = {}, i, n;
+  for (i=0, n=dims.length; i<n; ++i) {
+    t[dims[i].name] = dims[i].get(x);
+  }
+  return this._ingest(t);
+};
+
+// Override to perform custom tuple ingestion
+proto._ingest = util.identity;
+
+// Process Tuples
+
+proto._add = function(x) {
+  var cell = this._cell(x),
+      aggr = this._aggr, i;
+
+  cell.num += 1;
+  if (!this._count) { // skip if count-only
+    if (cell.collect) cell.data.add(x);
+    for (i=0; i<aggr.length; ++i) {
+      cell.aggs[aggr[i].name].add(x);
+    }
+  }
+  cell.flag |= Flags.MOD_CELL;
+  if (this._on_add) this._on_add(x, cell);
+};
+
+proto._rem = function(x) {
+  var cell = this._cell(x),
+      aggr = this._aggr, i;
+
+  cell.num -= 1;
+  if (!this._count) { // skip if count-only
+    if (cell.collect) cell.data.rem(x);
+    for (i=0; i<aggr.length; ++i) {
+      cell.aggs[aggr[i].name].rem(x);
+    }
+  }
+  cell.flag |= Flags.MOD_CELL;
+  if (this._on_rem) this._on_rem(x, cell);
+};
+
+proto._mod = function(curr, prev) {
+  var cell0 = this._cell(prev),
+      cell1 = this._cell(curr),
+      aggr = this._aggr, i;
+
+  if (cell0 !== cell1) {
+    cell0.num -= 1;
+    cell1.num += 1;
+    if (cell0.collect) cell0.data.rem(prev);
+    if (cell1.collect) cell1.data.add(curr);
+  } else if (cell0.collect && !util.isObject(curr)) {
+    cell0.data.rem(prev);
+    cell0.data.add(curr);
+  }
+
+  for (i=0; i<aggr.length; ++i) {
+    cell0.aggs[aggr[i].name].rem(prev);
+    cell1.aggs[aggr[i].name].add(curr);
+  }
+  cell0.flag |= Flags.MOD_CELL;
+  cell1.flag |= Flags.MOD_CELL;
+  if (this._on_mod) this._on_mod(curr, prev, cell0, cell1);
+};
+
+proto._markMod = function(x) {
+  var cell0 = this._cell(x);
+  cell0.flag |= Flags.MOD_CELL;
+};
+
+proto.result = function() {
+  var result = [],
+      aggr = this._aggr,
+      cell, i, k;
+
+  for (k in this._cells) {
+    cell = this._cells[k];
+    if (cell.num > 0) {
+      // consolidate collector values
+      if (cell.collect) {
+        cell.data.values();
+      }
+      // update tuple properties
+      for (i=0; i<aggr.length; ++i) {
+        cell.aggs[aggr[i].name].set();
+      }
+      // add output tuple
+      result.push(cell.tuple);
+    } else {
+      delete this._cells[k];
+    }
+    cell.flag = 0;
+  }
+
+  this._rems = false;
+  return result;
+};
+
+proto.changes = function(output) {
+  var changes = output || {add:[], rem:[], mod:[]},
+      aggr = this._aggr,
+      cell, flag, i, k;
+
+  for (k in this._cells) {
+    cell = this._cells[k];
+    flag = cell.flag;
+
+    // consolidate collector values
+    if (cell.collect) {
+      cell.data.values();
+    }
+
+    // update tuple properties
+    for (i=0; i<aggr.length; ++i) {
+      cell.aggs[aggr[i].name].set();
+    }
+
+    // organize output tuples
+    if (cell.num <= 0) {
+      changes.rem.push(cell.tuple); // if (flag === Flags.MOD_CELL) { ??
+      delete this._cells[k];
+      if (this._on_drop) this._on_drop(cell);
+    } else {
+      if (this._on_keep) this._on_keep(cell);
+      if (flag & Flags.ADD_CELL) {
+        changes.add.push(cell.tuple);
+      } else if (flag & Flags.MOD_CELL) {
+        changes.mod.push(cell.tuple);
+      }
+    }
+
+    cell.flag = 0;
+  }
+
+  this._rems = false;
+  return changes;
+};
+
+proto.execute = function(input) {
+  return this.clear().insert(input).result();
+};
+
+proto.insert = function(input) {
+  this._consolidate();
+  for (var i=0; i<input.length; ++i) {
+    this._add(input[i]);
+  }
+  return this;
+};
+
+proto.remove = function(input) {
+  if (!this._stream) {
+    throw 'Aggregator not configured for streaming removes.' +
+      ' Call stream(true) prior to calling summarize.';
+  }
+  for (var i=0; i<input.length; ++i) {
+    this._rem(input[i]);
+  }
+  this._rems = true;
+  return this;
+};
+
+// consolidate removals
+proto._consolidate = function() {
+  if (!this._rems) return;
+  for (var k in this._cells) {
+    if (this._cells[k].collect) {
+      this._cells[k].data.values();
+    }
+  }
+  this._rems = false;
+};
+
+module.exports = Aggregator;
+
+},{"../util":31,"./collector":10,"./measures":12}],10:[function(require,module,exports){
+var util = require('../util');
+var stats = require('../stats');
+
+var REM = '__dl_rem__';
+
+function Collector(key) {
+  this._add = [];
+  this._rem = [];
+  this._key = key || null;
+  this._last = null;
+}
+
+var proto = Collector.prototype;
+
+proto.add = function(v) {
+  this._add.push(v);
+};
+
+proto.rem = function(v) {
+  this._rem.push(v);
+};
+
+proto.values = function() {
+  this._get = null;
+  if (this._rem.length === 0) return this._add;
+
+  var a = this._add,
+      r = this._rem,
+      k = this._key,
+      x = Array(a.length - r.length),
+      i, j, n, m;
+
+  if (!util.isObject(r[0])) {
+    // processing raw values
+    m = stats.count.map(r);
+    for (i=0, j=0, n=a.length; i<n; ++i) {
+      if (m[a[i]] > 0) {
+        m[a[i]] -= 1;
+      } else {
+        x[j++] = a[i];
+      }
+    }
+  } else if (k) {
+    // has unique key field, so use that
+    m = util.toMap(r, k);
+    for (i=0, j=0, n=a.length; i<n; ++i) {
+      if (!m.hasOwnProperty(k(a[i]))) { x[j++] = a[i]; }
+    }
+  } else {
+    // no unique key, mark tuples directly
+    for (i=0, n=r.length; i<n; ++i) {
+      r[i][REM] = 1;
+    }
+    for (i=0, j=0, n=a.length; i<n; ++i) {
+      if (!a[i][REM]) { x[j++] = a[i]; }
+    }
+    for (i=0, n=r.length; i<n; ++i) {
+      delete r[i][REM];
+    }
+  }
+
+  this._rem = [];
+  return (this._add = x);
+};
+
+// memoizing statistics methods
+
+proto.extent = function(get) {
+  if (this._get !== get || !this._ext) {
+    var v = this.values(),
+        i = stats.extent.index(v, get);
+    this._ext = [v[i[0]], v[i[1]]];
+    this._get = get;
+  }
+  return this._ext;
+};
+
+proto.argmin = function(get) {
+  return this.extent(get)[0];
+};
+
+proto.argmax = function(get) {
+  return this.extent(get)[1];
+};
+
+proto.min = function(get) {
+  var m = this.extent(get)[0];
+  return m != null ? get(m) : +Infinity;
+};
+
+proto.max = function(get) {
+  var m = this.extent(get)[1];
+  return m != null ? get(m) : -Infinity;
+};
+
+proto.quartile = function(get) {
+  if (this._get !== get || !this._q) {
+    this._q = stats.quartile(this.values(), get);
+    this._get = get;
+  }
+  return this._q;
+};
+
+proto.q1 = function(get) {
+  return this.quartile(get)[0];
+};
+
+proto.q2 = function(get) {
+  return this.quartile(get)[1];
+};
+
+proto.q3 = function(get) {
+  return this.quartile(get)[2];
+};
+
+module.exports = Collector;
+
+},{"../stats":28,"../util":31}],11:[function(require,module,exports){
+var util = require('../util');
+var Aggregator = require('./aggregator');
+
+module.exports = function() {
+  // flatten arguments into a single array
+  var args = [].reduce.call(arguments, function(a, x) {
+    return a.concat(util.array(x));
+  }, []);
+  // create and return an aggregator
+  return new Aggregator()
+    .groupby(args)
+    .summarize({'*':'values'});
+};
+
+},{"../util":31,"./aggregator":9}],12:[function(require,module,exports){
+var util = require('../util');
+
+var types = {
+  'values': measure({
+    name: 'values',
+    init: 'cell.collect = true;',
+    set:  'cell.data.values()', idx: -1
+  }),
+  'count': measure({
+    name: 'count',
+    set:  'cell.num'
+  }),
+  'missing': measure({
+    name: 'missing',
+    set:  'this.missing'
+  }),
+  'valid': measure({
+    name: 'valid',
+    set:  'this.valid'
+  }),
+  'sum': measure({
+    name: 'sum',
+    init: 'this.sum = 0;',
+    add:  'this.sum += v;',
+    rem:  'this.sum -= v;',
+    set:  'this.sum'
+  }),
+  'mean': measure({
+    name: 'mean',
+    init: 'this.mean = 0;',
+    add:  'var d = v - this.mean; this.mean += d / this.valid;',
+    rem:  'var d = v - this.mean; this.mean -= this.valid ? d / this.valid : this.mean;',
+    set:  'this.mean'
+  }),
+  'average': measure({
+    name: 'average',
+    set:  'this.mean',
+    req:  ['mean'], idx: 1
+  }),
+  'variance': measure({
+    name: 'variance',
+    init: 'this.dev = 0;',
+    add:  'this.dev += d * (v - this.mean);',
+    rem:  'this.dev -= d * (v - this.mean);',
+    set:  'this.valid > 1 ? this.dev / (this.valid-1) : 0',
+    req:  ['mean'], idx: 1
+  }),
+  'variancep': measure({
+    name: 'variancep',
+    set:  'this.valid > 1 ? this.dev / this.valid : 0',
+    req:  ['variance'], idx: 2
+  }),
+  'stdev': measure({
+    name: 'stdev',
+    set:  'this.valid > 1 ? Math.sqrt(this.dev / (this.valid-1)) : 0',
+    req:  ['variance'], idx: 2
+  }),
+  'stdevp': measure({
+    name: 'stdevp',
+    set:  'this.valid > 1 ? Math.sqrt(this.dev / this.valid) : 0',
+    req:  ['variance'], idx: 2
+  }),
+  'stderr': measure({
+    name: 'stderr',
+    set:  'this.valid > 1 ? Math.sqrt(this.dev / (this.valid * (this.valid-1))) : 0',
+    req:  ['variance'], idx: 2
+  }),
+  'median': measure({
+    name: 'median',
+    set:  'cell.data.q2(this.get)',
+    req:  ['values'], idx: 3
+  }),
+  'q1': measure({
+    name: 'q1',
+    set:  'cell.data.q1(this.get)',
+    req:  ['values'], idx: 3
+  }),
+  'q3': measure({
+    name: 'q3',
+    set:  'cell.data.q3(this.get)',
+    req:  ['values'], idx: 3
+  }),
+  'distinct': measure({
+    name: 'distinct',
+    set:  'this.distinct(cell.data.values(), this.get)',
+    req:  ['values'], idx: 3
+  }),
+  'argmin': measure({
+    name: 'argmin',
+    add:  'if (v < this.min) this.argmin = t;',
+    rem:  'if (v <= this.min) this.argmin = null;',
+    set:  'this.argmin = this.argmin || cell.data.argmin(this.get)',
+    req:  ['min'], str: ['values'], idx: 3
+  }),
+  'argmax': measure({
+    name: 'argmax',
+    add:  'if (v > this.max) this.argmax = t;',
+    rem:  'if (v >= this.max) this.argmax = null;',
+    set:  'this.argmax = this.argmax || cell.data.argmax(this.get)',
+    req:  ['max'], str: ['values'], idx: 3
+  }),
+  'min': measure({
+    name: 'min',
+    init: 'this.min = +Infinity;',
+    add:  'if (v < this.min) this.min = v;',
+    rem:  'if (v <= this.min) this.min = NaN;',
+    set:  'this.min = (isNaN(this.min) ? cell.data.min(this.get) : this.min)',
+    str:  ['values'], idx: 4
+  }),
+  'max': measure({
+    name: 'max',
+    init: 'this.max = -Infinity;',
+    add:  'if (v > this.max) this.max = v;',
+    rem:  'if (v >= this.max) this.max = NaN;',
+    set:  'this.max = (isNaN(this.max) ? cell.data.max(this.get) : this.max)',
+    str:  ['values'], idx: 4
+  }),
+  'modeskew': measure({
+    name: 'modeskew',
+    set:  'this.dev===0 ? 0 : (this.mean - cell.data.q2(this.get)) / Math.sqrt(this.dev/(this.valid-1))',
+    req:  ['mean', 'variance', 'median'], idx: 5
+  })
+};
+
+function measure(base) {
+  return function(out) {
+    var m = util.extend({init:'', add:'', rem:'', idx:0}, base);
+    m.out = out || base.name;
+    return m;
+  };
+}
+
+function resolve(agg, stream) {
+  function collect(m, a) {
+    function helper(r) { if (!m[r]) collect(m, m[r] = types[r]()); }
+    if (a.req) a.req.forEach(helper);
+    if (stream && a.str) a.str.forEach(helper);
+    return m;
+  }
+  var map = agg.reduce(
+    collect,
+    agg.reduce(function(m, a) { return (m[a.name] = a, m); }, {})
+  );
+  return util.vals(map).sort(function(a, b) { return a.idx - b.idx; });
+}
+
+function create(agg, stream, accessor, mutator) {
+  var all = resolve(agg, stream),
+      ctr = 'this.cell = cell; this.tuple = t; this.valid = 0; this.missing = 0;',
+      add = 'if (v==null) this.missing++; if (!this.isValid(v)) return; ++this.valid;',
+      rem = 'if (v==null) this.missing--; if (!this.isValid(v)) return; --this.valid;',
+      set = 'var t = this.tuple; var cell = this.cell;';
+
+  all.forEach(function(a) {
+    if (a.idx < 0) {
+      ctr = a.init + ctr;
+      add = a.add + add;
+      rem = a.rem + rem;
+    } else {
+      ctr += a.init;
+      add += a.add;
+      rem += a.rem;
+    }
+  });
+  agg.slice()
+    .sort(function(a, b) { return a.idx - b.idx; })
+    .forEach(function(a) {
+      set += 'this.assign(t,\''+a.out+'\','+a.set+');';
+    });
+  set += 'return t;';
+
+  /* jshint evil: true */
+  ctr = Function('cell', 't', ctr);
+  ctr.prototype.assign = mutator;
+  ctr.prototype.add = Function('t', 'var v = this.get(t);' + add);
+  ctr.prototype.rem = Function('t', 'var v = this.get(t);' + rem);
+  ctr.prototype.set = Function(set);
+  ctr.prototype.get = accessor;
+  ctr.prototype.distinct = require('../stats').count.distinct;
+  ctr.prototype.isValid = util.isValid;
+  ctr.fields = agg.map(util.$('out'));
+  return ctr;
+}
+
+types.create = create;
+module.exports = types;
+
+},{"../stats":28,"../util":31}],13:[function(require,module,exports){
+var util = require('../util'),
+    time = require('../time'),
+    EPSILON = 1e-15;
+
+function bins(opt) {
+  if (!opt) { throw Error("Missing binning options."); }
+
+  // determine range
+  var maxb = opt.maxbins || 15,
+      base = opt.base || 10,
+      logb = Math.log(base),
+      div = opt.div || [5, 2],
+      min = opt.min,
+      max = opt.max,
+      span = max - min,
+      step, level, minstep, precision, v, i, eps;
+
+  if (opt.step) {
+    // if step size is explicitly given, use that
+    step = opt.step;
+  } else if (opt.steps) {
+    // if provided, limit choice to acceptable step sizes
+    step = opt.steps[Math.min(
+      opt.steps.length - 1,
+      bisect(opt.steps, span/maxb, 0, opt.steps.length)
+    )];
+  } else {
+    // else use span to determine step size
+    level = Math.ceil(Math.log(maxb) / logb);
+    minstep = opt.minstep || 0;
+    step = Math.max(
+      minstep,
+      Math.pow(base, Math.round(Math.log(span) / logb) - level)
+    );
+
+    // increase step size if too many bins
+    while (Math.ceil(span/step) > maxb) { step *= base; }
+
+    // decrease step size if allowed
+    for (i=0; i<div.length; ++i) {
+      v = step / div[i];
+      if (v >= minstep && span / v <= maxb) step = v;
+    }
+  }
+
+  // update precision, min and max
+  v = Math.log(step);
+  precision = v >= 0 ? 0 : ~~(-v / logb) + 1;
+  eps = Math.pow(base, -precision - 1);
+  min = Math.min(min, Math.floor(min / step + eps) * step);
+  max = Math.ceil(max / step) * step;
+
+  return {
+    start: min,
+    stop:  max,
+    step:  step,
+    unit:  {precision: precision},
+    value: value,
+    index: index
+  };
+}
+
+function bisect(a, x, lo, hi) {
+  while (lo < hi) {
+    var mid = lo + hi >>> 1;
+    if (util.cmp(a[mid], x) < 0) { lo = mid + 1; }
+    else { hi = mid; }
+  }
+  return lo;
+}
+
+function value(v) {
+  return this.step * Math.floor(v / this.step + EPSILON);
+}
+
+function index(v) {
+  return Math.floor((v - this.start) / this.step + EPSILON);
+}
+
+function date_value(v) {
+  return this.unit.date(value.call(this, v));
+}
+
+function date_index(v) {
+  return index.call(this, this.unit.unit(v));
+}
+
+bins.date = function(opt) {
+  if (!opt) { throw Error("Missing date binning options."); }
+
+  // find time step, then bin
+  var units = opt.utc ? time.utc : time,
+      dmin = opt.min,
+      dmax = opt.max,
+      maxb = opt.maxbins || 20,
+      minb = opt.minbins || 4,
+      span = (+dmax) - (+dmin),
+      unit = opt.unit ? units[opt.unit] : units.find(span, minb, maxb),
+      spec = bins({
+        min:     unit.min != null ? unit.min : unit.unit(dmin),
+        max:     unit.max != null ? unit.max : unit.unit(dmax),
+        maxbins: maxb,
+        minstep: unit.minstep,
+        steps:   unit.step
+      });
+
+  spec.unit = unit;
+  spec.index = date_index;
+  if (!opt.raw) spec.value = date_value;
+  return spec;
+};
+
+module.exports = bins;
+
+},{"../time":30,"../util":31}],14:[function(require,module,exports){
+var bins = require('./bins'),
+    gen  = require('../generate'),
+    type = require('../import/type'),
+    util = require('../util'),
+    stats = require('../stats');
+
+var qtype = {
+  'integer': 1,
+  'number': 1,
+  'date': 1
+};
+
+function $bin(values, f, opt) {
+  opt = options(values, f, opt);
+  var b = spec(opt);
+  return !b ? (opt.accessor || util.identity) :
+    util.$func('bin', b.unit.unit ?
+      function(x) { return b.value(b.unit.unit(x)); } :
+      function(x) { return b.value(x); }
+    )(opt.accessor);
+}
+
+function histogram(values, f, opt) {
+  opt = options(values, f, opt);
+  var b = spec(opt);
+  return b ?
+    numerical(values, opt.accessor, b) :
+    categorical(values, opt.accessor, opt && opt.sort);
+}
+
+function spec(opt) {
+  var t = opt.type, b = null;
+  if (t == null || qtype[t]) {
+    if (t === 'integer' && opt.minstep == null) opt.minstep = 1;
+    b = (t === 'date') ? bins.date(opt) : bins(opt);
+  }
+  return b;
+}
+
+function options() {
+  var a = arguments,
+      i = 0,
+      values = util.isArray(a[i]) ? a[i++] : null,
+      f = util.isFunction(a[i]) || util.isString(a[i]) ? util.$(a[i++]) : null,
+      opt = util.extend({}, a[i]);
+
+  if (values) {
+    opt.type = opt.type || type(values, f);
+    if (qtype[opt.type]) {
+      var ext = stats.extent(values, f);
+      opt = util.extend({min: ext[0], max: ext[1]}, opt);
+    }
+  }
+  if (f) { opt.accessor = f; }
+  return opt;
+}
+
+function numerical(values, f, b) {
+  var h = gen.range(b.start, b.stop + b.step/2, b.step)
+    .map(function(v) { return {value: b.value(v), count: 0}; });
+
+  for (var i=0, v, j; i<values.length; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) {
+      j = b.index(v);
+      if (j < 0 || j >= h.length || !isFinite(j)) continue;
+      h[j].count += 1;
+    }
+  }
+  h.bins = b;
+  return h;
+}
+
+function categorical(values, f, sort) {
+  var u = stats.unique(values, f),
+      c = stats.count.map(values, f);
+  return u.map(function(k) { return {value: k, count: c[k]}; })
+    .sort(util.comparator(sort ? '-count' : '+value'));
+}
+
+module.exports = {
+  $bin: $bin,
+  histogram: histogram
+};
+
+},{"../generate":17,"../import/type":26,"../stats":28,"../util":31,"./bins":13}],15:[function(require,module,exports){
+var util = require('./util'),
+    type = require('./import/type'),
+    stats = require('./stats'),
+    template = require('./template');
+
+module.exports = {
+  table:   formatTable,  // format a data table
+  summary: formatSummary // format a data table summary
+};
+
+var FMT = {
+  'date':    '|time:"%m/%d/%Y %H:%M:%S"',
+  'number':  '|number:".4f"',
+  'integer': '|number:"d"'
+};
+
+var POS = {
+  'number':  'left',
+  'integer': 'left'
+};
+
+function formatTable(data, opt) {
+  opt = util.extend({separator:' ', minwidth: 8, maxwidth: 15}, opt);
+  var fields = opt.fields || util.keys(data[0]),
+      types = type.all(data);
+
+  if (opt.start || opt.limit) {
+    var a = opt.start || 0,
+        b = opt.limit ? a + opt.limit : data.length;
+    data = data.slice(a, b);
+  }
+
+  // determine char width of fields
+  var lens = fields.map(function(name) {
+    var format = FMT[types[name]] || '',
+        t = template('{{' + name + format + '}}'),
+        l = stats.max(data, function(x) { return t(x).length; });
+    l = Math.max(Math.min(name.length, opt.minwidth), l);
+    return opt.maxwidth > 0 ? Math.min(l, opt.maxwidth) : l;
+  });
+
+  // print header row
+  var head = fields.map(function(name, i) {
+    return util.truncate(util.pad(name, lens[i], 'center'), lens[i]);
+  }).join(opt.separator);
+
+  // build template function for each row
+  var tmpl = template(fields.map(function(name, i) {
+    return '{{' +
+      name +
+      (FMT[types[name]] || '') +
+      ('|pad:' + lens[i] + ',' + (POS[types[name]] || 'right')) +
+      ('|truncate:' + lens[i]) +
+    '}}';
+  }).join(opt.separator));
+
+  // print table
+  return head + "\n" + data.map(tmpl).join('\n');
+}
+
+function formatSummary(s) {
+  s = s ? s.__summary__ ? s : stats.summary(s) : this;
+  var str = [], i, n;
+  for (i=0, n=s.length; i<n; ++i) {
+    str.push('-- ' + s[i].field + ' --');
+    if (s[i].type === 'string' || s[i].distinct < 10) {
+      str.push(printCategoricalProfile(s[i]));
+    } else {
+      str.push(printQuantitativeProfile(s[i]));
+    }
+    str.push('');
+  }
+  return str.join('\n');
+}
+
+function printQuantitativeProfile(p) {
+  return [
+    'valid:    ' + p.valid,
+    'missing:  ' + p.missing,
+    'distinct: ' + p.distinct,
+    'min:      ' + p.min,
+    'max:      ' + p.max,
+    'median:   ' + p.median,
+    'mean:     ' + p.mean,
+    'stdev:    ' + p.stdev,
+    'modeskew: ' + p.modeskew
+  ].join('\n');
+}
+
+function printCategoricalProfile(p) {
+  var list = [
+    'valid:    ' + p.valid,
+    'missing:  ' + p.missing,
+    'distinct: ' + p.distinct,
+    'top values: '
+  ];
+  var u = p.unique;
+  var top = util.keys(u)
+    .sort(function(a,b) { return u[b] - u[a]; })
+    .slice(0, 6)
+    .map(function(v) { return ' \'' + v + '\' (' + u[v] + ')'; });
+  return list.concat(top).join('\n');
+}
+},{"./import/type":26,"./stats":28,"./template":29,"./util":31}],16:[function(require,module,exports){
+var util = require('./util'),
+    d3_time = require('d3-time'),
+    d3_timeF = require('d3-time-format'),
+    d3_numberF = require('d3-format'),
+    numberF = d3_numberF, // defaults to EN-US
+    timeF = d3_timeF,     // defaults to EN-US
+    tmpDate = new Date(2000, 0, 1),
+    monthFull, monthAbbr, dayFull, dayAbbr;
+
+
+module.exports = {
+  // Update number formatter to use provided locale configuration.
+  // For more see https://github.com/d3/d3-format
+  numberLocale: numberLocale,
+  number:       function(f) { return numberF.format(f); },
+  numberPrefix: function(f, v) { return numberF.formatPrefix(f, v); },
+
+  // Update time formatter to use provided locale configuration.
+  // For more see https://github.com/d3/d3-time-format
+  timeLocale:   timeLocale,
+  time:         function(f) { return timeF.format(f); },
+  utc:          function(f) { return timeF.utcFormat(f); },
+
+  // Set number and time locale simultaneously.
+  locale:       function(l) { numberLocale(l); timeLocale(l); },
+
+  // automatic formatting functions
+  auto: {
+    number:   autoNumberFormat,
+    linear:   linearNumberFormat,
+    time:     function() { return timeAutoFormat(); },
+    utc:      function() { return utcAutoFormat(); }
+  },
+
+  month:    monthFormat,  // format month name from integer code
+  day:      dayFormat,    // format week day name from integer code
+  quarter:  quarterFormat // format quarter number from integer code
+};
+
+// -- Locales ----
+
+// transform 'en-US' style locale string to match d3-format v0.4+ convention
+function localeRef(l) {
+  return l.length > 4 && 'locale' + (
+    l[0].toUpperCase() + l[1].toLowerCase() +
+    l[3].toUpperCase() + l[4].toLowerCase()
+  );
+}
+
+function numberLocale(l) {
+  var f = util.isString(l) ? d3_numberF[localeRef(l)] : d3_numberF.locale(l);
+  if (f == null) throw Error('Unrecognized locale: ' + l);
+  numberF = f;
+}
+
+function timeLocale(l) {
+  var f = util.isString(l) ? d3_timeF[localeRef(l)] : d3_timeF.locale(l);
+  if (f == null) throw Error('Unrecognized locale: ' + l);
+  timeF = f;
+  monthFull = monthAbbr = dayFull = dayAbbr = null;
+}
+
+// -- Number Formatting ----
+
+var e10 = Math.sqrt(50),
+    e5 = Math.sqrt(10),
+    e2 = Math.sqrt(2);
+
+function linearRange(domain, count) {
+  if (!domain.length) domain = [0];
+  if (count == null) count = 10;
+
+  var start = domain[0],
+      stop = domain[domain.length - 1];
+
+  if (stop < start) { error = stop; stop = start; start = error; }
+
+  var span = (stop - start) || (count = 1, start || stop || 1),
+      step = Math.pow(10, Math.floor(Math.log(span / count) / Math.LN10)),
+      error = span / count / step;
+
+  // Filter ticks to get closer to the desired count.
+  if (error >= e10) step *= 10;
+  else if (error >= e5) step *= 5;
+  else if (error >= e2) step *= 2;
+
+  // Round start and stop values to step interval.
+  return [
+    Math.ceil(start / step) * step,
+    Math.floor(stop / step) * step + step / 2, // inclusive
+    step
+  ];
+}
+
+function trimZero(f, decimal) {
+  return function(x) {
+    var s = f(x),
+        n = s.indexOf(decimal);
+    if (n < 0) return s;
+
+    var idx = rightmostDigit(s, n),
+        end = idx < s.length ? s.slice(idx) : '';
+
+    while (--idx > n) {
+      if (s[idx] !== '0') { ++idx; break; }
+    }
+    return s.slice(0, idx) + end;
+  };
+}
+
+function rightmostDigit(s, n) {
+  var i = s.lastIndexOf('e'), c;
+  if (i > 0) return i;
+  for (i=s.length; --i > n;) {
+    c = s.charCodeAt(i);
+    if (c >= 48 && c <= 57) return i+1; // is digit
+  }
+}
+
+function autoNumberFormat(f) {
+  var decimal = numberF.format('.1f')(1)[1]; // get decimal char
+  if (f == null) f = ',';
+  f = d3_numberF.formatSpecifier(f);
+  if (f.precision == null) f.precision = 12;
+  switch (f.type) {
+    case '%': f.precision -= 2; break;
+    case 'e': f.precision -= 1; break;
+  }
+  return trimZero(numberF.format(f), decimal);
+}
+
+function linearNumberFormat(domain, count, f) {
+  var range = linearRange(domain, count);
+
+  if (f == null) f = ',f';
+
+  switch (f = d3_numberF.formatSpecifier(f), f.type) {
+    case 's': {
+      var value = Math.max(Math.abs(range[0]), Math.abs(range[1]));
+      if (f.precision == null) f.precision = d3_numberF.precisionPrefix(range[2], value);
+      return numberF.formatPrefix(f, value);
+    }
+    case '':
+    case 'e':
+    case 'g':
+    case 'p':
+    case 'r': {
+      if (f.precision == null) f.precision = d3_numberF.precisionRound(range[2], Math.max(Math.abs(range[0]), Math.abs(range[1]))) - (f.type === 'e');
+      break;
+    }
+    case 'f':
+    case '%': {
+      if (f.precision == null) f.precision = d3_numberF.precisionFixed(range[2]) - 2 * (f.type === '%');
+      break;
+    }
+  }
+  return numberF.format(f);
+}
+
+// -- Datetime Formatting ----
+
+function timeAutoFormat() {
+  var f = timeF.format,
+      formatMillisecond = f('.%L'),
+      formatSecond = f(':%S'),
+      formatMinute = f('%I:%M'),
+      formatHour = f('%I %p'),
+      formatDay = f('%a %d'),
+      formatWeek = f('%b %d'),
+      formatMonth = f('%B'),
+      formatYear = f('%Y');
+
+  return function(date) {
+    var d = +date;
+    return (d3_time.second(date) < d ? formatMillisecond
+        : d3_time.minute(date) < d ? formatSecond
+        : d3_time.hour(date) < d ? formatMinute
+        : d3_time.day(date) < d ? formatHour
+        : d3_time.month(date) < d ?
+          (d3_time.week(date) < d ? formatDay : formatWeek)
+        : d3_time.year(date) < d ? formatMonth
+        : formatYear)(date);
+  };
+}
+
+function utcAutoFormat() {
+  var f = timeF.utcFormat,
+      formatMillisecond = f('.%L'),
+      formatSecond = f(':%S'),
+      formatMinute = f('%I:%M'),
+      formatHour = f('%I %p'),
+      formatDay = f('%a %d'),
+      formatWeek = f('%b %d'),
+      formatMonth = f('%B'),
+      formatYear = f('%Y');
+
+  return function(date) {
+    var d = +date;
+    return (d3_time.utcSecond(date) < d ? formatMillisecond
+        : d3_time.utcMinute(date) < d ? formatSecond
+        : d3_time.utcHour(date) < d ? formatMinute
+        : d3_time.utcDay(date) < d ? formatHour
+        : d3_time.utcMonth(date) < d ?
+          (d3_time.utcWeek(date) < d ? formatDay : formatWeek)
+        : d3_time.utcYear(date) < d ? formatMonth
+        : formatYear)(date);
+  };
+}
+
+function monthFormat(month, abbreviate) {
+  var f = abbreviate ?
+    (monthAbbr || (monthAbbr = timeF.format('%b'))) :
+    (monthFull || (monthFull = timeF.format('%B')));
+  return (tmpDate.setMonth(month), f(tmpDate));
+}
+
+function dayFormat(day, abbreviate) {
+  var f = abbreviate ?
+    (dayAbbr || (dayAbbr = timeF.format('%a'))) :
+    (dayFull || (dayFull = timeF.format('%A')));
+  return (tmpDate.setMonth(0), tmpDate.setDate(2 + day), f(tmpDate));
+}
+
+function quarterFormat(month) {
+  return Math.floor(month / 3) + 1;
+}
+
+},{"./util":31,"d3-format":4,"d3-time":6,"d3-time-format":5}],17:[function(require,module,exports){
+var util = require('./util'),
+    gen = module.exports;
+
+gen.repeat = function(val, n) {
+  var a = Array(n), i;
+  for (i=0; i<n; ++i) a[i] = val;
+  return a;
+};
+
+gen.zeros = function(n) {
+  return gen.repeat(0, n);
+};
+
+gen.range = function(start, stop, step) {
+  if (arguments.length < 3) {
+    step = 1;
+    if (arguments.length < 2) {
+      stop = start;
+      start = 0;
+    }
+  }
+  if ((stop - start) / step == Infinity) throw new Error('Infinite range');
+  var range = [], i = -1, j;
+  if (step < 0) while ((j = start + step * ++i) > stop) range.push(j);
+  else while ((j = start + step * ++i) < stop) range.push(j);
+  return range;
+};
+
+gen.random = {};
+
+gen.random.uniform = function(min, max) {
+  if (max === undefined) {
+    max = min === undefined ? 1 : min;
+    min = 0;
+  }
+  var d = max - min;
+  var f = function() {
+    return min + d * Math.random();
+  };
+  f.samples = function(n) {
+    return gen.zeros(n).map(f);
+  };
+  f.pdf = function(x) {
+    return (x >= min && x <= max) ? 1/d : 0;
+  };
+  f.cdf = function(x) {
+    return x < min ? 0 : x > max ? 1 : (x - min) / d;
+  };
+  f.icdf = function(p) {
+    return (p >= 0 && p <= 1) ? min + p*d : NaN;
+  };
+  return f;
+};
+
+gen.random.integer = function(a, b) {
+  if (b === undefined) {
+    b = a;
+    a = 0;
+  }
+  var d = b - a;
+  var f = function() {
+    return a + Math.floor(d * Math.random());
+  };
+  f.samples = function(n) {
+    return gen.zeros(n).map(f);
+  };
+  f.pdf = function(x) {
+    return (x === Math.floor(x) && x >= a && x < b) ? 1/d : 0;
+  };
+  f.cdf = function(x) {
+    var v = Math.floor(x);
+    return v < a ? 0 : v >= b ? 1 : (v - a + 1) / d;
+  };
+  f.icdf = function(p) {
+    return (p >= 0 && p <= 1) ? a - 1 + Math.floor(p*d) : NaN;
+  };
+  return f;
+};
+
+gen.random.normal = function(mean, stdev) {
+  mean = mean || 0;
+  stdev = stdev || 1;
+  var next;
+  var f = function() {
+    var x = 0, y = 0, rds, c;
+    if (next !== undefined) {
+      x = next;
+      next = undefined;
+      return x;
+    }
+    do {
+      x = Math.random()*2-1;
+      y = Math.random()*2-1;
+      rds = x*x + y*y;
+    } while (rds === 0 || rds > 1);
+    c = Math.sqrt(-2*Math.log(rds)/rds); // Box-Muller transform
+    next = mean + y*c*stdev;
+    return mean + x*c*stdev;
+  };
+  f.samples = function(n) {
+    return gen.zeros(n).map(f);
+  };
+  f.pdf = function(x) {
+    var exp = Math.exp(Math.pow(x-mean, 2) / (-2 * Math.pow(stdev, 2)));
+    return (1 / (stdev * Math.sqrt(2*Math.PI))) * exp;
+  };
+  f.cdf = function(x) {
+    // Approximation from West (2009)
+    // Better Approximations to Cumulative Normal Functions
+    var cd,
+        z = (x - mean) / stdev,
+        Z = Math.abs(z);
+    if (Z > 37) {
+      cd = 0;
+    } else {
+      var sum, exp = Math.exp(-Z*Z/2);
+      if (Z < 7.07106781186547) {
+        sum = 3.52624965998911e-02 * Z + 0.700383064443688;
+        sum = sum * Z + 6.37396220353165;
+        sum = sum * Z + 33.912866078383;
+        sum = sum * Z + 112.079291497871;
+        sum = sum * Z + 221.213596169931;
+        sum = sum * Z + 220.206867912376;
+        cd = exp * sum;
+        sum = 8.83883476483184e-02 * Z + 1.75566716318264;
+        sum = sum * Z + 16.064177579207;
+        sum = sum * Z + 86.7807322029461;
+        sum = sum * Z + 296.564248779674;
+        sum = sum * Z + 637.333633378831;
+        sum = sum * Z + 793.826512519948;
+        sum = sum * Z + 440.413735824752;
+        cd = cd / sum;
+      } else {
+        sum = Z + 0.65;
+        sum = Z + 4 / sum;
+        sum = Z + 3 / sum;
+        sum = Z + 2 / sum;
+        sum = Z + 1 / sum;
+        cd = exp / sum / 2.506628274631;
+      }
+    }
+    return z > 0 ? 1 - cd : cd;
+  };
+  f.icdf = function(p) {
+    // Approximation of Probit function using inverse error function.
+    if (p <= 0 || p >= 1) return NaN;
+    var x = 2*p - 1,
+        v = (8 * (Math.PI - 3)) / (3 * Math.PI * (4-Math.PI)),
+        a = (2 / (Math.PI*v)) + (Math.log(1 - Math.pow(x,2)) / 2),
+        b = Math.log(1 - (x*x)) / v,
+        s = (x > 0 ? 1 : -1) * Math.sqrt(Math.sqrt((a*a) - b) - a);
+    return mean + stdev * Math.SQRT2 * s;
+  };
+  return f;
+};
+
+gen.random.bootstrap = function(domain, smooth) {
+  // Generates a bootstrap sample from a set of observations.
+  // Smooth bootstrapping adds random zero-centered noise to the samples.
+  var val = domain.filter(util.isValid),
+      len = val.length,
+      err = smooth ? gen.random.normal(0, smooth) : null;
+  var f = function() {
+    return val[~~(Math.random()*len)] + (err ? err() : 0);
+  };
+  f.samples = function(n) {
+    return gen.zeros(n).map(f);
+  };
+  return f;
+};
+},{"./util":31}],18:[function(require,module,exports){
+var util = require('../../util');
+var d3_dsv = require('d3-dsv');
+
+function dsv(data, format) {
+  if (data) {
+    var h = format.header;
+    data = (h ? h.join(format.delimiter) + '\n' : '') + data;
+  }
+  return d3_dsv.dsv(format.delimiter).parse(data);
+}
+
+dsv.delimiter = function(delim) {
+  var fmt = {delimiter: delim};
+  return function(data, format) {
+    return dsv(data, format ? util.extend(format, fmt) : fmt);
+  };
+};
+
+module.exports = dsv;
+
+},{"../../util":31,"d3-dsv":3}],19:[function(require,module,exports){
+var dsv = require('./dsv');
+
+module.exports = {
+  json: require('./json'),
+  topojson: require('./topojson'),
+  treejson: require('./treejson'),
+  dsv: dsv,
+  csv: dsv.delimiter(','),
+  tsv: dsv.delimiter('\t')
+};
+
+},{"./dsv":18,"./json":20,"./topojson":21,"./treejson":22}],20:[function(require,module,exports){
+var util = require('../../util');
+
+module.exports = function(data, format) {
+  var d = util.isObject(data) && !util.isBuffer(data) ?
+    data : JSON.parse(data);
+  if (format && format.property) {
+    d = util.accessor(format.property)(d);
+  }
+  return d;
+};
+
+},{"../../util":31}],21:[function(require,module,exports){
+var json = require('./json');
+
+var reader = function(data, format) {
+  var topojson = reader.topojson;
+  if (topojson == null) { throw Error('TopoJSON library not loaded.'); }
+
+  var t = json(data, format), obj;
+
+  if (format && format.feature) {
+    if ((obj = t.objects[format.feature])) {
+      return topojson.feature(t, obj).features;
+    } else {
+      throw Error('Invalid TopoJSON object: ' + format.feature);
+    }
+  } else if (format && format.mesh) {
+    if ((obj = t.objects[format.mesh])) {
+      return [topojson.mesh(t, t.objects[format.mesh])];
+    } else {
+      throw Error('Invalid TopoJSON object: ' + format.mesh);
+    }
+  } else {
+    throw Error('Missing TopoJSON feature or mesh parameter.');
+  }
+};
+
+reader.topojson = require('topojson');
+module.exports = reader;
+
+},{"./json":20,"topojson":204}],22:[function(require,module,exports){
+var json = require('./json');
+
+module.exports = function(tree, format) {
+  return toTable(json(tree, format), format);
+};
+
+function toTable(root, fields) {
+  var childrenField = fields && fields.children || 'children',
+      parentField = fields && fields.parent || 'parent',
+      table = [];
+
+  function visit(node, parent) {
+    node[parentField] = parent;
+    table.push(node);
+    var children = node[childrenField];
+    if (children) {
+      for (var i=0; i<children.length; ++i) {
+        visit(children[i], node);
+      }
+    }
+  }
+
+  visit(root, null);
+  return (table.root = root, table);
+}
+
+},{"./json":20}],23:[function(require,module,exports){
+var util = require('../util');
+
+// Matches absolute URLs with optional protocol
+//   https://...    file://...    //...
+var protocol_re = /^([A-Za-z]+:)?\/\//;
+
+// Special treatment in node.js for the file: protocol
+var fileProtocol = 'file://';
+
+// Validate and cleanup URL to ensure that it is allowed to be accessed
+// Returns cleaned up URL, or false if access is not allowed
+function sanitizeUrl(opt) {
+  var url = opt.url;
+  if (!url && opt.file) { return fileProtocol + opt.file; }
+
+  // In case this is a relative url (has no host), prepend opt.baseURL
+  if (opt.baseURL && !protocol_re.test(url)) {
+    if (!startsWith(url, '/') && opt.baseURL[opt.baseURL.length-1] !== '/') {
+      url = '/' + url; // Ensure that there is a slash between the baseURL (e.g. hostname) and url
+    }
+    url = opt.baseURL + url;
+  }
+  // relative protocol, starts with '//'
+  if (!load.useXHR && startsWith(url, '//')) {
+    url = (opt.defaultProtocol || 'http') + ':' + url;
+  }
+  // If opt.domainWhiteList is set, only allows url, whose hostname
+  // * Is the same as the origin (window.location.hostname)
+  // * Equals one of the values in the whitelist
+  // * Is a proper subdomain of one of the values in the whitelist
+  if (opt.domainWhiteList) {
+    var domain, origin;
+    if (load.useXHR) {
+      var a = document.createElement('a');
+      a.href = url;
+      // From http://stackoverflow.com/questions/736513/how-do-i-parse-a-url-into-hostname-and-path-in-javascript
+      // IE doesn't populate all link properties when setting .href with a relative URL,
+      // however .href will return an absolute URL which then can be used on itself
+      // to populate these additional fields.
+      if (a.host === '') {
+        a.href = a.href;
+      }
+      domain = a.hostname.toLowerCase();
+      origin = window.location.hostname;
+    } else {
+      // relative protocol is broken: https://github.com/defunctzombie/node-url/issues/5
+      var parts = require('url').parse(url);
+      domain = parts.hostname;
+      origin = null;
+    }
+
+    if (origin !== domain) {
+      var whiteListed = opt.domainWhiteList.some(function(d) {
+        var idx = domain.length - d.length;
+        return d === domain ||
+          (idx > 1 && domain[idx-1] === '.' && domain.lastIndexOf(d) === idx);
+      });
+      if (!whiteListed) {
+        throw 'URL is not whitelisted: ' + url;
+      }
+    }
+  }
+  return url;
+}
+
+function load(opt, callback) {
+  return load.loader(opt, callback);
+}
+
+function loader(opt, callback) {
+  var error = callback || function(e) { throw e; }, url;
+
+  try {
+    url = load.sanitizeUrl(opt); // enable override
+  } catch (err) {
+    error(err);
+    return;
+  }
+
+  if (!url) {
+    error('Invalid URL: ' + opt.url);
+  } else if (load.useXHR) {
+    // on client, use xhr
+    return load.xhr(url, opt, callback);
+  } else if (startsWith(url, fileProtocol)) {
+    // on server, if url starts with 'file://', strip it and load from file
+    return load.file(url.slice(fileProtocol.length), opt, callback);
+  } else if (url.indexOf('://') < 0) { // TODO better protocol check?
+    // on server, if no protocol assume file
+    return load.file(url, opt, callback);
+  } else {
+    // for regular URLs on server
+    return load.http(url, opt, callback);
+  }
+}
+
+function xhrHasResponse(request) {
+  var type = request.responseType;
+  return type && type !== 'text' ?
+    request.response : // null on error
+    request.responseText; // '' on error
+}
+
+function xhr(url, opt, callback) {
+  var async = !!callback;
+  var request = new XMLHttpRequest();
+  // If IE does not support CORS, use XDomainRequest (copied from d3.xhr)
+  if (typeof XDomainRequest !== 'undefined' &&
+      !('withCredentials' in request) &&
+      /^(http(s)?:)?\/\//.test(url)) request = new XDomainRequest();
+
+  function respond() {
+    var status = request.status;
+    if (!status && xhrHasResponse(request) || status >= 200 && status < 300 || status === 304) {
+      callback(null, request.responseText);
+    } else {
+      callback(request, null);
+    }
+  }
+
+  if (async) {
+    if ('onload' in request) {
+      request.onload = request.onerror = respond;
+    } else {
+      request.onreadystatechange = function() {
+        if (request.readyState > 3) respond();
+      };
+    }
+  }
+
+  request.open('GET', url, async);
+  /* istanbul ignore else */
+  if (request.setRequestHeader) {
+    var headers = util.extend({}, load.headers, opt.headers);
+    for (var name in headers) {
+      request.setRequestHeader(name, headers[name]);
+    }
+  }
+  request.send();
+
+  if (!async && xhrHasResponse(request)) {
+    return request.responseText;
+  }
+}
+
+function file(filename, opt, callback) {
+  var fs = require('fs');
+  if (!callback) {
+    return fs.readFileSync(filename, 'utf8');
+  }
+  fs.readFile(filename, callback);
+}
+
+function http(url, opt, callback) {
+  var headers = util.extend({}, load.headers, opt.headers);
+
+  if (!callback) {
+    return require('sync-request')('GET', url, {headers: headers}).getBody();
+  }
+
+  var options = {url: url, encoding: null, gzip: true, headers: headers};
+  require('request')(options, function(error, response, body) {
+    if (!error && response.statusCode === 200) {
+      callback(null, body);
+    } else {
+      error = error ||
+        'Load failed with response code ' + response.statusCode + '.';
+      callback(error, null);
+    }
+  });
+}
+
+function startsWith(string, searchString) {
+  return string == null ? false : string.lastIndexOf(searchString, 0) === 0;
+}
+
+// Allow these functions to be overriden by the user of the library
+load.loader = loader;
+load.sanitizeUrl = sanitizeUrl;
+load.xhr = xhr;
+load.file = file;
+load.http = http;
+
+// Default settings
+load.useXHR = (typeof XMLHttpRequest !== 'undefined');
+load.headers = {};
+
+module.exports = load;
+
+},{"../util":31,"fs":383,"request":383,"sync-request":383,"url":383}],24:[function(require,module,exports){
+var util = require('../util'),
+  type = require('./type'),
+  formats = require('./formats'),
+  timeF = require('../format').time;
+
+function read(data, format) {
+  var type = (format && format.type) || 'json';
+  data = formats[type](data, format);
+  if (format && format.parse) parse(data, format.parse);
+  return data;
+}
+
+function parse(data, types) {
+  var cols, parsers, d, i, j, clen, len = data.length;
+
+  types = (types==='auto') ? type.inferAll(data) : util.duplicate(types);
+  cols = util.keys(types);
+  parsers = cols.map(function(c) {
+    var t = types[c];
+    if (t && t.indexOf('date:') === 0) {
+      var parts = t.split(/:(.+)?/, 2),  // split on first :
+          pattern = parts[1];
+      if ((pattern[0] === '\'' && pattern[pattern.length-1] === '\'') ||
+          (pattern[0] === '"'  && pattern[pattern.length-1] === '"')) {
+        pattern = pattern.slice(1, -1);
+      } else {
+        throw Error('Format pattern must be quoted: ' + pattern);
+      }
+      pattern = timeF(pattern);
+      return function(v) { return pattern.parse(v); };
+    }
+    if (!type.parsers[t]) {
+      throw Error('Illegal format pattern: ' + c + ':' + t);
+    }
+    return type.parsers[t];
+  });
+
+  for (i=0, clen=cols.length; i<len; ++i) {
+    d = data[i];
+    for (j=0; j<clen; ++j) {
+      d[cols[j]] = parsers[j](d[cols[j]]);
+    }
+  }
+  type.annotation(data, types);
+}
+
+read.formats = formats;
+module.exports = read;
+
+},{"../format":16,"../util":31,"./formats":19,"./type":26}],25:[function(require,module,exports){
+var util = require('../util');
+var load = require('./load');
+var read = require('./read');
+
+module.exports = util
+  .keys(read.formats)
+  .reduce(function(out, type) {
+    out[type] = function(opt, format, callback) {
+      // process arguments
+      if (util.isString(opt)) { opt = {url: opt}; }
+      if (arguments.length === 2 && util.isFunction(format)) {
+        callback = format;
+        format = undefined;
+      }
+
+      // set up read format
+      format = util.extend({parse: 'auto'}, format);
+      format.type = type;
+
+      // load data
+      var data = load(opt, callback ? function(error, data) {
+        if (error) { callback(error, null); return; }
+        try {
+          // data loaded, now parse it (async)
+          data = read(data, format);
+          callback(null, data);
+        } catch (e) {
+          callback(e, null);
+        }
+      } : undefined);
+
+      // data loaded, now parse it (sync)
+      if (!callback) return read(data, format);
+    };
+    return out;
+  }, {});
+
+},{"../util":31,"./load":23,"./read":24}],26:[function(require,module,exports){
+var util = require('../util');
+
+var TYPES = '__types__';
+
+var PARSERS = {
+  boolean: util.boolean,
+  integer: util.number,
+  number:  util.number,
+  date:    util.date,
+  string:  function(x) { return x==='' ? null : x; }
+};
+
+var TESTS = {
+  boolean: function(x) { return x==='true' || x==='false' || util.isBoolean(x); },
+  integer: function(x) { return TESTS.number(x) && (x=+x) === ~~x; },
+  number: function(x) { return !isNaN(+x) && !util.isDate(x); },
+  date: function(x) { return !isNaN(Date.parse(x)); }
+};
+
+function annotation(data, types) {
+  if (!types) return data && data[TYPES] || null;
+  data[TYPES] = types;
+}
+
+function type(values, f) {
+  values = util.array(values);
+  f = util.$(f);
+  var v, i, n;
+
+  // if data array has type annotations, use them
+  if (values[TYPES]) {
+    v = f(values[TYPES]);
+    if (util.isString(v)) return v;
+  }
+
+  for (i=0, n=values.length; !util.isValid(v) && i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+  }
+
+  return util.isDate(v) ? 'date' :
+    util.isNumber(v)    ? 'number' :
+    util.isBoolean(v)   ? 'boolean' :
+    util.isString(v)    ? 'string' : null;
+}
+
+function typeAll(data, fields) {
+  if (!data.length) return;
+  fields = fields || util.keys(data[0]);
+  return fields.reduce(function(types, f) {
+    return (types[f] = type(data, f), types);
+  }, {});
+}
+
+function infer(values, f) {
+  values = util.array(values);
+  f = util.$(f);
+  var i, j, v;
+
+  // types to test for, in precedence order
+  var types = ['boolean', 'integer', 'number', 'date'];
+
+  for (i=0; i<values.length; ++i) {
+    // get next value to test
+    v = f ? f(values[i]) : values[i];
+    // test value against remaining types
+    for (j=0; j<types.length; ++j) {
+      if (util.isValid(v) && !TESTS[types[j]](v)) {
+        types.splice(j, 1);
+        j -= 1;
+      }
+    }
+    // if no types left, return 'string'
+    if (types.length === 0) return 'string';
+  }
+
+  return types[0];
+}
+
+function inferAll(data, fields) {
+  fields = fields || util.keys(data[0]);
+  return fields.reduce(function(types, f) {
+    types[f] = infer(data, f);
+    return types;
+  }, {});
+}
+
+type.annotation = annotation;
+type.all = typeAll;
+type.infer = infer;
+type.inferAll = inferAll;
+type.parsers = PARSERS;
+module.exports = type;
+
+},{"../util":31}],27:[function(require,module,exports){
+var util = require('./util');
+
+var dl = {
+  version:    '1.7.0',
+  load:       require('./import/load'),
+  read:       require('./import/read'),
+  type:       require('./import/type'),
+  Aggregator: require('./aggregate/aggregator'),
+  groupby:    require('./aggregate/groupby'),
+  bins:       require('./bins/bins'),
+  $bin:       require('./bins/histogram').$bin,
+  histogram:  require('./bins/histogram').histogram,
+  format:     require('./format'),
+  template:   require('./template'),
+  time:       require('./time')
+};
+
+util.extend(dl, util);
+util.extend(dl, require('./accessor'));
+util.extend(dl, require('./generate'));
+util.extend(dl, require('./stats'));
+util.extend(dl, require('./import/readers'));
+util.extend(dl.format, require('./format-tables'));
+
+// backwards-compatible, deprecated API
+// will remove in the future
+dl.print = {
+  table:   dl.format.table,
+  summary: dl.format.summary
+};
+
+module.exports = dl;
+
+},{"./accessor":8,"./aggregate/aggregator":9,"./aggregate/groupby":11,"./bins/bins":13,"./bins/histogram":14,"./format":16,"./format-tables":15,"./generate":17,"./import/load":23,"./import/read":24,"./import/readers":25,"./import/type":26,"./stats":28,"./template":29,"./time":30,"./util":31}],28:[function(require,module,exports){
+var util = require('./util');
+var type = require('./import/type');
+var gen = require('./generate');
+
+var stats = module.exports;
+
+// Collect unique values.
+// Output: an array of unique values, in first-observed order
+stats.unique = function(values, f, results) {
+  f = util.$(f);
+  results = results || [];
+  var u = {}, v, i, n;
+  for (i=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (v in u) continue;
+    u[v] = 1;
+    results.push(v);
+  }
+  return results;
+};
+
+// Return the length of the input array.
+stats.count = function(values) {
+  return values && values.length || 0;
+};
+
+// Count the number of non-null, non-undefined, non-NaN values.
+stats.count.valid = function(values, f) {
+  f = util.$(f);
+  var v, i, n, valid = 0;
+  for (i=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) valid += 1;
+  }
+  return valid;
+};
+
+// Count the number of null or undefined values.
+stats.count.missing = function(values, f) {
+  f = util.$(f);
+  var v, i, n, count = 0;
+  for (i=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (v == null) count += 1;
+  }
+  return count;
+};
+
+// Count the number of distinct values.
+// Null, undefined and NaN are each considered distinct values.
+stats.count.distinct = function(values, f) {
+  f = util.$(f);
+  var u = {}, v, i, n, count = 0;
+  for (i=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (v in u) continue;
+    u[v] = 1;
+    count += 1;
+  }
+  return count;
+};
+
+// Construct a map from distinct values to occurrence counts.
+stats.count.map = function(values, f) {
+  f = util.$(f);
+  var map = {}, v, i, n;
+  for (i=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    map[v] = (v in map) ? map[v] + 1 : 1;
+  }
+  return map;
+};
+
+// Compute the median of an array of numbers.
+stats.median = function(values, f) {
+  if (f) values = values.map(util.$(f));
+  values = values.filter(util.isValid).sort(util.cmp);
+  return stats.quantile(values, 0.5);
+};
+
+// Computes the quartile boundaries of an array of numbers.
+stats.quartile = function(values, f) {
+  if (f) values = values.map(util.$(f));
+  values = values.filter(util.isValid).sort(util.cmp);
+  var q = stats.quantile;
+  return [q(values, 0.25), q(values, 0.50), q(values, 0.75)];
+};
+
+// Compute the quantile of a sorted array of numbers.
+// Adapted from the D3.js implementation.
+stats.quantile = function(values, f, p) {
+  if (p === undefined) { p = f; f = util.identity; }
+  f = util.$(f);
+  var H = (values.length - 1) * p + 1,
+      h = Math.floor(H),
+      v = +f(values[h - 1]),
+      e = H - h;
+  return e ? v + e * (f(values[h]) - v) : v;
+};
+
+// Compute the sum of an array of numbers.
+stats.sum = function(values, f) {
+  f = util.$(f);
+  for (var sum=0, i=0, n=values.length, v; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) sum += v;
+  }
+  return sum;
+};
+
+// Compute the mean (average) of an array of numbers.
+stats.mean = function(values, f) {
+  f = util.$(f);
+  var mean = 0, delta, i, n, c, v;
+  for (i=0, c=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) {
+      delta = v - mean;
+      mean = mean + delta / (++c);
+    }
+  }
+  return mean;
+};
+
+// Compute the geometric mean of an array of numbers.
+stats.mean.geometric = function(values, f) {
+  f = util.$(f);
+  var mean = 1, c, n, v, i;
+  for (i=0, c=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) {
+      if (v <= 0) {
+        throw Error("Geometric mean only defined for positive values.");
+      }
+      mean *= v;
+      ++c;
+    }
+  }
+  mean = c > 0 ? Math.pow(mean, 1/c) : 0;
+  return mean;
+};
+
+// Compute the harmonic mean of an array of numbers.
+stats.mean.harmonic = function(values, f) {
+  f = util.$(f);
+  var mean = 0, c, n, v, i;
+  for (i=0, c=0, n=values.length; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) {
+      mean += 1/v;
+      ++c;
+    }
+  }
+  return c / mean;
+};
+
+// Compute the sample variance of an array of numbers.
+stats.variance = function(values, f) {
+  f = util.$(f);
+  if (!util.isArray(values) || values.length < 2) return 0;
+  var mean = 0, M2 = 0, delta, i, c, v;
+  for (i=0, c=0; i<values.length; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) {
+      delta = v - mean;
+      mean = mean + delta / (++c);
+      M2 = M2 + delta * (v - mean);
+    }
+  }
+  M2 = M2 / (c - 1);
+  return M2;
+};
+
+// Compute the sample standard deviation of an array of numbers.
+stats.stdev = function(values, f) {
+  return Math.sqrt(stats.variance(values, f));
+};
+
+// Compute the Pearson mode skewness ((median-mean)/stdev) of an array of numbers.
+stats.modeskew = function(values, f) {
+  var avg = stats.mean(values, f),
+      med = stats.median(values, f),
+      std = stats.stdev(values, f);
+  return std === 0 ? 0 : (avg - med) / std;
+};
+
+// Find the minimum value in an array.
+stats.min = function(values, f) {
+  return stats.extent(values, f)[0];
+};
+
+// Find the maximum value in an array.
+stats.max = function(values, f) {
+  return stats.extent(values, f)[1];
+};
+
+// Find the minimum and maximum of an array of values.
+stats.extent = function(values, f) {
+  f = util.$(f);
+  var a, b, v, i, n = values.length;
+  for (i=0; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) { a = b = v; break; }
+  }
+  for (; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) {
+      if (v < a) a = v;
+      if (v > b) b = v;
+    }
+  }
+  return [a, b];
+};
+
+// Find the integer indices of the minimum and maximum values.
+stats.extent.index = function(values, f) {
+  f = util.$(f);
+  var x = -1, y = -1, a, b, v, i, n = values.length;
+  for (i=0; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) { a = b = v; x = y = i; break; }
+  }
+  for (; i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+    if (util.isValid(v)) {
+      if (v < a) { a = v; x = i; }
+      if (v > b) { b = v; y = i; }
+    }
+  }
+  return [x, y];
+};
+
+// Compute the dot product of two arrays of numbers.
+stats.dot = function(values, a, b) {
+  var sum = 0, i, v;
+  if (!b) {
+    if (values.length !== a.length) {
+      throw Error('Array lengths must match.');
+    }
+    for (i=0; i<values.length; ++i) {
+      v = values[i] * a[i];
+      if (v === v) sum += v;
+    }
+  } else {
+    a = util.$(a);
+    b = util.$(b);
+    for (i=0; i<values.length; ++i) {
+      v = a(values[i]) * b(values[i]);
+      if (v === v) sum += v;
+    }
+  }
+  return sum;
+};
+
+// Compute the vector distance between two arrays of numbers.
+// Default is Euclidean (exp=2) distance, configurable via exp argument.
+stats.dist = function(values, a, b, exp) {
+  var f = util.isFunction(b) || util.isString(b),
+      X = values,
+      Y = f ? values : a,
+      e = f ? exp : b,
+      L2 = e === 2 || e == null,
+      n = values.length, s = 0, d, i;
+  if (f) {
+    a = util.$(a);
+    b = util.$(b);
+  }
+  for (i=0; i<n; ++i) {
+    d = f ? (a(X[i])-b(Y[i])) : (X[i]-Y[i]);
+    s += L2 ? d*d : Math.pow(Math.abs(d), e);
+  }
+  return L2 ? Math.sqrt(s) : Math.pow(s, 1/e);
+};
+
+// Compute the Cohen's d effect size between two arrays of numbers.
+stats.cohensd = function(values, a, b) {
+  var X = b ? values.map(util.$(a)) : values,
+      Y = b ? values.map(util.$(b)) : a,
+      x1 = stats.mean(X),
+      x2 = stats.mean(Y),
+      n1 = stats.count.valid(X),
+      n2 = stats.count.valid(Y);
+
+  if ((n1+n2-2) <= 0) {
+    // if both arrays are size 1, or one is empty, there's no effect size
+    return 0;
+  }
+  // pool standard deviation
+  var s1 = stats.variance(X),
+      s2 = stats.variance(Y),
+      s = Math.sqrt((((n1-1)*s1) + ((n2-1)*s2)) / (n1+n2-2));
+  // if there is no variance, there's no effect size
+  return s===0 ? 0 : (x1 - x2) / s;
+};
+
+// Computes the covariance between two arrays of numbers
+stats.covariance = function(values, a, b) {
+  var X = b ? values.map(util.$(a)) : values,
+      Y = b ? values.map(util.$(b)) : a,
+      n = X.length,
+      xm = stats.mean(X),
+      ym = stats.mean(Y),
+      sum = 0, c = 0, i, x, y, vx, vy;
+
+  if (n !== Y.length) {
+    throw Error('Input lengths must match.');
+  }
+
+  for (i=0; i<n; ++i) {
+    x = X[i]; vx = util.isValid(x);
+    y = Y[i]; vy = util.isValid(y);
+    if (vx && vy) {
+      sum += (x-xm) * (y-ym);
+      ++c;
+    } else if (vx || vy) {
+      throw Error('Valid values must align.');
+    }
+  }
+  return sum / (c-1);
+};
+
+// Compute ascending rank scores for an array of values.
+// Ties are assigned their collective mean rank.
+stats.rank = function(values, f) {
+  f = util.$(f) || util.identity;
+  var a = values.map(function(v, i) {
+      return {idx: i, val: f(v)};
+    })
+    .sort(util.comparator('val'));
+
+  var n = values.length,
+      r = Array(n),
+      tie = -1, p = {}, i, v, mu;
+
+  for (i=0; i<n; ++i) {
+    v = a[i].val;
+    if (tie < 0 && p === v) {
+      tie = i - 1;
+    } else if (tie > -1 && p !== v) {
+      mu = 1 + (i-1 + tie) / 2;
+      for (; tie<i; ++tie) r[a[tie].idx] = mu;
+      tie = -1;
+    }
+    r[a[i].idx] = i + 1;
+    p = v;
+  }
+
+  if (tie > -1) {
+    mu = 1 + (n-1 + tie) / 2;
+    for (; tie<n; ++tie) r[a[tie].idx] = mu;
+  }
+
+  return r;
+};
+
+// Compute the sample Pearson product-moment correlation of two arrays of numbers.
+stats.cor = function(values, a, b) {
+  var fn = b;
+  b = fn ? values.map(util.$(b)) : a;
+  a = fn ? values.map(util.$(a)) : values;
+
+  var dot = stats.dot(a, b),
+      mua = stats.mean(a),
+      mub = stats.mean(b),
+      sda = stats.stdev(a),
+      sdb = stats.stdev(b),
+      n = values.length;
+
+  return (dot - n*mua*mub) / ((n-1) * sda * sdb);
+};
+
+// Compute the Spearman rank correlation of two arrays of values.
+stats.cor.rank = function(values, a, b) {
+  var ra = b ? stats.rank(values, a) : stats.rank(values),
+      rb = b ? stats.rank(values, b) : stats.rank(a),
+      n = values.length, i, s, d;
+
+  for (i=0, s=0; i<n; ++i) {
+    d = ra[i] - rb[i];
+    s += d * d;
+  }
+
+  return 1 - 6*s / (n * (n*n-1));
+};
+
+// Compute the distance correlation of two arrays of numbers.
+// http://en.wikipedia.org/wiki/Distance_correlation
+stats.cor.dist = function(values, a, b) {
+  var X = b ? values.map(util.$(a)) : values,
+      Y = b ? values.map(util.$(b)) : a;
+
+  var A = stats.dist.mat(X),
+      B = stats.dist.mat(Y),
+      n = A.length,
+      i, aa, bb, ab;
+
+  for (i=0, aa=0, bb=0, ab=0; i<n; ++i) {
+    aa += A[i]*A[i];
+    bb += B[i]*B[i];
+    ab += A[i]*B[i];
+  }
+
+  return Math.sqrt(ab / Math.sqrt(aa*bb));
+};
+
+// Simple linear regression.
+// Returns a "fit" object with slope (m), intercept (b),
+// r value (R), and sum-squared residual error (rss).
+stats.linearRegression = function(values, a, b) {
+  var X = b ? values.map(util.$(a)) : values,
+      Y = b ? values.map(util.$(b)) : a,
+      n = X.length,
+      xy = stats.covariance(X, Y), // will throw err if valid vals don't align
+      sx = stats.stdev(X),
+      sy = stats.stdev(Y),
+      slope = xy / (sx*sx),
+      icept = stats.mean(Y) - slope * stats.mean(X),
+      fit = {slope: slope, intercept: icept, R: xy / (sx*sy), rss: 0},
+      res, i;
+
+  for (i=0; i<n; ++i) {
+    if (util.isValid(X[i]) && util.isValid(Y[i])) {
+      res = (slope*X[i] + icept) - Y[i];
+      fit.rss += res * res;
+    }
+  }
+
+  return fit;
+};
+
+// Namespace for bootstrap
+stats.bootstrap = {};
+
+// Construct a bootstrapped confidence interval at a given percentile level
+// Arguments are an array, an optional n (defaults to 1000),
+//  an optional alpha (defaults to 0.05), and an optional smoothing parameter
+stats.bootstrap.ci = function(values, a, b, c, d) {
+  var X, N, alpha, smooth, bs, means, i;
+  if (util.isFunction(a) || util.isString(a)) {
+    X = values.map(util.$(a));
+    N = b;
+    alpha = c;
+    smooth = d;
+  } else {
+    X = values;
+    N = a;
+    alpha = b;
+    smooth = c;
+  }
+  N = N ? +N : 1000;
+  alpha = alpha || 0.05;
+
+  bs = gen.random.bootstrap(X, smooth);
+  for (i=0, means = Array(N); i<N; ++i) {
+    means[i] = stats.mean(bs.samples(X.length));
+  }
+  means.sort(util.numcmp);
+  return [
+    stats.quantile(means, alpha/2),
+    stats.quantile(means, 1-(alpha/2))
+  ];
+};
+
+// Namespace for z-tests
+stats.z = {};
+
+// Construct a z-confidence interval at a given significance level
+// Arguments are an array and an optional alpha (defaults to 0.05).
+stats.z.ci = function(values, a, b) {
+  var X = values, alpha = a;
+  if (util.isFunction(a) || util.isString(a)) {
+    X = values.map(util.$(a));
+    alpha = b;
+  }
+  alpha = alpha || 0.05;
+
+  var z = alpha===0.05 ? 1.96 : gen.random.normal(0, 1).icdf(1-(alpha/2)),
+      mu = stats.mean(X),
+      SE = stats.stdev(X) / Math.sqrt(stats.count.valid(X));
+  return [mu - (z*SE), mu + (z*SE)];
+};
+
+// Perform a z-test of means. Returns the p-value.
+// If a single array is provided, performs a one-sample location test.
+// If two arrays or a table and two accessors are provided, performs
+// a two-sample location test. A paired test is performed if specified
+// by the options hash.
+// The options hash format is: {paired: boolean, nullh: number}.
+// http://en.wikipedia.org/wiki/Z-test
+// http://en.wikipedia.org/wiki/Paired_difference_test
+stats.z.test = function(values, a, b, opt) {
+  if (util.isFunction(b) || util.isString(b)) { // table and accessors
+    return (opt && opt.paired ? ztestP : ztest2)(opt, values, a, b);
+  } else if (util.isArray(a)) { // two arrays
+    return (b && b.paired ? ztestP : ztest2)(b, values, a);
+  } else if (util.isFunction(a) || util.isString(a)) {
+    return ztest1(b, values, a); // table and accessor
+  } else {
+    return ztest1(a, values); // one array
+  }
+};
+
+// Perform a z-test of means. Returns the p-value.
+// Assuming we have a list of values, and a null hypothesis. If no null
+// hypothesis, assume our null hypothesis is mu=0.
+function ztest1(opt, X, f) {
+  var nullH = opt && opt.nullh || 0,
+      gaussian = gen.random.normal(0, 1),
+      mu = stats.mean(X,f),
+      SE = stats.stdev(X,f) / Math.sqrt(stats.count.valid(X,f));
+
+  if (SE===0) {
+    // Test not well defined when standard error is 0.
+    return (mu - nullH) === 0 ? 1 : 0;
+  }
+  // Two-sided, so twice the one-sided cdf.
+  var z = (mu - nullH) / SE;
+  return 2 * gaussian.cdf(-Math.abs(z));
+}
+
+// Perform a two sample paired z-test of means. Returns the p-value.
+function ztestP(opt, values, a, b) {
+  var X = b ? values.map(util.$(a)) : values,
+      Y = b ? values.map(util.$(b)) : a,
+      n1 = stats.count(X),
+      n2 = stats.count(Y),
+      diffs = Array(), i;
+
+  if (n1 !== n2) {
+    throw Error('Array lengths must match.');
+  }
+  for (i=0; i<n1; ++i) {
+    // Only valid differences should contribute to the test statistic
+    if (util.isValid(X[i]) && util.isValid(Y[i])) {
+      diffs.push(X[i] - Y[i]);
+    }
+  }
+  return stats.z.test(diffs, opt && opt.nullh || 0);
+}
+
+// Perform a two sample z-test of means. Returns the p-value.
+function ztest2(opt, values, a, b) {
+  var X = b ? values.map(util.$(a)) : values,
+      Y = b ? values.map(util.$(b)) : a,
+      n1 = stats.count.valid(X),
+      n2 = stats.count.valid(Y),
+      gaussian = gen.random.normal(0, 1),
+      meanDiff = stats.mean(X) - stats.mean(Y) - (opt && opt.nullh || 0),
+      SE = Math.sqrt(stats.variance(X)/n1 + stats.variance(Y)/n2);
+
+  if (SE===0) {
+    // Not well defined when pooled standard error is 0.
+    return meanDiff===0 ? 1 : 0;
+  }
+  // Two-tailed, so twice the one-sided cdf.
+  var z = meanDiff / SE;
+  return 2 * gaussian.cdf(-Math.abs(z));
+}
+
+// Construct a mean-centered distance matrix for an array of numbers.
+stats.dist.mat = function(X) {
+  var n = X.length,
+      m = n*n,
+      A = Array(m),
+      R = gen.zeros(n),
+      M = 0, v, i, j;
+
+  for (i=0; i<n; ++i) {
+    A[i*n+i] = 0;
+    for (j=i+1; j<n; ++j) {
+      A[i*n+j] = (v = Math.abs(X[i] - X[j]));
+      A[j*n+i] = v;
+      R[i] += v;
+      R[j] += v;
+    }
+  }
+
+  for (i=0; i<n; ++i) {
+    M += R[i];
+    R[i] /= n;
+  }
+  M /= m;
+
+  for (i=0; i<n; ++i) {
+    for (j=i; j<n; ++j) {
+      A[i*n+j] += M - R[i] - R[j];
+      A[j*n+i] = A[i*n+j];
+    }
+  }
+
+  return A;
+};
+
+// Compute the Shannon entropy (log base 2) of an array of counts.
+stats.entropy = function(counts, f) {
+  f = util.$(f);
+  var i, p, s = 0, H = 0, n = counts.length;
+  for (i=0; i<n; ++i) {
+    s += (f ? f(counts[i]) : counts[i]);
+  }
+  if (s === 0) return 0;
+  for (i=0; i<n; ++i) {
+    p = (f ? f(counts[i]) : counts[i]) / s;
+    if (p) H += p * Math.log(p);
+  }
+  return -H / Math.LN2;
+};
+
+// Compute the mutual information between two discrete variables.
+// Returns an array of the form [MI, MI_distance]
+// MI_distance is defined as 1 - I(a,b) / H(a,b).
+// http://en.wikipedia.org/wiki/Mutual_information
+stats.mutual = function(values, a, b, counts) {
+  var x = counts ? values.map(util.$(a)) : values,
+      y = counts ? values.map(util.$(b)) : a,
+      z = counts ? values.map(util.$(counts)) : b;
+
+  var px = {},
+      py = {},
+      n = z.length,
+      s = 0, I = 0, H = 0, p, t, i;
+
+  for (i=0; i<n; ++i) {
+    px[x[i]] = 0;
+    py[y[i]] = 0;
+  }
+
+  for (i=0; i<n; ++i) {
+    px[x[i]] += z[i];
+    py[y[i]] += z[i];
+    s += z[i];
+  }
+
+  t = 1 / (s * Math.LN2);
+  for (i=0; i<n; ++i) {
+    if (z[i] === 0) continue;
+    p = (s * z[i]) / (px[x[i]] * py[y[i]]);
+    I += z[i] * t * Math.log(p);
+    H += z[i] * t * Math.log(z[i]/s);
+  }
+
+  return [I, 1 + I/H];
+};
+
+// Compute the mutual information between two discrete variables.
+stats.mutual.info = function(values, a, b, counts) {
+  return stats.mutual(values, a, b, counts)[0];
+};
+
+// Compute the mutual information distance between two discrete variables.
+// MI_distance is defined as 1 - I(a,b) / H(a,b).
+stats.mutual.dist = function(values, a, b, counts) {
+  return stats.mutual(values, a, b, counts)[1];
+};
+
+// Compute a profile of summary statistics for a variable.
+stats.profile = function(values, f) {
+  var mean = 0,
+      valid = 0,
+      missing = 0,
+      distinct = 0,
+      min = null,
+      max = null,
+      M2 = 0,
+      vals = [],
+      u = {}, delta, sd, i, v, x;
+
+  // compute summary stats
+  for (i=0; i<values.length; ++i) {
+    v = f ? f(values[i]) : values[i];
+
+    // update unique values
+    u[v] = (v in u) ? u[v] + 1 : (distinct += 1, 1);
+
+    if (v == null) {
+      ++missing;
+    } else if (util.isValid(v)) {
+      // update stats
+      x = (typeof v === 'string') ? v.length : v;
+      if (min===null || x < min) min = x;
+      if (max===null || x > max) max = x;
+      delta = x - mean;
+      mean = mean + delta / (++valid);
+      M2 = M2 + delta * (x - mean);
+      vals.push(x);
+    }
+  }
+  M2 = M2 / (valid - 1);
+  sd = Math.sqrt(M2);
+
+  // sort values for median and iqr
+  vals.sort(util.cmp);
+
+  return {
+    type:     type(values, f),
+    unique:   u,
+    count:    values.length,
+    valid:    valid,
+    missing:  missing,
+    distinct: distinct,
+    min:      min,
+    max:      max,
+    mean:     mean,
+    stdev:    sd,
+    median:   (v = stats.quantile(vals, 0.5)),
+    q1:       stats.quantile(vals, 0.25),
+    q3:       stats.quantile(vals, 0.75),
+    modeskew: sd === 0 ? 0 : (mean - v) / sd
+  };
+};
+
+// Compute profiles for all variables in a data set.
+stats.summary = function(data, fields) {
+  fields = fields || util.keys(data[0]);
+  var s = fields.map(function(f) {
+    var p = stats.profile(data, util.$(f));
+    return (p.field = f, p);
+  });
+  return (s.__summary__ = true, s);
+};
+
+},{"./generate":17,"./import/type":26,"./util":31}],29:[function(require,module,exports){
+var util = require('./util'),
+    format = require('./format');
+
+var context = {
+  formats:    [],
+  format_map: {},
+  truncate:   util.truncate,
+  pad:        util.pad,
+  day:        format.day,
+  month:      format.month,
+  quarter:    format.quarter
+};
+
+function template(text) {
+  var src = source(text, 'd');
+  src = 'var __t; return ' + src + ';';
+
+  /* jshint evil: true */
+  return (new Function('d', src)).bind(context);
+}
+
+template.source = source;
+template.context = context;
+template.format = get_format;
+module.exports = template;
+
+// Clear cache of format objects.
+// This can *break* prior template functions, so invoke with care!
+template.clearFormatCache = function() {
+  context.formats = [];
+  context.format_map = {};
+};
+
+// Generate property access code for use within template source.
+// object: the name of the object (variable) containing template data
+// property: the property access string, verbatim from template tag
+template.property = function(object, property) {
+  var src = util.field(property).map(util.str).join('][');
+  return object + '[' + src + ']';
+};
+
+// Generate source code for a template function.
+// text: the template text
+// variable: the name of the data object variable ('obj' by default)
+// properties: optional hash for collecting all accessed properties
+function source(text, variable, properties) {
+  variable = variable || 'obj';
+  var index = 0;
+  var src = '\'';
+  var regex = template_re;
+
+  // Compile the template source, escaping string literals appropriately.
+  text.replace(regex, function(match, interpolate, offset) {
+    src += text
+      .slice(index, offset)
+      .replace(template_escaper, template_escapeChar);
+    index = offset + match.length;
+
+    if (interpolate) {
+      src += '\'\n+((__t=(' +
+        template_var(interpolate, variable, properties) +
+        '))==null?\'\':__t)+\n\'';
+    }
+
+    // Adobe VMs need the match returned to produce the correct offest.
+    return match;
+  });
+  return src + '\'';
+}
+
+function template_var(text, variable, properties) {
+  var filters = text.match(filter_re);
+  var prop = filters.shift().trim();
+  var stringCast = true;
+
+  function strcall(fn) {
+    fn = fn || '';
+    if (stringCast) {
+      stringCast = false;
+      src = 'String(' + src + ')' + fn;
+    } else {
+      src += fn;
+    }
+    return src;
+  }
+
+  function date() {
+    return '(typeof ' + src + '==="number"?new Date('+src+'):'+src+')';
+  }
+
+  function formatter(type) {
+    var pattern = args[0];
+    if ((pattern[0] === '\'' && pattern[pattern.length-1] === '\'') ||
+        (pattern[0] === '"'  && pattern[pattern.length-1] === '"')) {
+      pattern = pattern.slice(1, -1);
+    } else {
+      throw Error('Format pattern must be quoted: ' + pattern);
+    }
+    a = template_format(pattern, type);
+    stringCast = false;
+    var arg = type === 'number' ? src : date();
+    src = 'this.formats['+a+']('+arg+')';
+  }
+
+  if (properties) properties[prop] = 1;
+  var src = template.property(variable, prop);
+
+  for (var i=0; i<filters.length; ++i) {
+    var f = filters[i], args = null, pidx, a, b;
+
+    if ((pidx=f.indexOf(':')) > 0) {
+      f = f.slice(0, pidx);
+      args = filters[i].slice(pidx+1)
+        .match(args_re)
+        .map(function(s) { return s.trim(); });
+    }
+    f = f.trim();
+
+    switch (f) {
+      case 'length':
+        strcall('.length');
+        break;
+      case 'lower':
+        strcall('.toLowerCase()');
+        break;
+      case 'upper':
+        strcall('.toUpperCase()');
+        break;
+      case 'lower-locale':
+        strcall('.toLocaleLowerCase()');
+        break;
+      case 'upper-locale':
+        strcall('.toLocaleUpperCase()');
+        break;
+      case 'trim':
+        strcall('.trim()');
+        break;
+      case 'left':
+        a = util.number(args[0]);
+        strcall('.slice(0,' + a + ')');
+        break;
+      case 'right':
+        a = util.number(args[0]);
+        strcall('.slice(-' + a +')');
+        break;
+      case 'mid':
+        a = util.number(args[0]);
+        b = a + util.number(args[1]);
+        strcall('.slice(+'+a+','+b+')');
+        break;
+      case 'slice':
+        a = util.number(args[0]);
+        strcall('.slice('+ a +
+          (args.length > 1 ? ',' + util.number(args[1]) : '') +
+          ')');
+        break;
+      case 'truncate':
+        a = util.number(args[0]);
+        b = args[1];
+        b = (b!=='left' && b!=='middle' && b!=='center') ? 'right' : b;
+        src = 'this.truncate(' + strcall() + ',' + a + ',\'' + b + '\')';
+        break;
+      case 'pad':
+        a = util.number(args[0]);
+        b = args[1];
+        b = (b!=='left' && b!=='middle' && b!=='center') ? 'right' : b;
+        src = 'this.pad(' + strcall() + ',' + a + ',\'' + b + '\')';
+        break;
+      case 'number':
+        formatter('number');
+        break;
+      case 'time':
+        formatter('time');
+        break;
+      case 'time-utc':
+        formatter('utc');
+        break;
+      case 'month':
+        src = 'this.month(' + src + ')';
+        break;
+      case 'month-abbrev':
+        src = 'this.month(' + src + ',true)';
+        break;
+      case 'day':
+        src = 'this.day(' + src + ')';
+        break;
+      case 'day-abbrev':
+        src = 'this.day(' + src + ',true)';
+        break;
+      case 'quarter':
+        src = 'this.quarter(' + src + ')';
+        break;
+      default:
+        throw Error('Unrecognized template filter: ' + f);
+    }
+  }
+
+  return src;
+}
+
+var template_re = /\{\{(.+?)\}\}|$/g,
+    filter_re = /(?:"[^"]*"|\'[^\']*\'|[^\|"]+|[^\|\']+)+/g,
+    args_re = /(?:"[^"]*"|\'[^\']*\'|[^,"]+|[^,\']+)+/g;
+
+// Certain characters need to be escaped so that they can be put into a
+// string literal.
+var template_escapes = {
+  '\'':     '\'',
+  '\\':     '\\',
+  '\r':     'r',
+  '\n':     'n',
+  '\u2028': 'u2028',
+  '\u2029': 'u2029'
+};
+
+var template_escaper = /\\|'|\r|\n|\u2028|\u2029/g;
+
+function template_escapeChar(match) {
+  return '\\' + template_escapes[match];
+}
+
+function template_format(pattern, type) {
+  var key = type + ':' + pattern;
+  if (context.format_map[key] == null) {
+    var f = format[type](pattern);
+    var i = context.formats.length;
+    context.formats.push(f);
+    context.format_map[key] = i;
+    return i;
+  }
+  return context.format_map[key];
+}
+
+function get_format(pattern, type) {
+  return context.formats[template_format(pattern, type)];
+}
+
+},{"./format":16,"./util":31}],30:[function(require,module,exports){
+var d3_time = require('d3-time');
+
+var tempDate = new Date(),
+    baseDate = new Date(0, 0, 1).setFullYear(0), // Jan 1, 0 AD
+    utcBaseDate = new Date(Date.UTC(0, 0, 1)).setUTCFullYear(0);
+
+function date(d) {
+  return (tempDate.setTime(+d), tempDate);
+}
+
+// create a time unit entry
+function entry(type, date, unit, step, min, max) {
+  var e = {
+    type: type,
+    date: date,
+    unit: unit
+  };
+  if (step) {
+    e.step = step;
+  } else {
+    e.minstep = 1;
+  }
+  if (min != null) e.min = min;
+  if (max != null) e.max = max;
+  return e;
+}
+
+function create(type, unit, base, step, min, max) {
+  return entry(type,
+    function(d) { return unit.offset(base, d); },
+    function(d) { return unit.count(base, d); },
+    step, min, max);
+}
+
+var locale = [
+  create('second', d3_time.second, baseDate),
+  create('minute', d3_time.minute, baseDate),
+  create('hour',   d3_time.hour,   baseDate),
+  create('day',    d3_time.day,    baseDate, [1, 7]),
+  create('month',  d3_time.month,  baseDate, [1, 3, 6]),
+  create('year',   d3_time.year,   baseDate),
+
+  // periodic units
+  entry('seconds',
+    function(d) { return new Date(1970, 0, 1, 0, 0, d); },
+    function(d) { return date(d).getSeconds(); },
+    null, 0, 59
+  ),
+  entry('minutes',
+    function(d) { return new Date(1970, 0, 1, 0, d); },
+    function(d) { return date(d).getMinutes(); },
+    null, 0, 59
+  ),
+  entry('hours',
+    function(d) { return new Date(1970, 0, 1, d); },
+    function(d) { return date(d).getHours(); },
+    null, 0, 23
+  ),
+  entry('weekdays',
+    function(d) { return new Date(1970, 0, 4+d); },
+    function(d) { return date(d).getDay(); },
+    [1], 0, 6
+  ),
+  entry('dates',
+    function(d) { return new Date(1970, 0, d); },
+    function(d) { return date(d).getDate(); },
+    [1], 1, 31
+  ),
+  entry('months',
+    function(d) { return new Date(1970, d % 12, 1); },
+    function(d) { return date(d).getMonth(); },
+    [1], 0, 11
+  )
+];
+
+var utc = [
+  create('second', d3_time.utcSecond, utcBaseDate),
+  create('minute', d3_time.utcMinute, utcBaseDate),
+  create('hour',   d3_time.utcHour,   utcBaseDate),
+  create('day',    d3_time.utcDay,    utcBaseDate, [1, 7]),
+  create('month',  d3_time.utcMonth,  utcBaseDate, [1, 3, 6]),
+  create('year',   d3_time.utcYear,   utcBaseDate),
+
+  // periodic units
+  entry('seconds',
+    function(d) { return new Date(Date.UTC(1970, 0, 1, 0, 0, d)); },
+    function(d) { return date(d).getUTCSeconds(); },
+    null, 0, 59
+  ),
+  entry('minutes',
+    function(d) { return new Date(Date.UTC(1970, 0, 1, 0, d)); },
+    function(d) { return date(d).getUTCMinutes(); },
+    null, 0, 59
+  ),
+  entry('hours',
+    function(d) { return new Date(Date.UTC(1970, 0, 1, d)); },
+    function(d) { return date(d).getUTCHours(); },
+    null, 0, 23
+  ),
+  entry('weekdays',
+    function(d) { return new Date(Date.UTC(1970, 0, 4+d)); },
+    function(d) { return date(d).getUTCDay(); },
+    [1], 0, 6
+  ),
+  entry('dates',
+    function(d) { return new Date(Date.UTC(1970, 0, d)); },
+    function(d) { return date(d).getUTCDate(); },
+    [1], 1, 31
+  ),
+  entry('months',
+    function(d) { return new Date(Date.UTC(1970, d % 12, 1)); },
+    function(d) { return date(d).getUTCMonth(); },
+    [1], 0, 11
+  )
+];
+
+var STEPS = [
+  [31536e6, 5],  // 1-year
+  [7776e6, 4],   // 3-month
+  [2592e6, 4],   // 1-month
+  [12096e5, 3],  // 2-week
+  [6048e5, 3],   // 1-week
+  [1728e5, 3],   // 2-day
+  [864e5, 3],    // 1-day
+  [432e5, 2],    // 12-hour
+  [216e5, 2],    // 6-hour
+  [108e5, 2],    // 3-hour
+  [36e5, 2],     // 1-hour
+  [18e5, 1],     // 30-minute
+  [9e5, 1],      // 15-minute
+  [3e5, 1],      // 5-minute
+  [6e4, 1],      // 1-minute
+  [3e4, 0],      // 30-second
+  [15e3, 0],     // 15-second
+  [5e3, 0],      // 5-second
+  [1e3, 0]       // 1-second
+];
+
+function find(units, span, minb, maxb) {
+  var step = STEPS[0], i, n, bins;
+
+  for (i=1, n=STEPS.length; i<n; ++i) {
+    step = STEPS[i];
+    if (span > step[0]) {
+      bins = span / step[0];
+      if (bins > maxb) {
+        return units[STEPS[i-1][1]];
+      }
+      if (bins >= minb) {
+        return units[step[1]];
+      }
+    }
+  }
+  return units[STEPS[n-1][1]];
+}
+
+function toUnitMap(units) {
+  var map = {}, i, n;
+  for (i=0, n=units.length; i<n; ++i) {
+    map[units[i].type] = units[i];
+  }
+  map.find = function(span, minb, maxb) {
+    return find(units, span, minb, maxb);
+  };
+  return map;
+}
+
+module.exports = toUnitMap(locale);
+module.exports.utc = toUnitMap(utc);
+},{"d3-time":6}],31:[function(require,module,exports){
+(function (Buffer){
+var u = module.exports;
+
+// utility functions
+
+var FNAME = '__name__';
+
+u.namedfunc = function(name, f) { return (f[FNAME] = name, f); };
+
+u.name = function(f) { return f==null ? null : f[FNAME]; };
+
+u.identity = function(x) { return x; };
+
+u.true = u.namedfunc('true', function() { return true; });
+
+u.false = u.namedfunc('false', function() { return false; });
+
+u.duplicate = function(obj) {
+  return JSON.parse(JSON.stringify(obj));
+};
+
+u.equal = function(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
+u.extend = function(obj) {
+  for (var x, name, i=1, len=arguments.length; i<len; ++i) {
+    x = arguments[i];
+    for (name in x) { obj[name] = x[name]; }
+  }
+  return obj;
+};
+
+u.length = function(x) {
+  return x != null && x.length != null ? x.length : null;
+};
+
+u.keys = function(x) {
+  var keys = [], k;
+  for (k in x) keys.push(k);
+  return keys;
+};
+
+u.vals = function(x) {
+  var vals = [], k;
+  for (k in x) vals.push(x[k]);
+  return vals;
+};
+
+u.toMap = function(list, f) {
+  return (f = u.$(f)) ?
+    list.reduce(function(obj, x) { return (obj[f(x)] = 1, obj); }, {}) :
+    list.reduce(function(obj, x) { return (obj[x] = 1, obj); }, {});
+};
+
+u.keystr = function(values) {
+  // use to ensure consistent key generation across modules
+  var n = values.length;
+  if (!n) return '';
+  for (var s=String(values[0]), i=1; i<n; ++i) {
+    s += '|' + String(values[i]);
+  }
+  return s;
+};
+
+// type checking functions
+
+var toString = Object.prototype.toString;
+
+u.isObject = function(obj) {
+  return obj === Object(obj);
+};
+
+u.isFunction = function(obj) {
+  return toString.call(obj) === '[object Function]';
+};
+
+u.isString = function(obj) {
+  return typeof value === 'string' || toString.call(obj) === '[object String]';
+};
+
+u.isArray = Array.isArray || function(obj) {
+  return toString.call(obj) === '[object Array]';
+};
+
+u.isNumber = function(obj) {
+  return typeof obj === 'number' || toString.call(obj) === '[object Number]';
+};
+
+u.isBoolean = function(obj) {
+  return obj === true || obj === false || toString.call(obj) == '[object Boolean]';
+};
+
+u.isDate = function(obj) {
+  return toString.call(obj) === '[object Date]';
+};
+
+u.isValid = function(obj) {
+  return obj != null && obj === obj;
+};
+
+u.isBuffer = (typeof Buffer === 'function' && Buffer.isBuffer) || u.false;
+
+// type coercion functions
+
+u.number = function(s) {
+  return s == null || s === '' ? null : +s;
+};
+
+u.boolean = function(s) {
+  return s == null || s === '' ? null : s==='false' ? false : !!s;
+};
+
+// parse a date with optional d3.time-format format
+u.date = function(s, format) {
+  var d = format ? format : Date;
+  return s == null || s === '' ? null : d.parse(s);
+};
+
+u.array = function(x) {
+  return x != null ? (u.isArray(x) ? x : [x]) : [];
+};
+
+u.str = function(x) {
+  return u.isArray(x) ? '[' + x.map(u.str) + ']'
+    : u.isObject(x) || u.isString(x) ?
+      // Output valid JSON and JS source strings.
+      // See http://timelessrepo.com/json-isnt-a-javascript-subset
+      JSON.stringify(x).replace('\u2028','\\u2028').replace('\u2029', '\\u2029')
+    : x;
+};
+
+// data access functions
+
+var field_re = /\[(.*?)\]|[^.\[]+/g;
+
+u.field = function(f) {
+  return String(f).match(field_re).map(function(d) {
+    return d[0] !== '[' ? d :
+      d[1] !== "'" && d[1] !== '"' ? d.slice(1, -1) :
+      d.slice(2, -2).replace(/\\(["'])/g, '$1');
+  });
+};
+
+u.accessor = function(f) {
+  /* jshint evil: true */
+  return f==null || u.isFunction(f) ? f :
+    u.namedfunc(f, Function('x', 'return x[' + u.field(f).map(u.str).join('][') + '];'));
+};
+
+// short-cut for accessor
+u.$ = u.accessor;
+
+u.mutator = function(f) {
+  var s;
+  return u.isString(f) && (s=u.field(f)).length > 1 ?
+    function(x, v) {
+      for (var i=0; i<s.length-1; ++i) x = x[s[i]];
+      x[s[i]] = v;
+    } :
+    function(x, v) { x[f] = v; };
+};
+
+
+u.$func = function(name, op) {
+  return function(f) {
+    f = u.$(f) || u.identity;
+    var n = name + (u.name(f) ? '_'+u.name(f) : '');
+    return u.namedfunc(n, function(d) { return op(f(d)); });
+  };
+};
+
+u.$valid  = u.$func('valid', u.isValid);
+u.$length = u.$func('length', u.length);
+
+u.$in = function(f, values) {
+  f = u.$(f);
+  var map = u.isArray(values) ? u.toMap(values) : values;
+  return function(d) { return !!map[f(d)]; };
+};
+
+// comparison / sorting functions
+
+u.comparator = function(sort) {
+  var sign = [];
+  if (sort === undefined) sort = [];
+  sort = u.array(sort).map(function(f) {
+    var s = 1;
+    if      (f[0] === '-') { s = -1; f = f.slice(1); }
+    else if (f[0] === '+') { s = +1; f = f.slice(1); }
+    sign.push(s);
+    return u.accessor(f);
+  });
+  return function(a,b) {
+    var i, n, f, x, y;
+    for (i=0, n=sort.length; i<n; ++i) {
+      f = sort[i]; x = f(a); y = f(b);
+      if (x < y) return -1 * sign[i];
+      if (x > y) return sign[i];
+    }
+    return 0;
+  };
+};
+
+u.cmp = function(a, b) {
+  if (a < b) {
+    return -1;
+  } else if (a > b) {
+    return 1;
+  } else if (a >= b) {
+    return 0;
+  } else if (a === null) {
+    return -1;
+  } else if (b === null) {
+    return 1;
+  }
+  return NaN;
+};
+
+u.numcmp = function(a, b) { return a - b; };
+
+u.stablesort = function(array, sortBy, keyFn) {
+  var indices = array.reduce(function(idx, v, i) {
+    return (idx[keyFn(v)] = i, idx);
+  }, {});
+
+  array.sort(function(a, b) {
+    var sa = sortBy(a),
+        sb = sortBy(b);
+    return sa < sb ? -1 : sa > sb ? 1
+         : (indices[keyFn(a)] - indices[keyFn(b)]);
+  });
+
+  return array;
+};
+
+// permutes an array using a Knuth shuffle
+u.permute = function(a) {
+  var m = a.length,
+      swap,
+      i;
+
+  while (m) {
+    i = Math.floor(Math.random() * m--);
+    swap = a[m];
+    a[m] = a[i];
+    a[i] = swap;
+  }
+};
+
+// string functions
+
+u.pad = function(s, length, pos, padchar) {
+  padchar = padchar || " ";
+  var d = length - s.length;
+  if (d <= 0) return s;
+  switch (pos) {
+    case 'left':
+      return strrep(d, padchar) + s;
+    case 'middle':
+    case 'center':
+      return strrep(Math.floor(d/2), padchar) +
+         s + strrep(Math.ceil(d/2), padchar);
+    default:
+      return s + strrep(d, padchar);
+  }
+};
+
+function strrep(n, str) {
+  var s = "", i;
+  for (i=0; i<n; ++i) s += str;
+  return s;
+}
+
+u.truncate = function(s, length, pos, word, ellipsis) {
+  var len = s.length;
+  if (len <= length) return s;
+  ellipsis = ellipsis !== undefined ? String(ellipsis) : '\u2026';
+  var l = Math.max(0, length - ellipsis.length);
+
+  switch (pos) {
+    case 'left':
+      return ellipsis + (word ? truncateOnWord(s,l,1) : s.slice(len-l));
+    case 'middle':
+    case 'center':
+      var l1 = Math.ceil(l/2), l2 = Math.floor(l/2);
+      return (word ? truncateOnWord(s,l1) : s.slice(0,l1)) +
+        ellipsis + (word ? truncateOnWord(s,l2,1) : s.slice(len-l2));
+    default:
+      return (word ? truncateOnWord(s,l) : s.slice(0,l)) + ellipsis;
+  }
+};
+
+function truncateOnWord(s, len, rev) {
+  var cnt = 0, tok = s.split(truncate_word_re);
+  if (rev) {
+    s = (tok = tok.reverse())
+      .filter(function(w) { cnt += w.length; return cnt <= len; })
+      .reverse();
+  } else {
+    s = tok.filter(function(w) { cnt += w.length; return cnt <= len; });
+  }
+  return s.length ? s.join('').trim() : tok[0].slice(0, len);
+}
+
+var truncate_word_re = /([\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u180E\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u2028\u2029\u3000\uFEFF])/;
+
+}).call(this,require("buffer").Buffer)
+},{"buffer":383}],32:[function(require,module,exports){
+(function (process){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * @typechecks
+ */
+
+var emptyFunction = require('./emptyFunction');
+
+/**
+ * Upstream version of event listener. Does not take into account specific
+ * nature of platform.
+ */
+var EventListener = {
+  /**
+   * Listen to DOM events during the bubble phase.
+   *
+   * @param {DOMEventTarget} target DOM element to register listener on.
+   * @param {string} eventType Event type, e.g. 'click' or 'mouseover'.
+   * @param {function} callback Callback function.
+   * @return {object} Object with a `remove` method.
+   */
+  listen: function listen(target, eventType, callback) {
+    if (target.addEventListener) {
+      target.addEventListener(eventType, callback, false);
+      return {
+        remove: function remove() {
+          target.removeEventListener(eventType, callback, false);
+        }
+      };
+    } else if (target.attachEvent) {
+      target.attachEvent('on' + eventType, callback);
+      return {
+        remove: function remove() {
+          target.detachEvent('on' + eventType, callback);
+        }
+      };
+    }
+  },
+
+  /**
+   * Listen to DOM events during the capture phase.
+   *
+   * @param {DOMEventTarget} target DOM element to register listener on.
+   * @param {string} eventType Event type, e.g. 'click' or 'mouseover'.
+   * @param {function} callback Callback function.
+   * @return {object} Object with a `remove` method.
+   */
+  capture: function capture(target, eventType, callback) {
+    if (target.addEventListener) {
+      target.addEventListener(eventType, callback, true);
+      return {
+        remove: function remove() {
+          target.removeEventListener(eventType, callback, true);
+        }
+      };
+    } else {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Attempted to listen to events during the capture phase on a ' + 'browser that does not support the capture phase. Your application ' + 'will not receive some events.');
+      }
+      return {
+        remove: emptyFunction
+      };
+    }
+  },
+
+  registerDefault: function registerDefault() {}
+};
+
+module.exports = EventListener;
+}).call(this,require('_process'))
+},{"./emptyFunction":39,"_process":384}],33:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+var canUseDOM = !!(typeof window !== 'undefined' && window.document && window.document.createElement);
+
+/**
+ * Simple, lightweight module assisting with the detection and context of
+ * Worker. Helps avoid circular dependencies and allows code to reason about
+ * whether or not they are in a Worker, even if they never include the main
+ * `ReactWorker` dependency.
+ */
+var ExecutionEnvironment = {
+
+  canUseDOM: canUseDOM,
+
+  canUseWorkers: typeof Worker !== 'undefined',
+
+  canUseEventListeners: canUseDOM && !!(window.addEventListener || window.attachEvent),
+
+  canUseViewport: canUseDOM && !!window.screen,
+
+  isInWorker: !canUseDOM // For now, this is true - might change in the future.
+
+};
+
+module.exports = ExecutionEnvironment;
+},{}],34:[function(require,module,exports){
+"use strict";
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+var _hyphenPattern = /-(.)/g;
+
+/**
+ * Camelcases a hyphenated string, for example:
+ *
+ *   > camelize('background-color')
+ *   < "backgroundColor"
+ *
+ * @param {string} string
+ * @return {string}
+ */
+function camelize(string) {
+  return string.replace(_hyphenPattern, function (_, character) {
+    return character.toUpperCase();
+  });
+}
+
+module.exports = camelize;
+},{}],35:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+'use strict';
+
+var camelize = require('./camelize');
+
+var msPattern = /^-ms-/;
+
+/**
+ * Camelcases a hyphenated CSS property name, for example:
+ *
+ *   > camelizeStyleName('background-color')
+ *   < "backgroundColor"
+ *   > camelizeStyleName('-moz-transition')
+ *   < "MozTransition"
+ *   > camelizeStyleName('-ms-transition')
+ *   < "msTransition"
+ *
+ * As Andi Smith suggests
+ * (http://www.andismith.com/blog/2012/02/modernizr-prefixed/), an `-ms` prefix
+ * is converted to lowercase `ms`.
+ *
+ * @param {string} string
+ * @return {string}
+ */
+function camelizeStyleName(string) {
+  return camelize(string.replace(msPattern, 'ms-'));
+}
+
+module.exports = camelizeStyleName;
+},{"./camelize":34}],36:[function(require,module,exports){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * 
+ */
+
+var isTextNode = require('./isTextNode');
+
+/*eslint-disable no-bitwise */
+
+/**
+ * Checks if a given DOM node contains or is another DOM node.
+ */
+function containsNode(outerNode, innerNode) {
+  if (!outerNode || !innerNode) {
+    return false;
+  } else if (outerNode === innerNode) {
+    return true;
+  } else if (isTextNode(outerNode)) {
+    return false;
+  } else if (isTextNode(innerNode)) {
+    return containsNode(outerNode, innerNode.parentNode);
+  } else if ('contains' in outerNode) {
+    return outerNode.contains(innerNode);
+  } else if (outerNode.compareDocumentPosition) {
+    return !!(outerNode.compareDocumentPosition(innerNode) & 16);
+  } else {
+    return false;
+  }
+}
+
+module.exports = containsNode;
+},{"./isTextNode":49}],37:[function(require,module,exports){
+(function (process){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+var invariant = require('./invariant');
+
+/**
+ * Convert array-like objects to arrays.
+ *
+ * This API assumes the caller knows the contents of the data type. For less
+ * well defined inputs use createArrayFromMixed.
+ *
+ * @param {object|function|filelist} obj
+ * @return {array}
+ */
+function toArray(obj) {
+  var length = obj.length;
+
+  // Some browsers builtin objects can report typeof 'function' (e.g. NodeList
+  // in old versions of Safari).
+  !(!Array.isArray(obj) && (typeof obj === 'object' || typeof obj === 'function')) ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Array-like object expected') : invariant(false) : void 0;
+
+  !(typeof length === 'number') ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Object needs a length property') : invariant(false) : void 0;
+
+  !(length === 0 || length - 1 in obj) ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Object should have keys for indices') : invariant(false) : void 0;
+
+  !(typeof obj.callee !== 'function') ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Object can\'t be `arguments`. Use rest params ' + '(function(...args) {}) or Array.from() instead.') : invariant(false) : void 0;
+
+  // Old IE doesn't give collections access to hasOwnProperty. Assume inputs
+  // without method will throw during the slice call and skip straight to the
+  // fallback.
+  if (obj.hasOwnProperty) {
+    try {
+      return Array.prototype.slice.call(obj);
+    } catch (e) {
+      // IE < 9 does not support Array#slice on collections objects
+    }
+  }
+
+  // Fall back to copying key by key. This assumes all keys have a value,
+  // so will not preserve sparsely populated inputs.
+  var ret = Array(length);
+  for (var ii = 0; ii < length; ii++) {
+    ret[ii] = obj[ii];
+  }
+  return ret;
+}
+
+/**
+ * Perform a heuristic test to determine if an object is "array-like".
+ *
+ *   A monk asked Joshu, a Zen master, "Has a dog Buddha nature?"
+ *   Joshu replied: "Mu."
+ *
+ * This function determines if its argument has "array nature": it returns
+ * true if the argument is an actual array, an `arguments' object, or an
+ * HTMLCollection (e.g. node.childNodes or node.getElementsByTagName()).
+ *
+ * It will return false for other array-like objects like Filelist.
+ *
+ * @param {*} obj
+ * @return {boolean}
+ */
+function hasArrayNature(obj) {
+  return(
+    // not null/false
+    !!obj && (
+    // arrays are objects, NodeLists are functions in Safari
+    typeof obj == 'object' || typeof obj == 'function') &&
+    // quacks like an array
+    'length' in obj &&
+    // not window
+    !('setInterval' in obj) &&
+    // no DOM node should be considered an array-like
+    // a 'select' element has 'length' and 'item' properties on IE8
+    typeof obj.nodeType != 'number' && (
+    // a real array
+    Array.isArray(obj) ||
+    // arguments
+    'callee' in obj ||
+    // HTMLCollection/NodeList
+    'item' in obj)
+  );
+}
+
+/**
+ * Ensure that the argument is an array by wrapping it in an array if it is not.
+ * Creates a copy of the argument if it is already an array.
+ *
+ * This is mostly useful idiomatically:
+ *
+ *   var createArrayFromMixed = require('createArrayFromMixed');
+ *
+ *   function takesOneOrMoreThings(things) {
+ *     things = createArrayFromMixed(things);
+ *     ...
+ *   }
+ *
+ * This allows you to treat `things' as an array, but accept scalars in the API.
+ *
+ * If you need to convert an array-like object, like `arguments`, into an array
+ * use toArray instead.
+ *
+ * @param {*} obj
+ * @return {array}
+ */
+function createArrayFromMixed(obj) {
+  if (!hasArrayNature(obj)) {
+    return [obj];
+  } else if (Array.isArray(obj)) {
+    return obj.slice();
+  } else {
+    return toArray(obj);
+  }
+}
+
+module.exports = createArrayFromMixed;
+}).call(this,require('_process'))
+},{"./invariant":47,"_process":384}],38:[function(require,module,exports){
+(function (process){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+/*eslint-disable fb-www/unsafe-html*/
+
+var ExecutionEnvironment = require('./ExecutionEnvironment');
+
+var createArrayFromMixed = require('./createArrayFromMixed');
+var getMarkupWrap = require('./getMarkupWrap');
+var invariant = require('./invariant');
+
+/**
+ * Dummy container used to render all markup.
+ */
+var dummyNode = ExecutionEnvironment.canUseDOM ? document.createElement('div') : null;
+
+/**
+ * Pattern used by `getNodeName`.
+ */
+var nodeNamePattern = /^\s*<(\w+)/;
+
+/**
+ * Extracts the `nodeName` of the first element in a string of markup.
+ *
+ * @param {string} markup String of markup.
+ * @return {?string} Node name of the supplied markup.
+ */
+function getNodeName(markup) {
+  var nodeNameMatch = markup.match(nodeNamePattern);
+  return nodeNameMatch && nodeNameMatch[1].toLowerCase();
+}
+
+/**
+ * Creates an array containing the nodes rendered from the supplied markup. The
+ * optionally supplied `handleScript` function will be invoked once for each
+ * <script> element that is rendered. If no `handleScript` function is supplied,
+ * an exception is thrown if any <script> elements are rendered.
+ *
+ * @param {string} markup A string of valid HTML markup.
+ * @param {?function} handleScript Invoked once for each rendered <script>.
+ * @return {array<DOMElement|DOMTextNode>} An array of rendered nodes.
+ */
+function createNodesFromMarkup(markup, handleScript) {
+  var node = dummyNode;
+  !!!dummyNode ? process.env.NODE_ENV !== 'production' ? invariant(false, 'createNodesFromMarkup dummy not initialized') : invariant(false) : void 0;
+  var nodeName = getNodeName(markup);
+
+  var wrap = nodeName && getMarkupWrap(nodeName);
+  if (wrap) {
+    node.innerHTML = wrap[1] + markup + wrap[2];
+
+    var wrapDepth = wrap[0];
+    while (wrapDepth--) {
+      node = node.lastChild;
+    }
+  } else {
+    node.innerHTML = markup;
+  }
+
+  var scripts = node.getElementsByTagName('script');
+  if (scripts.length) {
+    !handleScript ? process.env.NODE_ENV !== 'production' ? invariant(false, 'createNodesFromMarkup(...): Unexpected <script> element rendered.') : invariant(false) : void 0;
+    createArrayFromMixed(scripts).forEach(handleScript);
+  }
+
+  var nodes = Array.from(node.childNodes);
+  while (node.lastChild) {
+    node.removeChild(node.lastChild);
+  }
+  return nodes;
+}
+
+module.exports = createNodesFromMarkup;
+}).call(this,require('_process'))
+},{"./ExecutionEnvironment":33,"./createArrayFromMixed":37,"./getMarkupWrap":43,"./invariant":47,"_process":384}],39:[function(require,module,exports){
+"use strict";
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * 
+ */
+
+function makeEmptyFunction(arg) {
+  return function () {
+    return arg;
+  };
+}
+
+/**
+ * This function accepts and discards inputs; it has no side effects. This is
+ * primarily useful idiomatically for overridable function endpoints which
+ * always need to be callable, since JS lacks a null-call idiom ala Cocoa.
+ */
+var emptyFunction = function emptyFunction() {};
+
+emptyFunction.thatReturns = makeEmptyFunction;
+emptyFunction.thatReturnsFalse = makeEmptyFunction(false);
+emptyFunction.thatReturnsTrue = makeEmptyFunction(true);
+emptyFunction.thatReturnsNull = makeEmptyFunction(null);
+emptyFunction.thatReturnsThis = function () {
+  return this;
+};
+emptyFunction.thatReturnsArgument = function (arg) {
+  return arg;
+};
+
+module.exports = emptyFunction;
+},{}],40:[function(require,module,exports){
+(function (process){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+var emptyObject = {};
+
+if (process.env.NODE_ENV !== 'production') {
+  Object.freeze(emptyObject);
+}
+
+module.exports = emptyObject;
+}).call(this,require('_process'))
+},{"_process":384}],41:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+/**
+ * @param {DOMElement} node input/textarea to focus
+ */
+
+function focusNode(node) {
+  // IE8 can throw "Can't move focus to the control because it is invisible,
+  // not enabled, or of a type that does not accept the focus." for all kinds of
+  // reasons that are too expensive and fragile to test.
+  try {
+    node.focus();
+  } catch (e) {}
+}
+
+module.exports = focusNode;
+},{}],42:[function(require,module,exports){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+/* eslint-disable fb-www/typeof-undefined */
+
+/**
+ * Same as document.activeElement but wraps in a try-catch block. In IE it is
+ * not safe to call document.activeElement if there is nothing focused.
+ *
+ * The activeElement will be null only if the document or document body is not
+ * yet defined.
+ */
+function getActiveElement() /*?DOMElement*/{
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  try {
+    return document.activeElement || document.body;
+  } catch (e) {
+    return document.body;
+  }
+}
+
+module.exports = getActiveElement;
+},{}],43:[function(require,module,exports){
+(function (process){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+/*eslint-disable fb-www/unsafe-html */
+
+var ExecutionEnvironment = require('./ExecutionEnvironment');
+
+var invariant = require('./invariant');
+
+/**
+ * Dummy container used to detect which wraps are necessary.
+ */
+var dummyNode = ExecutionEnvironment.canUseDOM ? document.createElement('div') : null;
+
+/**
+ * Some browsers cannot use `innerHTML` to render certain elements standalone,
+ * so we wrap them, render the wrapped nodes, then extract the desired node.
+ *
+ * In IE8, certain elements cannot render alone, so wrap all elements ('*').
+ */
+
+var shouldWrap = {};
+
+var selectWrap = [1, '<select multiple="true">', '</select>'];
+var tableWrap = [1, '<table>', '</table>'];
+var trWrap = [3, '<table><tbody><tr>', '</tr></tbody></table>'];
+
+var svgWrap = [1, '<svg xmlns="http://www.w3.org/2000/svg">', '</svg>'];
+
+var markupWrap = {
+  '*': [1, '?<div>', '</div>'],
+
+  'area': [1, '<map>', '</map>'],
+  'col': [2, '<table><tbody></tbody><colgroup>', '</colgroup></table>'],
+  'legend': [1, '<fieldset>', '</fieldset>'],
+  'param': [1, '<object>', '</object>'],
+  'tr': [2, '<table><tbody>', '</tbody></table>'],
+
+  'optgroup': selectWrap,
+  'option': selectWrap,
+
+  'caption': tableWrap,
+  'colgroup': tableWrap,
+  'tbody': tableWrap,
+  'tfoot': tableWrap,
+  'thead': tableWrap,
+
+  'td': trWrap,
+  'th': trWrap
+};
+
+// Initialize the SVG elements since we know they'll always need to be wrapped
+// consistently. If they are created inside a <div> they will be initialized in
+// the wrong namespace (and will not display).
+var svgElements = ['circle', 'clipPath', 'defs', 'ellipse', 'g', 'image', 'line', 'linearGradient', 'mask', 'path', 'pattern', 'polygon', 'polyline', 'radialGradient', 'rect', 'stop', 'text', 'tspan'];
+svgElements.forEach(function (nodeName) {
+  markupWrap[nodeName] = svgWrap;
+  shouldWrap[nodeName] = true;
+});
+
+/**
+ * Gets the markup wrap configuration for the supplied `nodeName`.
+ *
+ * NOTE: This lazily detects which wraps are necessary for the current browser.
+ *
+ * @param {string} nodeName Lowercase `nodeName`.
+ * @return {?array} Markup wrap configuration, if applicable.
+ */
+function getMarkupWrap(nodeName) {
+  !!!dummyNode ? process.env.NODE_ENV !== 'production' ? invariant(false, 'Markup wrapping node not initialized') : invariant(false) : void 0;
+  if (!markupWrap.hasOwnProperty(nodeName)) {
+    nodeName = '*';
+  }
+  if (!shouldWrap.hasOwnProperty(nodeName)) {
+    if (nodeName === '*') {
+      dummyNode.innerHTML = '<link />';
+    } else {
+      dummyNode.innerHTML = '<' + nodeName + '></' + nodeName + '>';
+    }
+    shouldWrap[nodeName] = !dummyNode.firstChild;
+  }
+  return shouldWrap[nodeName] ? markupWrap[nodeName] : null;
+}
+
+module.exports = getMarkupWrap;
+}).call(this,require('_process'))
+},{"./ExecutionEnvironment":33,"./invariant":47,"_process":384}],44:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+'use strict';
+
+/**
+ * Gets the scroll position of the supplied element or window.
+ *
+ * The return values are unbounded, unlike `getScrollPosition`. This means they
+ * may be negative or exceed the element boundaries (which is possible using
+ * inertial scrolling).
+ *
+ * @param {DOMWindow|DOMElement} scrollable
+ * @return {object} Map with `x` and `y` keys.
+ */
+
+function getUnboundedScrollPosition(scrollable) {
+  if (scrollable === window) {
+    return {
+      x: window.pageXOffset || document.documentElement.scrollLeft,
+      y: window.pageYOffset || document.documentElement.scrollTop
+    };
+  }
+  return {
+    x: scrollable.scrollLeft,
+    y: scrollable.scrollTop
+  };
+}
+
+module.exports = getUnboundedScrollPosition;
+},{}],45:[function(require,module,exports){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+var _uppercasePattern = /([A-Z])/g;
+
+/**
+ * Hyphenates a camelcased string, for example:
+ *
+ *   > hyphenate('backgroundColor')
+ *   < "background-color"
+ *
+ * For CSS style names, use `hyphenateStyleName` instead which works properly
+ * with all vendor prefixes, including `ms`.
+ *
+ * @param {string} string
+ * @return {string}
+ */
+function hyphenate(string) {
+  return string.replace(_uppercasePattern, '-$1').toLowerCase();
+}
+
+module.exports = hyphenate;
+},{}],46:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+'use strict';
+
+var hyphenate = require('./hyphenate');
+
+var msPattern = /^ms-/;
+
+/**
+ * Hyphenates a camelcased CSS property name, for example:
+ *
+ *   > hyphenateStyleName('backgroundColor')
+ *   < "background-color"
+ *   > hyphenateStyleName('MozTransition')
+ *   < "-moz-transition"
+ *   > hyphenateStyleName('msTransition')
+ *   < "-ms-transition"
+ *
+ * As Modernizr suggests (http://modernizr.com/docs/#prefixed), an `ms` prefix
+ * is converted to `-ms-`.
+ *
+ * @param {string} string
+ * @return {string}
+ */
+function hyphenateStyleName(string) {
+  return hyphenate(string).replace(msPattern, '-ms-');
+}
+
+module.exports = hyphenateStyleName;
+},{"./hyphenate":45}],47:[function(require,module,exports){
+(function (process){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+/**
+ * Use invariant() to assert state which your program assumes to be true.
+ *
+ * Provide sprintf-style format (only %s is supported) and arguments
+ * to provide information about what broke and what you were
+ * expecting.
+ *
+ * The invariant message will be stripped in production, but the invariant
+ * will remain to ensure logic does not differ in production.
+ */
+
+function invariant(condition, format, a, b, c, d, e, f) {
+  if (process.env.NODE_ENV !== 'production') {
+    if (format === undefined) {
+      throw new Error('invariant requires an error message argument');
+    }
+  }
+
+  if (!condition) {
+    var error;
+    if (format === undefined) {
+      error = new Error('Minified exception occurred; use the non-minified dev environment ' + 'for the full error message and additional helpful warnings.');
+    } else {
+      var args = [a, b, c, d, e, f];
+      var argIndex = 0;
+      error = new Error(format.replace(/%s/g, function () {
+        return args[argIndex++];
+      }));
+      error.name = 'Invariant Violation';
+    }
+
+    error.framesToPop = 1; // we don't care about invariant's own frame
+    throw error;
+  }
+}
+
+module.exports = invariant;
+}).call(this,require('_process'))
+},{"_process":384}],48:[function(require,module,exports){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+/**
+ * @param {*} object The object to check.
+ * @return {boolean} Whether or not the object is a DOM node.
+ */
+function isNode(object) {
+  return !!(object && (typeof Node === 'function' ? object instanceof Node : typeof object === 'object' && typeof object.nodeType === 'number' && typeof object.nodeName === 'string'));
+}
+
+module.exports = isNode;
+},{}],49:[function(require,module,exports){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+var isNode = require('./isNode');
+
+/**
+ * @param {*} object The object to check.
+ * @return {boolean} Whether or not the object is a DOM text node.
+ */
+function isTextNode(object) {
+  return isNode(object) && object.nodeType == 3;
+}
+
+module.exports = isTextNode;
+},{"./isNode":48}],50:[function(require,module,exports){
+(function (process){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks static-only
+ */
+
+'use strict';
+
+var invariant = require('./invariant');
+
+/**
+ * Constructs an enumeration with keys equal to their value.
+ *
+ * For example:
+ *
+ *   var COLORS = keyMirror({blue: null, red: null});
+ *   var myColor = COLORS.blue;
+ *   var isColorValid = !!COLORS[myColor];
+ *
+ * The last line could not be performed if the values of the generated enum were
+ * not equal to their keys.
+ *
+ *   Input:  {key1: val1, key2: val2}
+ *   Output: {key1: key1, key2: key2}
+ *
+ * @param {object} obj
+ * @return {object}
+ */
+var keyMirror = function keyMirror(obj) {
+  var ret = {};
+  var key;
+  !(obj instanceof Object && !Array.isArray(obj)) ? process.env.NODE_ENV !== 'production' ? invariant(false, 'keyMirror(...): Argument must be an object.') : invariant(false) : void 0;
+  for (key in obj) {
+    if (!obj.hasOwnProperty(key)) {
+      continue;
+    }
+    ret[key] = key;
+  }
+  return ret;
+};
+
+module.exports = keyMirror;
+}).call(this,require('_process'))
+},{"./invariant":47,"_process":384}],51:[function(require,module,exports){
+"use strict";
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+/**
+ * Allows extraction of a minified key. Let's the build system minify keys
+ * without losing the ability to dynamically use key strings as values
+ * themselves. Pass in an object with a single key/val pair and it will return
+ * you the string key of that single record. Suppose you want to grab the
+ * value for a key 'className' inside of an object. Key/val minification may
+ * have aliased that key to be 'xa12'. keyOf({className: null}) will return
+ * 'xa12' in that case. Resolve keys you want to use once at startup time, then
+ * reuse those resolutions.
+ */
+var keyOf = function keyOf(oneKeyObj) {
+  var key;
+  for (key in oneKeyObj) {
+    if (!oneKeyObj.hasOwnProperty(key)) {
+      continue;
+    }
+    return key;
+  }
+  return null;
+};
+
+module.exports = keyOf;
+},{}],52:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+var hasOwnProperty = Object.prototype.hasOwnProperty;
+
+/**
+ * Executes the provided `callback` once for each enumerable own property in the
+ * object and constructs a new object from the results. The `callback` is
+ * invoked with three arguments:
+ *
+ *  - the property value
+ *  - the property name
+ *  - the object being traversed
+ *
+ * Properties that are added after the call to `mapObject` will not be visited
+ * by `callback`. If the values of existing properties are changed, the value
+ * passed to `callback` will be the value at the time `mapObject` visits them.
+ * Properties that are deleted before being visited are not visited.
+ *
+ * @grep function objectMap()
+ * @grep function objMap()
+ *
+ * @param {?object} object
+ * @param {function} callback
+ * @param {*} context
+ * @return {?object}
+ */
+function mapObject(object, callback, context) {
+  if (!object) {
+    return null;
+  }
+  var result = {};
+  for (var name in object) {
+    if (hasOwnProperty.call(object, name)) {
+      result[name] = callback.call(context, object[name], name, object);
+    }
+  }
+  return result;
+}
+
+module.exports = mapObject;
+},{}],53:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * 
+ * @typechecks static-only
+ */
+
+'use strict';
+
+/**
+ * Memoizes the return value of a function that accepts one string argument.
+ */
+
+function memoizeStringOnly(callback) {
+  var cache = {};
+  return function (string) {
+    if (!cache.hasOwnProperty(string)) {
+      cache[string] = callback.call(this, string);
+    }
+    return cache[string];
+  };
+}
+
+module.exports = memoizeStringOnly;
+},{}],54:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+'use strict';
+
+var ExecutionEnvironment = require('./ExecutionEnvironment');
+
+var performance;
+
+if (ExecutionEnvironment.canUseDOM) {
+  performance = window.performance || window.msPerformance || window.webkitPerformance;
+}
+
+module.exports = performance || {};
+},{"./ExecutionEnvironment":33}],55:[function(require,module,exports){
+'use strict';
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ */
+
+var performance = require('./performance');
+
+var performanceNow;
+
+/**
+ * Detect if we can use `window.performance.now()` and gracefully fallback to
+ * `Date.now()` if it doesn't exist. We need to support Firefox < 15 for now
+ * because of Facebook's testing infrastructure.
+ */
+if (performance.now) {
+  performanceNow = function performanceNow() {
+    return performance.now();
+  };
+} else {
+  performanceNow = function performanceNow() {
+    return Date.now();
+  };
+}
+
+module.exports = performanceNow;
+},{"./performance":54}],56:[function(require,module,exports){
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @typechecks
+ * 
+ */
+
+/*eslint-disable no-self-compare */
+
+'use strict';
+
+var hasOwnProperty = Object.prototype.hasOwnProperty;
+
+/**
+ * inlined Object.is polyfill to avoid requiring consumers ship their own
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
+ */
+function is(x, y) {
+  // SameValue algorithm
+  if (x === y) {
+    // Steps 1-5, 7-10
+    // Steps 6.b-6.e: +0 != -0
+    return x !== 0 || 1 / x === 1 / y;
+  } else {
+    // Step 6.a: NaN == NaN
+    return x !== x && y !== y;
+  }
+}
+
+/**
+ * Performs equality by iterating through keys on an object and returning false
+ * when any key has values which are not strictly equal between the arguments.
+ * Returns true when the values of all keys are strictly equal.
+ */
+function shallowEqual(objA, objB) {
+  if (is(objA, objB)) {
+    return true;
+  }
+
+  if (typeof objA !== 'object' || objA === null || typeof objB !== 'object' || objB === null) {
+    return false;
+  }
+
+  var keysA = Object.keys(objA);
+  var keysB = Object.keys(objB);
+
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+
+  // Test for A's keys different from B.
+  for (var i = 0; i < keysA.length; i++) {
+    if (!hasOwnProperty.call(objB, keysA[i]) || !is(objA[keysA[i]], objB[keysA[i]])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+module.exports = shallowEqual;
+},{}],57:[function(require,module,exports){
+(function (process){
+/**
+ * Copyright 2014-2015, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ */
+
+'use strict';
+
+var emptyFunction = require('./emptyFunction');
+
+/**
+ * Similar to invariant but only logs a warning if the condition is not met.
+ * This can be used to log issues in development environments in critical
+ * paths. Removing the logging code for production environments will keep the
+ * same logic and follow the same code paths.
+ */
+
+var warning = emptyFunction;
+
+if (process.env.NODE_ENV !== 'production') {
+  warning = function warning(condition, format) {
+    for (var _len = arguments.length, args = Array(_len > 2 ? _len - 2 : 0), _key = 2; _key < _len; _key++) {
+      args[_key - 2] = arguments[_key];
+    }
+
+    if (format === undefined) {
+      throw new Error('`warning(condition, format, ...args)` requires a warning ' + 'message argument');
+    }
+
+    if (format.indexOf('Failed Composite propType: ') === 0) {
+      return; // Ignore CompositeComponent proptype check.
+    }
+
+    if (!condition) {
+      var argIndex = 0;
+      var message = 'Warning: ' + format.replace(/%s/g, function () {
+        return args[argIndex++];
+      });
+      if (typeof console !== 'undefined') {
+        console.error(message);
+      }
+      try {
+        // --- Welcome to debugging React ---
+        // This error was thrown as a convenience so that you can use this stack
+        // to find the callsite that caused this warning to fire.
+        throw new Error(message);
+      } catch (x) {}
+    }
+  };
+}
+
+module.exports = warning;
+}).call(this,require('_process'))
+},{"./emptyFunction":39,"_process":384}],58:[function(require,module,exports){
+/**
+ * Determine if an object is Buffer
+ *
+ * Author:   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * License:  MIT
+ *
+ * `npm install is-buffer`
+ */
+
+module.exports = function (obj) {
+  return !!(obj != null &&
+    (obj._isBuffer || // For Safari 5-7 (missing Object.prototype.constructor)
+      (obj.constructor &&
+      typeof obj.constructor.isBuffer === 'function' &&
+      obj.constructor.isBuffer(obj))
+    ))
+}
+
+},{}],59:[function(require,module,exports){
 /*!
  * jQuery JavaScript Library v2.2.4
  * http://jquery.com/
@@ -19369,7 +25880,442 @@ if ( !noGlobal ) {
 return jQuery;
 }));
 
-},{}],3:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
+exports.parse = require('./lib/parse');
+exports.stringify = require('./lib/stringify');
+
+},{"./lib/parse":61,"./lib/stringify":62}],61:[function(require,module,exports){
+var at, // The index of the current character
+    ch, // The current character
+    escapee = {
+        '"':  '"',
+        '\\': '\\',
+        '/':  '/',
+        b:    '\b',
+        f:    '\f',
+        n:    '\n',
+        r:    '\r',
+        t:    '\t'
+    },
+    text,
+
+    error = function (m) {
+        // Call error when something is wrong.
+        throw {
+            name:    'SyntaxError',
+            message: m,
+            at:      at,
+            text:    text
+        };
+    },
+    
+    next = function (c) {
+        // If a c parameter is provided, verify that it matches the current character.
+        if (c && c !== ch) {
+            error("Expected '" + c + "' instead of '" + ch + "'");
+        }
+        
+        // Get the next character. When there are no more characters,
+        // return the empty string.
+        
+        ch = text.charAt(at);
+        at += 1;
+        return ch;
+    },
+    
+    number = function () {
+        // Parse a number value.
+        var number,
+            string = '';
+        
+        if (ch === '-') {
+            string = '-';
+            next('-');
+        }
+        while (ch >= '0' && ch <= '9') {
+            string += ch;
+            next();
+        }
+        if (ch === '.') {
+            string += '.';
+            while (next() && ch >= '0' && ch <= '9') {
+                string += ch;
+            }
+        }
+        if (ch === 'e' || ch === 'E') {
+            string += ch;
+            next();
+            if (ch === '-' || ch === '+') {
+                string += ch;
+                next();
+            }
+            while (ch >= '0' && ch <= '9') {
+                string += ch;
+                next();
+            }
+        }
+        number = +string;
+        if (!isFinite(number)) {
+            error("Bad number");
+        } else {
+            return number;
+        }
+    },
+    
+    string = function () {
+        // Parse a string value.
+        var hex,
+            i,
+            string = '',
+            uffff;
+        
+        // When parsing for string values, we must look for " and \ characters.
+        if (ch === '"') {
+            while (next()) {
+                if (ch === '"') {
+                    next();
+                    return string;
+                } else if (ch === '\\') {
+                    next();
+                    if (ch === 'u') {
+                        uffff = 0;
+                        for (i = 0; i < 4; i += 1) {
+                            hex = parseInt(next(), 16);
+                            if (!isFinite(hex)) {
+                                break;
+                            }
+                            uffff = uffff * 16 + hex;
+                        }
+                        string += String.fromCharCode(uffff);
+                    } else if (typeof escapee[ch] === 'string') {
+                        string += escapee[ch];
+                    } else {
+                        break;
+                    }
+                } else {
+                    string += ch;
+                }
+            }
+        }
+        error("Bad string");
+    },
+
+    white = function () {
+
+// Skip whitespace.
+
+        while (ch && ch <= ' ') {
+            next();
+        }
+    },
+
+    word = function () {
+
+// true, false, or null.
+
+        switch (ch) {
+        case 't':
+            next('t');
+            next('r');
+            next('u');
+            next('e');
+            return true;
+        case 'f':
+            next('f');
+            next('a');
+            next('l');
+            next('s');
+            next('e');
+            return false;
+        case 'n':
+            next('n');
+            next('u');
+            next('l');
+            next('l');
+            return null;
+        }
+        error("Unexpected '" + ch + "'");
+    },
+
+    value,  // Place holder for the value function.
+
+    array = function () {
+
+// Parse an array value.
+
+        var array = [];
+
+        if (ch === '[') {
+            next('[');
+            white();
+            if (ch === ']') {
+                next(']');
+                return array;   // empty array
+            }
+            while (ch) {
+                array.push(value());
+                white();
+                if (ch === ']') {
+                    next(']');
+                    return array;
+                }
+                next(',');
+                white();
+            }
+        }
+        error("Bad array");
+    },
+
+    object = function () {
+
+// Parse an object value.
+
+        var key,
+            object = {};
+
+        if (ch === '{') {
+            next('{');
+            white();
+            if (ch === '}') {
+                next('}');
+                return object;   // empty object
+            }
+            while (ch) {
+                key = string();
+                white();
+                next(':');
+                if (Object.hasOwnProperty.call(object, key)) {
+                    error('Duplicate key "' + key + '"');
+                }
+                object[key] = value();
+                white();
+                if (ch === '}') {
+                    next('}');
+                    return object;
+                }
+                next(',');
+                white();
+            }
+        }
+        error("Bad object");
+    };
+
+value = function () {
+
+// Parse a JSON value. It could be an object, an array, a string, a number,
+// or a word.
+
+    white();
+    switch (ch) {
+    case '{':
+        return object();
+    case '[':
+        return array();
+    case '"':
+        return string();
+    case '-':
+        return number();
+    default:
+        return ch >= '0' && ch <= '9' ? number() : word();
+    }
+};
+
+// Return the json_parse function. It will have access to all of the above
+// functions and variables.
+
+module.exports = function (source, reviver) {
+    var result;
+    
+    text = source;
+    at = 0;
+    ch = ' ';
+    result = value();
+    white();
+    if (ch) {
+        error("Syntax error");
+    }
+
+    // If there is a reviver function, we recursively walk the new structure,
+    // passing each name/value pair to the reviver function for possible
+    // transformation, starting with a temporary root object that holds the result
+    // in an empty key. If there is not a reviver function, we simply return the
+    // result.
+
+    return typeof reviver === 'function' ? (function walk(holder, key) {
+        var k, v, value = holder[key];
+        if (value && typeof value === 'object') {
+            for (k in value) {
+                if (Object.prototype.hasOwnProperty.call(value, k)) {
+                    v = walk(value, k);
+                    if (v !== undefined) {
+                        value[k] = v;
+                    } else {
+                        delete value[k];
+                    }
+                }
+            }
+        }
+        return reviver.call(holder, key, value);
+    }({'': result}, '')) : result;
+};
+
+},{}],62:[function(require,module,exports){
+var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+    escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+    gap,
+    indent,
+    meta = {    // table of character substitutions
+        '\b': '\\b',
+        '\t': '\\t',
+        '\n': '\\n',
+        '\f': '\\f',
+        '\r': '\\r',
+        '"' : '\\"',
+        '\\': '\\\\'
+    },
+    rep;
+
+function quote(string) {
+    // If the string contains no control characters, no quote characters, and no
+    // backslash characters, then we can safely slap some quotes around it.
+    // Otherwise we must also replace the offending characters with safe escape
+    // sequences.
+    
+    escapable.lastIndex = 0;
+    return escapable.test(string) ? '"' + string.replace(escapable, function (a) {
+        var c = meta[a];
+        return typeof c === 'string' ? c :
+            '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+    }) + '"' : '"' + string + '"';
+}
+
+function str(key, holder) {
+    // Produce a string from holder[key].
+    var i,          // The loop counter.
+        k,          // The member key.
+        v,          // The member value.
+        length,
+        mind = gap,
+        partial,
+        value = holder[key];
+    
+    // If the value has a toJSON method, call it to obtain a replacement value.
+    if (value && typeof value === 'object' &&
+            typeof value.toJSON === 'function') {
+        value = value.toJSON(key);
+    }
+    
+    // If we were called with a replacer function, then call the replacer to
+    // obtain a replacement value.
+    if (typeof rep === 'function') {
+        value = rep.call(holder, key, value);
+    }
+    
+    // What happens next depends on the value's type.
+    switch (typeof value) {
+        case 'string':
+            return quote(value);
+        
+        case 'number':
+            // JSON numbers must be finite. Encode non-finite numbers as null.
+            return isFinite(value) ? String(value) : 'null';
+        
+        case 'boolean':
+        case 'null':
+            // If the value is a boolean or null, convert it to a string. Note:
+            // typeof null does not produce 'null'. The case is included here in
+            // the remote chance that this gets fixed someday.
+            return String(value);
+            
+        case 'object':
+            if (!value) return 'null';
+            gap += indent;
+            partial = [];
+            
+            // Array.isArray
+            if (Object.prototype.toString.apply(value) === '[object Array]') {
+                length = value.length;
+                for (i = 0; i < length; i += 1) {
+                    partial[i] = str(i, value) || 'null';
+                }
+                
+                // Join all of the elements together, separated with commas, and
+                // wrap them in brackets.
+                v = partial.length === 0 ? '[]' : gap ?
+                    '[\n' + gap + partial.join(',\n' + gap) + '\n' + mind + ']' :
+                    '[' + partial.join(',') + ']';
+                gap = mind;
+                return v;
+            }
+            
+            // If the replacer is an array, use it to select the members to be
+            // stringified.
+            if (rep && typeof rep === 'object') {
+                length = rep.length;
+                for (i = 0; i < length; i += 1) {
+                    k = rep[i];
+                    if (typeof k === 'string') {
+                        v = str(k, value);
+                        if (v) {
+                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
+                        }
+                    }
+                }
+            }
+            else {
+                // Otherwise, iterate through all of the keys in the object.
+                for (k in value) {
+                    if (Object.prototype.hasOwnProperty.call(value, k)) {
+                        v = str(k, value);
+                        if (v) {
+                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
+                        }
+                    }
+                }
+            }
+            
+        // Join all of the member texts together, separated with commas,
+        // and wrap them in braces.
+
+        v = partial.length === 0 ? '{}' : gap ?
+            '{\n' + gap + partial.join(',\n' + gap) + '\n' + mind + '}' :
+            '{' + partial.join(',') + '}';
+        gap = mind;
+        return v;
+    }
+}
+
+module.exports = function (value, replacer, space) {
+    var i;
+    gap = '';
+    indent = '';
+    
+    // If the space parameter is a number, make an indent string containing that
+    // many spaces.
+    if (typeof space === 'number') {
+        for (i = 0; i < space; i += 1) {
+            indent += ' ';
+        }
+    }
+    // If the space parameter is a string, it will be used as the indent string.
+    else if (typeof space === 'string') {
+        indent = space;
+    }
+
+    // If there is a replacer, it must be a function or an array.
+    // Otherwise, throw an error.
+    rep = replacer;
+    if (replacer && typeof replacer !== 'function'
+    && (typeof replacer !== 'object' || typeof replacer.length !== 'number')) {
+        throw new Error('JSON.stringify');
+    }
+    
+    // Make a fake root object containing our value under the key of ''.
+    // Return the result of stringifying the value.
+    return str('', {'': value});
+};
+
+},{}],63:[function(require,module,exports){
 (function(){
   var crypt = require('crypt'),
       utf8 = require('charenc').utf8,
@@ -19531,164 +26477,97 @@ return jQuery;
 
 })();
 
-},{"charenc":4,"crypt":5,"is-buffer":6}],4:[function(require,module,exports){
-var charenc = {
-  // UTF-8 encoding
-  utf8: {
-    // Convert a string to a byte array
-    stringToBytes: function(str) {
-      return charenc.bin.stringToBytes(unescape(encodeURIComponent(str)));
-    },
+},{"charenc":1,"crypt":2,"is-buffer":58}],64:[function(require,module,exports){
+'use strict';
+/* eslint-disable no-unused-vars */
+var hasOwnProperty = Object.prototype.hasOwnProperty;
+var propIsEnumerable = Object.prototype.propertyIsEnumerable;
 
-    // Convert a byte array to a string
-    bytesToString: function(bytes) {
-      return decodeURIComponent(escape(charenc.bin.bytesToString(bytes)));
-    }
-  },
+function toObject(val) {
+	if (val === null || val === undefined) {
+		throw new TypeError('Object.assign cannot be called with null or undefined');
+	}
 
-  // Binary encoding
-  bin: {
-    // Convert a string to a byte array
-    stringToBytes: function(str) {
-      for (var bytes = [], i = 0; i < str.length; i++)
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      return bytes;
-    },
-
-    // Convert a byte array to a string
-    bytesToString: function(bytes) {
-      for (var str = [], i = 0; i < bytes.length; i++)
-        str.push(String.fromCharCode(bytes[i]));
-      return str.join('');
-    }
-  }
-};
-
-module.exports = charenc;
-
-},{}],5:[function(require,module,exports){
-(function() {
-  var base64map
-      = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',
-
-  crypt = {
-    // Bit-wise rotation left
-    rotl: function(n, b) {
-      return (n << b) | (n >>> (32 - b));
-    },
-
-    // Bit-wise rotation right
-    rotr: function(n, b) {
-      return (n << (32 - b)) | (n >>> b);
-    },
-
-    // Swap big-endian to little-endian and vice versa
-    endian: function(n) {
-      // If number given, swap endian
-      if (n.constructor == Number) {
-        return crypt.rotl(n, 8) & 0x00FF00FF | crypt.rotl(n, 24) & 0xFF00FF00;
-      }
-
-      // Else, assume array and swap all items
-      for (var i = 0; i < n.length; i++)
-        n[i] = crypt.endian(n[i]);
-      return n;
-    },
-
-    // Generate an array of any length of random bytes
-    randomBytes: function(n) {
-      for (var bytes = []; n > 0; n--)
-        bytes.push(Math.floor(Math.random() * 256));
-      return bytes;
-    },
-
-    // Convert a byte array to big-endian 32-bit words
-    bytesToWords: function(bytes) {
-      for (var words = [], i = 0, b = 0; i < bytes.length; i++, b += 8)
-        words[b >>> 5] |= bytes[i] << (24 - b % 32);
-      return words;
-    },
-
-    // Convert big-endian 32-bit words to a byte array
-    wordsToBytes: function(words) {
-      for (var bytes = [], b = 0; b < words.length * 32; b += 8)
-        bytes.push((words[b >>> 5] >>> (24 - b % 32)) & 0xFF);
-      return bytes;
-    },
-
-    // Convert a byte array to a hex string
-    bytesToHex: function(bytes) {
-      for (var hex = [], i = 0; i < bytes.length; i++) {
-        hex.push((bytes[i] >>> 4).toString(16));
-        hex.push((bytes[i] & 0xF).toString(16));
-      }
-      return hex.join('');
-    },
-
-    // Convert a hex string to a byte array
-    hexToBytes: function(hex) {
-      for (var bytes = [], c = 0; c < hex.length; c += 2)
-        bytes.push(parseInt(hex.substr(c, 2), 16));
-      return bytes;
-    },
-
-    // Convert a byte array to a base-64 string
-    bytesToBase64: function(bytes) {
-      for (var base64 = [], i = 0; i < bytes.length; i += 3) {
-        var triplet = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
-        for (var j = 0; j < 4; j++)
-          if (i * 8 + j * 6 <= bytes.length * 8)
-            base64.push(base64map.charAt((triplet >>> 6 * (3 - j)) & 0x3F));
-          else
-            base64.push('=');
-      }
-      return base64.join('');
-    },
-
-    // Convert a base-64 string to a byte array
-    base64ToBytes: function(base64) {
-      // Remove non-base-64 characters
-      base64 = base64.replace(/[^A-Z0-9+\/]/ig, '');
-
-      for (var bytes = [], i = 0, imod4 = 0; i < base64.length;
-          imod4 = ++i % 4) {
-        if (imod4 == 0) continue;
-        bytes.push(((base64map.indexOf(base64.charAt(i - 1))
-            & (Math.pow(2, -2 * imod4 + 8) - 1)) << (imod4 * 2))
-            | (base64map.indexOf(base64.charAt(i)) >>> (6 - imod4 * 2)));
-      }
-      return bytes;
-    }
-  };
-
-  module.exports = crypt;
-})();
-
-},{}],6:[function(require,module,exports){
-/**
- * Determine if an object is Buffer
- *
- * Author:   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
- * License:  MIT
- *
- * `npm install is-buffer`
- */
-
-module.exports = function (obj) {
-  return !!(obj != null &&
-    (obj._isBuffer || // For Safari 5-7 (missing Object.prototype.constructor)
-      (obj.constructor &&
-      typeof obj.constructor.isBuffer === 'function' &&
-      obj.constructor.isBuffer(obj))
-    ))
+	return Object(val);
 }
 
-},{}],7:[function(require,module,exports){
+function shouldUseNative() {
+	try {
+		if (!Object.assign) {
+			return false;
+		}
+
+		// Detect buggy property enumeration order in older V8 versions.
+
+		// https://bugs.chromium.org/p/v8/issues/detail?id=4118
+		var test1 = new String('abc');  // eslint-disable-line
+		test1[5] = 'de';
+		if (Object.getOwnPropertyNames(test1)[0] === '5') {
+			return false;
+		}
+
+		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
+		var test2 = {};
+		for (var i = 0; i < 10; i++) {
+			test2['_' + String.fromCharCode(i)] = i;
+		}
+		var order2 = Object.getOwnPropertyNames(test2).map(function (n) {
+			return test2[n];
+		});
+		if (order2.join('') !== '0123456789') {
+			return false;
+		}
+
+		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
+		var test3 = {};
+		'abcdefghijklmnopqrst'.split('').forEach(function (letter) {
+			test3[letter] = letter;
+		});
+		if (Object.keys(Object.assign({}, test3)).join('') !==
+				'abcdefghijklmnopqrst') {
+			return false;
+		}
+
+		return true;
+	} catch (e) {
+		// We don't expect any of the above to throw, but better to be safe.
+		return false;
+	}
+}
+
+module.exports = shouldUseNative() ? Object.assign : function (target, source) {
+	var from;
+	var to = toObject(target);
+	var symbols;
+
+	for (var s = 1; s < arguments.length; s++) {
+		from = Object(arguments[s]);
+
+		for (var key in from) {
+			if (hasOwnProperty.call(from, key)) {
+				to[key] = from[key];
+			}
+		}
+
+		if (Object.getOwnPropertySymbols) {
+			symbols = Object.getOwnPropertySymbols(from);
+			for (var i = 0; i < symbols.length; i++) {
+				if (propIsEnumerable.call(from, symbols[i])) {
+					to[symbols[i]] = from[symbols[i]];
+				}
+			}
+		}
+	}
+
+	return to;
+};
+
+},{}],65:[function(require,module,exports){
 'use strict';
 
 module.exports = require('react/lib/ReactDOM');
 
-},{"react/lib/ReactDOM":44}],8:[function(require,module,exports){
+},{"react/lib/ReactDOM":102}],66:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19713,7 +26592,7 @@ var AutoFocusUtils = {
 };
 
 module.exports = AutoFocusUtils;
-},{"./ReactDOMComponentTree":48,"fbjs/lib/focusNode":154}],9:[function(require,module,exports){
+},{"./ReactDOMComponentTree":106,"fbjs/lib/focusNode":41}],67:[function(require,module,exports){
 /**
  * Copyright 2013-present Facebook, Inc.
  * All rights reserved.
@@ -20102,7 +26981,7 @@ var BeforeInputEventPlugin = {
 };
 
 module.exports = BeforeInputEventPlugin;
-},{"./EventConstants":23,"./EventPropagators":27,"./FallbackCompositionState":28,"./SyntheticCompositionEvent":103,"./SyntheticInputEvent":107,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/keyOf":164}],10:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPropagators":85,"./FallbackCompositionState":86,"./SyntheticCompositionEvent":161,"./SyntheticInputEvent":165,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/keyOf":51}],68:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -20251,7 +27130,7 @@ var CSSProperty = {
 };
 
 module.exports = CSSProperty;
-},{}],11:[function(require,module,exports){
+},{}],69:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -20459,7 +27338,7 @@ var CSSPropertyOperations = {
 
 module.exports = CSSPropertyOperations;
 }).call(this,require('_process'))
-},{"./CSSProperty":10,"./ReactInstrumentation":77,"./dangerousStyleValue":120,"_process":389,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/camelizeStyleName":148,"fbjs/lib/hyphenateStyleName":159,"fbjs/lib/memoizeStringOnly":166,"fbjs/lib/warning":170}],12:[function(require,module,exports){
+},{"./CSSProperty":68,"./ReactInstrumentation":135,"./dangerousStyleValue":178,"_process":384,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/camelizeStyleName":35,"fbjs/lib/hyphenateStyleName":46,"fbjs/lib/memoizeStringOnly":53,"fbjs/lib/warning":57}],70:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -20567,7 +27446,7 @@ PooledClass.addPoolingTo(CallbackQueue);
 
 module.exports = CallbackQueue;
 }).call(this,require('_process'))
-},{"./PooledClass":32,"_process":389,"fbjs/lib/invariant":160,"object-assign":171}],13:[function(require,module,exports){
+},{"./PooledClass":90,"_process":384,"fbjs/lib/invariant":47,"object-assign":64}],71:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -20893,7 +27772,7 @@ var ChangeEventPlugin = {
 };
 
 module.exports = ChangeEventPlugin;
-},{"./EventConstants":23,"./EventPluginHub":24,"./EventPropagators":27,"./ReactDOMComponentTree":48,"./ReactUpdates":96,"./SyntheticEvent":105,"./getEventTarget":128,"./isEventSupported":135,"./isTextInputElement":136,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/keyOf":164}],14:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPluginHub":82,"./EventPropagators":85,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"./SyntheticEvent":163,"./getEventTarget":186,"./isEventSupported":193,"./isTextInputElement":194,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/keyOf":51}],72:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -21090,7 +27969,7 @@ var DOMChildrenOperations = {
 
 module.exports = DOMChildrenOperations;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":15,"./Danger":19,"./ReactDOMComponentTree":48,"./ReactInstrumentation":77,"./ReactMultiChildUpdateTypes":82,"./createMicrosoftUnsafeLocalFunction":119,"./setInnerHTML":140,"./setTextContent":141,"_process":389}],15:[function(require,module,exports){
+},{"./DOMLazyTree":73,"./Danger":77,"./ReactDOMComponentTree":106,"./ReactInstrumentation":135,"./ReactMultiChildUpdateTypes":140,"./createMicrosoftUnsafeLocalFunction":177,"./setInnerHTML":198,"./setTextContent":199,"_process":384}],73:[function(require,module,exports){
 /**
  * Copyright 2015-present, Facebook, Inc.
  * All rights reserved.
@@ -21208,7 +28087,7 @@ DOMLazyTree.queueHTML = queueHTML;
 DOMLazyTree.queueText = queueText;
 
 module.exports = DOMLazyTree;
-},{"./DOMNamespaces":16,"./createMicrosoftUnsafeLocalFunction":119,"./setTextContent":141}],16:[function(require,module,exports){
+},{"./DOMNamespaces":74,"./createMicrosoftUnsafeLocalFunction":177,"./setTextContent":199}],74:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -21229,7 +28108,7 @@ var DOMNamespaces = {
 };
 
 module.exports = DOMNamespaces;
-},{}],17:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -21445,7 +28324,7 @@ var DOMProperty = {
 
 module.exports = DOMProperty;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],18:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],76:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -21670,7 +28549,7 @@ var DOMPropertyOperations = {
 
 module.exports = DOMPropertyOperations;
 }).call(this,require('_process'))
-},{"./DOMProperty":17,"./ReactDOMComponentTree":48,"./ReactDOMInstrumentation":56,"./ReactInstrumentation":77,"./quoteAttributeValueForBrowser":138,"_process":389,"fbjs/lib/warning":170}],19:[function(require,module,exports){
+},{"./DOMProperty":75,"./ReactDOMComponentTree":106,"./ReactDOMInstrumentation":114,"./ReactInstrumentation":135,"./quoteAttributeValueForBrowser":196,"_process":384,"fbjs/lib/warning":57}],77:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -21817,7 +28696,7 @@ var Danger = {
 
 module.exports = Danger;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":15,"_process":389,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/createNodesFromMarkup":151,"fbjs/lib/emptyFunction":152,"fbjs/lib/getMarkupWrap":156,"fbjs/lib/invariant":160}],20:[function(require,module,exports){
+},{"./DOMLazyTree":73,"_process":384,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/createNodesFromMarkup":38,"fbjs/lib/emptyFunction":39,"fbjs/lib/getMarkupWrap":43,"fbjs/lib/invariant":47}],78:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -21845,7 +28724,7 @@ var keyOf = require('fbjs/lib/keyOf');
 var DefaultEventPluginOrder = [keyOf({ ResponderEventPlugin: null }), keyOf({ SimpleEventPlugin: null }), keyOf({ TapEventPlugin: null }), keyOf({ EnterLeaveEventPlugin: null }), keyOf({ ChangeEventPlugin: null }), keyOf({ SelectEventPlugin: null }), keyOf({ BeforeInputEventPlugin: null })];
 
 module.exports = DefaultEventPluginOrder;
-},{"fbjs/lib/keyOf":164}],21:[function(require,module,exports){
+},{"fbjs/lib/keyOf":51}],79:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -21896,7 +28775,7 @@ var DisabledInputUtils = {
 };
 
 module.exports = DisabledInputUtils;
-},{}],22:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -22002,7 +28881,7 @@ var EnterLeaveEventPlugin = {
 };
 
 module.exports = EnterLeaveEventPlugin;
-},{"./EventConstants":23,"./EventPropagators":27,"./ReactDOMComponentTree":48,"./SyntheticMouseEvent":109,"fbjs/lib/keyOf":164}],23:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPropagators":85,"./ReactDOMComponentTree":106,"./SyntheticMouseEvent":167,"fbjs/lib/keyOf":51}],81:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -22100,7 +28979,7 @@ var EventConstants = {
 };
 
 module.exports = EventConstants;
-},{"fbjs/lib/keyMirror":163}],24:[function(require,module,exports){
+},{"fbjs/lib/keyMirror":50}],82:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -22338,7 +29217,7 @@ var EventPluginHub = {
 
 module.exports = EventPluginHub;
 }).call(this,require('_process'))
-},{"./EventPluginRegistry":25,"./EventPluginUtils":26,"./ReactErrorUtils":70,"./accumulateInto":116,"./forEachAccumulated":124,"_process":389,"fbjs/lib/invariant":160}],25:[function(require,module,exports){
+},{"./EventPluginRegistry":83,"./EventPluginUtils":84,"./ReactErrorUtils":128,"./accumulateInto":174,"./forEachAccumulated":182,"_process":384,"fbjs/lib/invariant":47}],83:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -22582,7 +29461,7 @@ var EventPluginRegistry = {
 
 module.exports = EventPluginRegistry;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],26:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],84:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -22812,7 +29691,7 @@ var EventPluginUtils = {
 
 module.exports = EventPluginUtils;
 }).call(this,require('_process'))
-},{"./EventConstants":23,"./ReactErrorUtils":70,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],27:[function(require,module,exports){
+},{"./EventConstants":81,"./ReactErrorUtils":128,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],85:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -22952,7 +29831,7 @@ var EventPropagators = {
 
 module.exports = EventPropagators;
 }).call(this,require('_process'))
-},{"./EventConstants":23,"./EventPluginHub":24,"./EventPluginUtils":26,"./accumulateInto":116,"./forEachAccumulated":124,"_process":389,"fbjs/lib/warning":170}],28:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPluginHub":82,"./EventPluginUtils":84,"./accumulateInto":174,"./forEachAccumulated":182,"_process":384,"fbjs/lib/warning":57}],86:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23048,7 +29927,7 @@ _assign(FallbackCompositionState.prototype, {
 PooledClass.addPoolingTo(FallbackCompositionState);
 
 module.exports = FallbackCompositionState;
-},{"./PooledClass":32,"./getTextContentAccessor":132,"object-assign":171}],29:[function(require,module,exports){
+},{"./PooledClass":90,"./getTextContentAccessor":190,"object-assign":64}],87:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23258,7 +30137,7 @@ var HTMLDOMPropertyConfig = {
 };
 
 module.exports = HTMLDOMPropertyConfig;
-},{"./DOMProperty":17}],30:[function(require,module,exports){
+},{"./DOMProperty":75}],88:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23317,7 +30196,7 @@ var KeyEscapeUtils = {
 };
 
 module.exports = KeyEscapeUtils;
-},{}],31:[function(require,module,exports){
+},{}],89:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -23453,7 +30332,7 @@ var LinkedValueUtils = {
 
 module.exports = LinkedValueUtils;
 }).call(this,require('_process'))
-},{"./ReactPropTypeLocations":89,"./ReactPropTypes":90,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],32:[function(require,module,exports){
+},{"./ReactPropTypeLocations":147,"./ReactPropTypes":148,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],90:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -23575,7 +30454,7 @@ var PooledClass = {
 
 module.exports = PooledClass;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],33:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],91:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -23665,7 +30544,7 @@ var React = {
 
 module.exports = React;
 }).call(this,require('_process'))
-},{"./ReactChildren":36,"./ReactClass":37,"./ReactComponent":38,"./ReactDOMFactories":52,"./ReactElement":67,"./ReactElementValidator":68,"./ReactPropTypes":90,"./ReactVersion":97,"./onlyChild":137,"_process":389,"fbjs/lib/warning":170,"object-assign":171}],34:[function(require,module,exports){
+},{"./ReactChildren":94,"./ReactClass":95,"./ReactComponent":96,"./ReactDOMFactories":110,"./ReactElement":125,"./ReactElementValidator":126,"./ReactPropTypes":148,"./ReactVersion":155,"./onlyChild":195,"_process":384,"fbjs/lib/warning":57,"object-assign":64}],92:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23983,7 +30862,7 @@ var ReactBrowserEventEmitter = _assign({}, ReactEventEmitterMixin, {
 });
 
 module.exports = ReactBrowserEventEmitter;
-},{"./EventConstants":23,"./EventPluginRegistry":25,"./ReactEventEmitterMixin":71,"./ViewportMetrics":115,"./getVendorPrefixedEventName":133,"./isEventSupported":135,"object-assign":171}],35:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPluginRegistry":83,"./ReactEventEmitterMixin":129,"./ViewportMetrics":173,"./getVendorPrefixedEventName":191,"./isEventSupported":193,"object-assign":64}],93:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -24111,7 +30990,7 @@ var ReactChildReconciler = {
 
 module.exports = ReactChildReconciler;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":30,"./ReactReconciler":92,"./instantiateReactComponent":134,"./shouldUpdateReactComponent":142,"./traverseAllChildren":143,"_process":389,"fbjs/lib/warning":170}],36:[function(require,module,exports){
+},{"./KeyEscapeUtils":88,"./ReactReconciler":150,"./instantiateReactComponent":192,"./shouldUpdateReactComponent":200,"./traverseAllChildren":201,"_process":384,"fbjs/lib/warning":57}],94:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24303,7 +31182,7 @@ var ReactChildren = {
 };
 
 module.exports = ReactChildren;
-},{"./PooledClass":32,"./ReactElement":67,"./traverseAllChildren":143,"fbjs/lib/emptyFunction":152}],37:[function(require,module,exports){
+},{"./PooledClass":90,"./ReactElement":125,"./traverseAllChildren":201,"fbjs/lib/emptyFunction":39}],95:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -25030,7 +31909,7 @@ var ReactClass = {
 
 module.exports = ReactClass;
 }).call(this,require('_process'))
-},{"./ReactComponent":38,"./ReactElement":67,"./ReactNoopUpdateQueue":86,"./ReactPropTypeLocationNames":88,"./ReactPropTypeLocations":89,"_process":389,"fbjs/lib/emptyObject":153,"fbjs/lib/invariant":160,"fbjs/lib/keyMirror":163,"fbjs/lib/keyOf":164,"fbjs/lib/warning":170,"object-assign":171}],38:[function(require,module,exports){
+},{"./ReactComponent":96,"./ReactElement":125,"./ReactNoopUpdateQueue":144,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"_process":384,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/keyMirror":50,"fbjs/lib/keyOf":51,"fbjs/lib/warning":57,"object-assign":64}],96:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -25154,7 +32033,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactComponent;
 }).call(this,require('_process'))
-},{"./ReactInstrumentation":77,"./ReactNoopUpdateQueue":86,"./canDefineProperty":118,"_process":389,"fbjs/lib/emptyObject":153,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],39:[function(require,module,exports){
+},{"./ReactInstrumentation":135,"./ReactNoopUpdateQueue":144,"./canDefineProperty":176,"_process":384,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],97:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25194,7 +32073,7 @@ var ReactComponentBrowserEnvironment = {
 };
 
 module.exports = ReactComponentBrowserEnvironment;
-},{"./DOMChildrenOperations":14,"./ReactDOMIDOperations":54}],40:[function(require,module,exports){
+},{"./DOMChildrenOperations":72,"./ReactDOMIDOperations":112}],98:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -25248,7 +32127,7 @@ var ReactComponentEnvironment = {
 
 module.exports = ReactComponentEnvironment;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],41:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],99:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -25396,7 +32275,7 @@ var ReactComponentTreeDevtool = {
 
 module.exports = ReactComponentTreeDevtool;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],42:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],100:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -26322,7 +33201,7 @@ var ReactCompositeComponent = {
 
 module.exports = ReactCompositeComponent;
 }).call(this,require('_process'))
-},{"./ReactComponentEnvironment":40,"./ReactCurrentOwner":43,"./ReactElement":67,"./ReactErrorUtils":70,"./ReactInstanceMap":76,"./ReactInstrumentation":77,"./ReactNodeTypes":85,"./ReactPropTypeLocationNames":88,"./ReactPropTypeLocations":89,"./ReactReconciler":92,"./ReactUpdateQueue":95,"./shouldUpdateReactComponent":142,"_process":389,"fbjs/lib/emptyObject":153,"fbjs/lib/invariant":160,"fbjs/lib/warning":170,"object-assign":171}],43:[function(require,module,exports){
+},{"./ReactComponentEnvironment":98,"./ReactCurrentOwner":101,"./ReactElement":125,"./ReactErrorUtils":128,"./ReactInstanceMap":134,"./ReactInstrumentation":135,"./ReactNodeTypes":143,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"./ReactReconciler":150,"./ReactUpdateQueue":153,"./shouldUpdateReactComponent":200,"_process":384,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],101:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26354,7 +33233,7 @@ var ReactCurrentOwner = {
 };
 
 module.exports = ReactCurrentOwner;
-},{}],44:[function(require,module,exports){
+},{}],102:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -26458,7 +33337,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = React;
 }).call(this,require('_process'))
-},{"./ReactDOMComponentTree":48,"./ReactDefaultInjection":66,"./ReactMount":80,"./ReactReconciler":92,"./ReactUpdates":96,"./ReactVersion":97,"./findDOMNode":122,"./getNativeComponentFromComposite":130,"./renderSubtreeIntoContainer":139,"_process":389,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/warning":170}],45:[function(require,module,exports){
+},{"./ReactDOMComponentTree":106,"./ReactDefaultInjection":124,"./ReactMount":138,"./ReactReconciler":150,"./ReactUpdates":154,"./ReactVersion":155,"./findDOMNode":180,"./getNativeComponentFromComposite":188,"./renderSubtreeIntoContainer":197,"_process":384,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/warning":57}],103:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26483,7 +33362,7 @@ var ReactDOMButton = {
 };
 
 module.exports = ReactDOMButton;
-},{"./DisabledInputUtils":21}],46:[function(require,module,exports){
+},{"./DisabledInputUtils":79}],104:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -27435,7 +34314,7 @@ _assign(ReactDOMComponent.prototype, ReactDOMComponent.Mixin, ReactMultiChild.Mi
 
 module.exports = ReactDOMComponent;
 }).call(this,require('_process'))
-},{"./AutoFocusUtils":8,"./CSSPropertyOperations":11,"./DOMLazyTree":15,"./DOMNamespaces":16,"./DOMProperty":17,"./DOMPropertyOperations":18,"./EventConstants":23,"./EventPluginHub":24,"./EventPluginRegistry":25,"./ReactBrowserEventEmitter":34,"./ReactComponentBrowserEnvironment":39,"./ReactDOMButton":45,"./ReactDOMComponentFlags":47,"./ReactDOMComponentTree":48,"./ReactDOMInput":55,"./ReactDOMOption":57,"./ReactDOMSelect":58,"./ReactDOMTextarea":61,"./ReactInstrumentation":77,"./ReactMultiChild":81,"./ReactServerRenderingTransaction":94,"./escapeTextContentForBrowser":121,"./isEventSupported":135,"./validateDOMNesting":144,"_process":389,"fbjs/lib/emptyFunction":152,"fbjs/lib/invariant":160,"fbjs/lib/keyOf":164,"fbjs/lib/shallowEqual":169,"fbjs/lib/warning":170,"object-assign":171}],47:[function(require,module,exports){
+},{"./AutoFocusUtils":66,"./CSSPropertyOperations":69,"./DOMLazyTree":73,"./DOMNamespaces":74,"./DOMProperty":75,"./DOMPropertyOperations":76,"./EventConstants":81,"./EventPluginHub":82,"./EventPluginRegistry":83,"./ReactBrowserEventEmitter":92,"./ReactComponentBrowserEnvironment":97,"./ReactDOMButton":103,"./ReactDOMComponentFlags":105,"./ReactDOMComponentTree":106,"./ReactDOMInput":113,"./ReactDOMOption":115,"./ReactDOMSelect":116,"./ReactDOMTextarea":119,"./ReactInstrumentation":135,"./ReactMultiChild":139,"./ReactServerRenderingTransaction":152,"./escapeTextContentForBrowser":179,"./isEventSupported":193,"./validateDOMNesting":202,"_process":384,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47,"fbjs/lib/keyOf":51,"fbjs/lib/shallowEqual":56,"fbjs/lib/warning":57,"object-assign":64}],105:[function(require,module,exports){
 /**
  * Copyright 2015-present, Facebook, Inc.
  * All rights reserved.
@@ -27454,7 +34333,7 @@ var ReactDOMComponentFlags = {
 };
 
 module.exports = ReactDOMComponentFlags;
-},{}],48:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -27643,7 +34522,7 @@ var ReactDOMComponentTree = {
 
 module.exports = ReactDOMComponentTree;
 }).call(this,require('_process'))
-},{"./DOMProperty":17,"./ReactDOMComponentFlags":47,"_process":389,"fbjs/lib/invariant":160}],49:[function(require,module,exports){
+},{"./DOMProperty":75,"./ReactDOMComponentFlags":105,"_process":384,"fbjs/lib/invariant":47}],107:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -27679,7 +34558,7 @@ function ReactDOMContainerInfo(topLevelWrapper, node) {
 
 module.exports = ReactDOMContainerInfo;
 }).call(this,require('_process'))
-},{"./validateDOMNesting":144,"_process":389}],50:[function(require,module,exports){
+},{"./validateDOMNesting":202,"_process":384}],108:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -27743,7 +34622,7 @@ ReactDOMDebugTool.addDevtool(ReactDOMUnknownPropertyDevtool);
 
 module.exports = ReactDOMDebugTool;
 }).call(this,require('_process'))
-},{"./ReactDOMUnknownPropertyDevtool":63,"_process":389,"fbjs/lib/warning":170}],51:[function(require,module,exports){
+},{"./ReactDOMUnknownPropertyDevtool":121,"_process":384,"fbjs/lib/warning":57}],109:[function(require,module,exports){
 /**
  * Copyright 2014-present, Facebook, Inc.
  * All rights reserved.
@@ -27804,7 +34683,7 @@ _assign(ReactDOMEmptyComponent.prototype, {
 });
 
 module.exports = ReactDOMEmptyComponent;
-},{"./DOMLazyTree":15,"./ReactDOMComponentTree":48,"object-assign":171}],52:[function(require,module,exports){
+},{"./DOMLazyTree":73,"./ReactDOMComponentTree":106,"object-assign":64}],110:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -27983,7 +34862,7 @@ var ReactDOMFactories = mapObject({
 
 module.exports = ReactDOMFactories;
 }).call(this,require('_process'))
-},{"./ReactElement":67,"./ReactElementValidator":68,"_process":389,"fbjs/lib/mapObject":165}],53:[function(require,module,exports){
+},{"./ReactElement":125,"./ReactElementValidator":126,"_process":384,"fbjs/lib/mapObject":52}],111:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -28002,7 +34881,7 @@ var ReactDOMFeatureFlags = {
 };
 
 module.exports = ReactDOMFeatureFlags;
-},{}],54:[function(require,module,exports){
+},{}],112:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -28037,7 +34916,7 @@ var ReactDOMIDOperations = {
 };
 
 module.exports = ReactDOMIDOperations;
-},{"./DOMChildrenOperations":14,"./ReactDOMComponentTree":48}],55:[function(require,module,exports){
+},{"./DOMChildrenOperations":72,"./ReactDOMComponentTree":106}],113:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -28246,7 +35125,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMInput;
 }).call(this,require('_process'))
-},{"./DOMPropertyOperations":18,"./DisabledInputUtils":21,"./LinkedValueUtils":31,"./ReactDOMComponentTree":48,"./ReactUpdates":96,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170,"object-assign":171}],56:[function(require,module,exports){
+},{"./DOMPropertyOperations":76,"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],114:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -28263,7 +35142,7 @@ module.exports = ReactDOMInput;
 var ReactDOMDebugTool = require('./ReactDOMDebugTool');
 
 module.exports = { debugTool: ReactDOMDebugTool };
-},{"./ReactDOMDebugTool":50}],57:[function(require,module,exports){
+},{"./ReactDOMDebugTool":108}],115:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -28375,7 +35254,7 @@ var ReactDOMOption = {
 
 module.exports = ReactDOMOption;
 }).call(this,require('_process'))
-},{"./ReactChildren":36,"./ReactDOMComponentTree":48,"./ReactDOMSelect":58,"_process":389,"fbjs/lib/warning":170,"object-assign":171}],58:[function(require,module,exports){
+},{"./ReactChildren":94,"./ReactDOMComponentTree":106,"./ReactDOMSelect":116,"_process":384,"fbjs/lib/warning":57,"object-assign":64}],116:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -28591,7 +35470,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMSelect;
 }).call(this,require('_process'))
-},{"./DisabledInputUtils":21,"./LinkedValueUtils":31,"./ReactDOMComponentTree":48,"./ReactUpdates":96,"_process":389,"fbjs/lib/warning":170,"object-assign":171}],59:[function(require,module,exports){
+},{"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":384,"fbjs/lib/warning":57,"object-assign":64}],117:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -28804,7 +35683,7 @@ var ReactDOMSelection = {
 };
 
 module.exports = ReactDOMSelection;
-},{"./getNodeForCharacterOffset":131,"./getTextContentAccessor":132,"fbjs/lib/ExecutionEnvironment":146}],60:[function(require,module,exports){
+},{"./getNodeForCharacterOffset":189,"./getTextContentAccessor":190,"fbjs/lib/ExecutionEnvironment":33}],118:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -28977,7 +35856,7 @@ _assign(ReactDOMTextComponent.prototype, {
 
 module.exports = ReactDOMTextComponent;
 }).call(this,require('_process'))
-},{"./DOMChildrenOperations":14,"./DOMLazyTree":15,"./ReactDOMComponentTree":48,"./ReactInstrumentation":77,"./escapeTextContentForBrowser":121,"./validateDOMNesting":144,"_process":389,"fbjs/lib/invariant":160,"object-assign":171}],61:[function(require,module,exports){
+},{"./DOMChildrenOperations":72,"./DOMLazyTree":73,"./ReactDOMComponentTree":106,"./ReactInstrumentation":135,"./escapeTextContentForBrowser":179,"./validateDOMNesting":202,"_process":384,"fbjs/lib/invariant":47,"object-assign":64}],119:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -29122,7 +36001,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMTextarea;
 }).call(this,require('_process'))
-},{"./DOMPropertyOperations":18,"./DisabledInputUtils":21,"./LinkedValueUtils":31,"./ReactDOMComponentTree":48,"./ReactUpdates":96,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170,"object-assign":171}],62:[function(require,module,exports){
+},{"./DOMPropertyOperations":76,"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],120:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -29259,7 +36138,7 @@ module.exports = {
   traverseEnterLeave: traverseEnterLeave
 };
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],63:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],121:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -29326,7 +36205,7 @@ var ReactDOMUnknownPropertyDevtool = {
 
 module.exports = ReactDOMUnknownPropertyDevtool;
 }).call(this,require('_process'))
-},{"./DOMProperty":17,"./EventPluginRegistry":25,"_process":389,"fbjs/lib/warning":170}],64:[function(require,module,exports){
+},{"./DOMProperty":75,"./EventPluginRegistry":83,"_process":384,"fbjs/lib/warning":57}],122:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -29579,7 +36458,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactDebugTool;
 }).call(this,require('_process'))
-},{"./ReactComponentTreeDevtool":41,"./ReactInvalidSetStateWarningDevTool":78,"./ReactNativeOperationHistoryDevtool":84,"_process":389,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/performanceNow":168,"fbjs/lib/warning":170}],65:[function(require,module,exports){
+},{"./ReactComponentTreeDevtool":99,"./ReactInvalidSetStateWarningDevTool":136,"./ReactNativeOperationHistoryDevtool":142,"_process":384,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/performanceNow":55,"fbjs/lib/warning":57}],123:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -29648,7 +36527,7 @@ var ReactDefaultBatchingStrategy = {
 };
 
 module.exports = ReactDefaultBatchingStrategy;
-},{"./ReactUpdates":96,"./Transaction":114,"fbjs/lib/emptyFunction":152,"object-assign":171}],66:[function(require,module,exports){
+},{"./ReactUpdates":154,"./Transaction":172,"fbjs/lib/emptyFunction":39,"object-assign":64}],124:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -29733,7 +36612,7 @@ function inject() {
 module.exports = {
   inject: inject
 };
-},{"./BeforeInputEventPlugin":9,"./ChangeEventPlugin":13,"./DefaultEventPluginOrder":20,"./EnterLeaveEventPlugin":22,"./HTMLDOMPropertyConfig":29,"./ReactComponentBrowserEnvironment":39,"./ReactDOMComponent":46,"./ReactDOMComponentTree":48,"./ReactDOMEmptyComponent":51,"./ReactDOMTextComponent":60,"./ReactDOMTreeTraversal":62,"./ReactDefaultBatchingStrategy":65,"./ReactEventListener":72,"./ReactInjection":74,"./ReactReconcileTransaction":91,"./SVGDOMPropertyConfig":98,"./SelectEventPlugin":99,"./SimpleEventPlugin":100}],67:[function(require,module,exports){
+},{"./BeforeInputEventPlugin":67,"./ChangeEventPlugin":71,"./DefaultEventPluginOrder":78,"./EnterLeaveEventPlugin":80,"./HTMLDOMPropertyConfig":87,"./ReactComponentBrowserEnvironment":97,"./ReactDOMComponent":104,"./ReactDOMComponentTree":106,"./ReactDOMEmptyComponent":109,"./ReactDOMTextComponent":118,"./ReactDOMTreeTraversal":120,"./ReactDefaultBatchingStrategy":123,"./ReactEventListener":130,"./ReactInjection":132,"./ReactReconcileTransaction":149,"./SVGDOMPropertyConfig":156,"./SelectEventPlugin":157,"./SimpleEventPlugin":158}],125:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -30049,7 +36928,7 @@ ReactElement.isValidElement = function (object) {
 
 module.exports = ReactElement;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":43,"./canDefineProperty":118,"_process":389,"fbjs/lib/warning":170,"object-assign":171}],68:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./canDefineProperty":176,"_process":384,"fbjs/lib/warning":57,"object-assign":64}],126:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -30333,7 +37212,7 @@ var ReactElementValidator = {
 
 module.exports = ReactElementValidator;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":43,"./ReactElement":67,"./ReactPropTypeLocationNames":88,"./ReactPropTypeLocations":89,"./canDefineProperty":118,"./getIteratorFn":129,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],69:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./ReactElement":125,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"./canDefineProperty":176,"./getIteratorFn":187,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],127:[function(require,module,exports){
 /**
  * Copyright 2014-present, Facebook, Inc.
  * All rights reserved.
@@ -30364,7 +37243,7 @@ var ReactEmptyComponent = {
 ReactEmptyComponent.injection = ReactEmptyComponentInjection;
 
 module.exports = ReactEmptyComponent;
-},{}],70:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -30443,7 +37322,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactErrorUtils;
 }).call(this,require('_process'))
-},{"_process":389}],71:[function(require,module,exports){
+},{"_process":384}],129:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30477,7 +37356,7 @@ var ReactEventEmitterMixin = {
 };
 
 module.exports = ReactEventEmitterMixin;
-},{"./EventPluginHub":24}],72:[function(require,module,exports){
+},{"./EventPluginHub":82}],130:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30635,7 +37514,7 @@ var ReactEventListener = {
 };
 
 module.exports = ReactEventListener;
-},{"./PooledClass":32,"./ReactDOMComponentTree":48,"./ReactUpdates":96,"./getEventTarget":128,"fbjs/lib/EventListener":145,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/getUnboundedScrollPosition":157,"object-assign":171}],73:[function(require,module,exports){
+},{"./PooledClass":90,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"./getEventTarget":186,"fbjs/lib/EventListener":32,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/getUnboundedScrollPosition":44,"object-assign":64}],131:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30657,7 +37536,7 @@ var ReactFeatureFlags = {
 };
 
 module.exports = ReactFeatureFlags;
-},{}],74:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30694,7 +37573,7 @@ var ReactInjection = {
 };
 
 module.exports = ReactInjection;
-},{"./DOMProperty":17,"./EventPluginHub":24,"./EventPluginUtils":26,"./ReactBrowserEventEmitter":34,"./ReactClass":37,"./ReactComponentEnvironment":40,"./ReactEmptyComponent":69,"./ReactNativeComponent":83,"./ReactUpdates":96}],75:[function(require,module,exports){
+},{"./DOMProperty":75,"./EventPluginHub":82,"./EventPluginUtils":84,"./ReactBrowserEventEmitter":92,"./ReactClass":95,"./ReactComponentEnvironment":98,"./ReactEmptyComponent":127,"./ReactNativeComponent":141,"./ReactUpdates":154}],133:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30819,7 +37698,7 @@ var ReactInputSelection = {
 };
 
 module.exports = ReactInputSelection;
-},{"./ReactDOMSelection":59,"fbjs/lib/containsNode":149,"fbjs/lib/focusNode":154,"fbjs/lib/getActiveElement":155}],76:[function(require,module,exports){
+},{"./ReactDOMSelection":117,"fbjs/lib/containsNode":36,"fbjs/lib/focusNode":41,"fbjs/lib/getActiveElement":42}],134:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30868,7 +37747,7 @@ var ReactInstanceMap = {
 };
 
 module.exports = ReactInstanceMap;
-},{}],77:[function(require,module,exports){
+},{}],135:[function(require,module,exports){
 /**
  * Copyright 2016-present, Facebook, Inc.
  * All rights reserved.
@@ -30885,7 +37764,7 @@ module.exports = ReactInstanceMap;
 var ReactDebugTool = require('./ReactDebugTool');
 
 module.exports = { debugTool: ReactDebugTool };
-},{"./ReactDebugTool":64}],78:[function(require,module,exports){
+},{"./ReactDebugTool":122}],136:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -30924,7 +37803,7 @@ var ReactInvalidSetStateWarningDevTool = {
 
 module.exports = ReactInvalidSetStateWarningDevTool;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/warning":170}],79:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/warning":57}],137:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30975,7 +37854,7 @@ var ReactMarkupChecksum = {
 };
 
 module.exports = ReactMarkupChecksum;
-},{"./adler32":117}],80:[function(require,module,exports){
+},{"./adler32":175}],138:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -31471,7 +38350,7 @@ var ReactMount = {
 
 module.exports = ReactMount;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":15,"./DOMProperty":17,"./ReactBrowserEventEmitter":34,"./ReactCurrentOwner":43,"./ReactDOMComponentTree":48,"./ReactDOMContainerInfo":49,"./ReactDOMFeatureFlags":53,"./ReactElement":67,"./ReactFeatureFlags":73,"./ReactInstrumentation":77,"./ReactMarkupChecksum":79,"./ReactReconciler":92,"./ReactUpdateQueue":95,"./ReactUpdates":96,"./instantiateReactComponent":134,"./setInnerHTML":140,"./shouldUpdateReactComponent":142,"_process":389,"fbjs/lib/emptyObject":153,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],81:[function(require,module,exports){
+},{"./DOMLazyTree":73,"./DOMProperty":75,"./ReactBrowserEventEmitter":92,"./ReactCurrentOwner":101,"./ReactDOMComponentTree":106,"./ReactDOMContainerInfo":107,"./ReactDOMFeatureFlags":111,"./ReactElement":125,"./ReactFeatureFlags":131,"./ReactInstrumentation":135,"./ReactMarkupChecksum":137,"./ReactReconciler":150,"./ReactUpdateQueue":153,"./ReactUpdates":154,"./instantiateReactComponent":192,"./setInnerHTML":198,"./shouldUpdateReactComponent":200,"_process":384,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],139:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -31897,7 +38776,7 @@ var ReactMultiChild = {
 
 module.exports = ReactMultiChild;
 }).call(this,require('_process'))
-},{"./ReactChildReconciler":35,"./ReactComponentEnvironment":40,"./ReactCurrentOwner":43,"./ReactInstrumentation":77,"./ReactMultiChildUpdateTypes":82,"./ReactReconciler":92,"./flattenChildren":123,"_process":389,"fbjs/lib/emptyFunction":152,"fbjs/lib/invariant":160}],82:[function(require,module,exports){
+},{"./ReactChildReconciler":93,"./ReactComponentEnvironment":98,"./ReactCurrentOwner":101,"./ReactInstrumentation":135,"./ReactMultiChildUpdateTypes":140,"./ReactReconciler":150,"./flattenChildren":181,"_process":384,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47}],140:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -31930,7 +38809,7 @@ var ReactMultiChildUpdateTypes = keyMirror({
 });
 
 module.exports = ReactMultiChildUpdateTypes;
-},{"fbjs/lib/keyMirror":163}],83:[function(require,module,exports){
+},{"fbjs/lib/keyMirror":50}],141:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -32028,7 +38907,7 @@ var ReactNativeComponent = {
 
 module.exports = ReactNativeComponent;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160,"object-assign":171}],84:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47,"object-assign":64}],142:[function(require,module,exports){
 /**
  * Copyright 2016-present, Facebook, Inc.
  * All rights reserved.
@@ -32066,7 +38945,7 @@ var ReactNativeOperationHistoryDevtool = {
 };
 
 module.exports = ReactNativeOperationHistoryDevtool;
-},{}],85:[function(require,module,exports){
+},{}],143:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -32106,7 +38985,7 @@ var ReactNodeTypes = {
 
 module.exports = ReactNodeTypes;
 }).call(this,require('_process'))
-},{"./ReactElement":67,"_process":389,"fbjs/lib/invariant":160}],86:[function(require,module,exports){
+},{"./ReactElement":125,"_process":384,"fbjs/lib/invariant":47}],144:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -32204,7 +39083,7 @@ var ReactNoopUpdateQueue = {
 
 module.exports = ReactNoopUpdateQueue;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/warning":170}],87:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/warning":57}],145:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -32299,7 +39178,7 @@ var ReactOwner = {
 
 module.exports = ReactOwner;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],88:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],146:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -32326,7 +39205,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactPropTypeLocationNames;
 }).call(this,require('_process'))
-},{"_process":389}],89:[function(require,module,exports){
+},{"_process":384}],147:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -32349,7 +39228,7 @@ var ReactPropTypeLocations = keyMirror({
 });
 
 module.exports = ReactPropTypeLocations;
-},{"fbjs/lib/keyMirror":163}],90:[function(require,module,exports){
+},{"fbjs/lib/keyMirror":50}],148:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -32730,7 +39609,7 @@ function getClassName(propValue) {
 }
 
 module.exports = ReactPropTypes;
-},{"./ReactElement":67,"./ReactPropTypeLocationNames":88,"./getIteratorFn":129,"fbjs/lib/emptyFunction":152}],91:[function(require,module,exports){
+},{"./ReactElement":125,"./ReactPropTypeLocationNames":146,"./getIteratorFn":187,"fbjs/lib/emptyFunction":39}],149:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -32893,7 +39772,7 @@ _assign(ReactReconcileTransaction.prototype, Transaction.Mixin, Mixin);
 PooledClass.addPoolingTo(ReactReconcileTransaction);
 
 module.exports = ReactReconcileTransaction;
-},{"./CallbackQueue":12,"./PooledClass":32,"./ReactBrowserEventEmitter":34,"./ReactInputSelection":75,"./Transaction":114,"object-assign":171}],92:[function(require,module,exports){
+},{"./CallbackQueue":70,"./PooledClass":90,"./ReactBrowserEventEmitter":92,"./ReactInputSelection":133,"./Transaction":172,"object-assign":64}],150:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -33067,7 +39946,7 @@ var ReactReconciler = {
 
 module.exports = ReactReconciler;
 }).call(this,require('_process'))
-},{"./ReactInstrumentation":77,"./ReactRef":93,"_process":389,"fbjs/lib/invariant":160}],93:[function(require,module,exports){
+},{"./ReactInstrumentation":135,"./ReactRef":151,"_process":384,"fbjs/lib/invariant":47}],151:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -33146,7 +40025,7 @@ ReactRef.detachRefs = function (instance, element) {
 };
 
 module.exports = ReactRef;
-},{"./ReactOwner":87}],94:[function(require,module,exports){
+},{"./ReactOwner":145}],152:[function(require,module,exports){
 /**
  * Copyright 2014-present, Facebook, Inc.
  * All rights reserved.
@@ -33220,7 +40099,7 @@ _assign(ReactServerRenderingTransaction.prototype, Transaction.Mixin, Mixin);
 PooledClass.addPoolingTo(ReactServerRenderingTransaction);
 
 module.exports = ReactServerRenderingTransaction;
-},{"./PooledClass":32,"./Transaction":114,"object-assign":171}],95:[function(require,module,exports){
+},{"./PooledClass":90,"./Transaction":172,"object-assign":64}],153:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -33438,7 +40317,7 @@ var ReactUpdateQueue = {
 
 module.exports = ReactUpdateQueue;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":43,"./ReactInstanceMap":76,"./ReactUpdates":96,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],96:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./ReactInstanceMap":134,"./ReactUpdates":154,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],154:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -33700,7 +40579,7 @@ var ReactUpdates = {
 
 module.exports = ReactUpdates;
 }).call(this,require('_process'))
-},{"./CallbackQueue":12,"./PooledClass":32,"./ReactFeatureFlags":73,"./ReactInstrumentation":77,"./ReactReconciler":92,"./Transaction":114,"_process":389,"fbjs/lib/invariant":160,"object-assign":171}],97:[function(require,module,exports){
+},{"./CallbackQueue":70,"./PooledClass":90,"./ReactFeatureFlags":131,"./ReactInstrumentation":135,"./ReactReconciler":150,"./Transaction":172,"_process":384,"fbjs/lib/invariant":47,"object-assign":64}],155:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -33715,7 +40594,7 @@ module.exports = ReactUpdates;
 'use strict';
 
 module.exports = '15.1.0';
-},{}],98:[function(require,module,exports){
+},{}],156:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -34016,7 +40895,7 @@ Object.keys(ATTRS).forEach(function (key) {
 });
 
 module.exports = SVGDOMPropertyConfig;
-},{}],99:[function(require,module,exports){
+},{}],157:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -34213,7 +41092,7 @@ var SelectEventPlugin = {
 };
 
 module.exports = SelectEventPlugin;
-},{"./EventConstants":23,"./EventPropagators":27,"./ReactDOMComponentTree":48,"./ReactInputSelection":75,"./SyntheticEvent":105,"./isTextInputElement":136,"fbjs/lib/ExecutionEnvironment":146,"fbjs/lib/getActiveElement":155,"fbjs/lib/keyOf":164,"fbjs/lib/shallowEqual":169}],100:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPropagators":85,"./ReactDOMComponentTree":106,"./ReactInputSelection":133,"./SyntheticEvent":163,"./isTextInputElement":194,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/getActiveElement":42,"fbjs/lib/keyOf":51,"fbjs/lib/shallowEqual":56}],158:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -34843,7 +41722,7 @@ var SimpleEventPlugin = {
 
 module.exports = SimpleEventPlugin;
 }).call(this,require('_process'))
-},{"./EventConstants":23,"./EventPropagators":27,"./ReactDOMComponentTree":48,"./SyntheticAnimationEvent":101,"./SyntheticClipboardEvent":102,"./SyntheticDragEvent":104,"./SyntheticEvent":105,"./SyntheticFocusEvent":106,"./SyntheticKeyboardEvent":108,"./SyntheticMouseEvent":109,"./SyntheticTouchEvent":110,"./SyntheticTransitionEvent":111,"./SyntheticUIEvent":112,"./SyntheticWheelEvent":113,"./getEventCharCode":125,"_process":389,"fbjs/lib/EventListener":145,"fbjs/lib/emptyFunction":152,"fbjs/lib/invariant":160,"fbjs/lib/keyOf":164}],101:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPropagators":85,"./ReactDOMComponentTree":106,"./SyntheticAnimationEvent":159,"./SyntheticClipboardEvent":160,"./SyntheticDragEvent":162,"./SyntheticEvent":163,"./SyntheticFocusEvent":164,"./SyntheticKeyboardEvent":166,"./SyntheticMouseEvent":167,"./SyntheticTouchEvent":168,"./SyntheticTransitionEvent":169,"./SyntheticUIEvent":170,"./SyntheticWheelEvent":171,"./getEventCharCode":183,"_process":384,"fbjs/lib/EventListener":32,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47,"fbjs/lib/keyOf":51}],159:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -34883,7 +41762,7 @@ function SyntheticAnimationEvent(dispatchConfig, dispatchMarker, nativeEvent, na
 SyntheticEvent.augmentClass(SyntheticAnimationEvent, AnimationEventInterface);
 
 module.exports = SyntheticAnimationEvent;
-},{"./SyntheticEvent":105}],102:[function(require,module,exports){
+},{"./SyntheticEvent":163}],160:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -34922,7 +41801,7 @@ function SyntheticClipboardEvent(dispatchConfig, dispatchMarker, nativeEvent, na
 SyntheticEvent.augmentClass(SyntheticClipboardEvent, ClipboardEventInterface);
 
 module.exports = SyntheticClipboardEvent;
-},{"./SyntheticEvent":105}],103:[function(require,module,exports){
+},{"./SyntheticEvent":163}],161:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -34959,7 +41838,7 @@ function SyntheticCompositionEvent(dispatchConfig, dispatchMarker, nativeEvent, 
 SyntheticEvent.augmentClass(SyntheticCompositionEvent, CompositionEventInterface);
 
 module.exports = SyntheticCompositionEvent;
-},{"./SyntheticEvent":105}],104:[function(require,module,exports){
+},{"./SyntheticEvent":163}],162:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -34996,7 +41875,7 @@ function SyntheticDragEvent(dispatchConfig, dispatchMarker, nativeEvent, nativeE
 SyntheticMouseEvent.augmentClass(SyntheticDragEvent, DragEventInterface);
 
 module.exports = SyntheticDragEvent;
-},{"./SyntheticMouseEvent":109}],105:[function(require,module,exports){
+},{"./SyntheticMouseEvent":167}],163:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -35260,7 +42139,7 @@ function getPooledWarningPropertyDefinition(propName, getVal) {
   }
 }
 }).call(this,require('_process'))
-},{"./PooledClass":32,"_process":389,"fbjs/lib/emptyFunction":152,"fbjs/lib/warning":170,"object-assign":171}],106:[function(require,module,exports){
+},{"./PooledClass":90,"_process":384,"fbjs/lib/emptyFunction":39,"fbjs/lib/warning":57,"object-assign":64}],164:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35297,7 +42176,7 @@ function SyntheticFocusEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticUIEvent.augmentClass(SyntheticFocusEvent, FocusEventInterface);
 
 module.exports = SyntheticFocusEvent;
-},{"./SyntheticUIEvent":112}],107:[function(require,module,exports){
+},{"./SyntheticUIEvent":170}],165:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35335,7 +42214,7 @@ function SyntheticInputEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticEvent.augmentClass(SyntheticInputEvent, InputEventInterface);
 
 module.exports = SyntheticInputEvent;
-},{"./SyntheticEvent":105}],108:[function(require,module,exports){
+},{"./SyntheticEvent":163}],166:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35420,7 +42299,7 @@ function SyntheticKeyboardEvent(dispatchConfig, dispatchMarker, nativeEvent, nat
 SyntheticUIEvent.augmentClass(SyntheticKeyboardEvent, KeyboardEventInterface);
 
 module.exports = SyntheticKeyboardEvent;
-},{"./SyntheticUIEvent":112,"./getEventCharCode":125,"./getEventKey":126,"./getEventModifierState":127}],109:[function(require,module,exports){
+},{"./SyntheticUIEvent":170,"./getEventCharCode":183,"./getEventKey":184,"./getEventModifierState":185}],167:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35493,7 +42372,7 @@ function SyntheticMouseEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticUIEvent.augmentClass(SyntheticMouseEvent, MouseEventInterface);
 
 module.exports = SyntheticMouseEvent;
-},{"./SyntheticUIEvent":112,"./ViewportMetrics":115,"./getEventModifierState":127}],110:[function(require,module,exports){
+},{"./SyntheticUIEvent":170,"./ViewportMetrics":173,"./getEventModifierState":185}],168:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35539,7 +42418,7 @@ function SyntheticTouchEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticUIEvent.augmentClass(SyntheticTouchEvent, TouchEventInterface);
 
 module.exports = SyntheticTouchEvent;
-},{"./SyntheticUIEvent":112,"./getEventModifierState":127}],111:[function(require,module,exports){
+},{"./SyntheticUIEvent":170,"./getEventModifierState":185}],169:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35579,7 +42458,7 @@ function SyntheticTransitionEvent(dispatchConfig, dispatchMarker, nativeEvent, n
 SyntheticEvent.augmentClass(SyntheticTransitionEvent, TransitionEventInterface);
 
 module.exports = SyntheticTransitionEvent;
-},{"./SyntheticEvent":105}],112:[function(require,module,exports){
+},{"./SyntheticEvent":163}],170:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35639,7 +42518,7 @@ function SyntheticUIEvent(dispatchConfig, dispatchMarker, nativeEvent, nativeEve
 SyntheticEvent.augmentClass(SyntheticUIEvent, UIEventInterface);
 
 module.exports = SyntheticUIEvent;
-},{"./SyntheticEvent":105,"./getEventTarget":128}],113:[function(require,module,exports){
+},{"./SyntheticEvent":163,"./getEventTarget":186}],171:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35694,7 +42573,7 @@ function SyntheticWheelEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticMouseEvent.augmentClass(SyntheticWheelEvent, WheelEventInterface);
 
 module.exports = SyntheticWheelEvent;
-},{"./SyntheticMouseEvent":109}],114:[function(require,module,exports){
+},{"./SyntheticMouseEvent":167}],172:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -35928,7 +42807,7 @@ var Transaction = {
 
 module.exports = Transaction;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],115:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],173:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35956,7 +42835,7 @@ var ViewportMetrics = {
 };
 
 module.exports = ViewportMetrics;
-},{}],116:[function(require,module,exports){
+},{}],174:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -36018,7 +42897,7 @@ function accumulateInto(current, next) {
 
 module.exports = accumulateInto;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/invariant":160}],117:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/invariant":47}],175:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36062,7 +42941,7 @@ function adler32(data) {
 }
 
 module.exports = adler32;
-},{}],118:[function(require,module,exports){
+},{}],176:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -36089,7 +42968,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = canDefineProperty;
 }).call(this,require('_process'))
-},{"_process":389}],119:[function(require,module,exports){
+},{"_process":384}],177:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36122,7 +43001,7 @@ var createMicrosoftUnsafeLocalFunction = function (func) {
 };
 
 module.exports = createMicrosoftUnsafeLocalFunction;
-},{}],120:[function(require,module,exports){
+},{}],178:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -36202,7 +43081,7 @@ function dangerousStyleValue(name, value, component) {
 
 module.exports = dangerousStyleValue;
 }).call(this,require('_process'))
-},{"./CSSProperty":10,"_process":389,"fbjs/lib/warning":170}],121:[function(require,module,exports){
+},{"./CSSProperty":68,"_process":384,"fbjs/lib/warning":57}],179:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36241,7 +43120,7 @@ function escapeTextContentForBrowser(text) {
 }
 
 module.exports = escapeTextContentForBrowser;
-},{}],122:[function(require,module,exports){
+},{}],180:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -36302,7 +43181,7 @@ function findDOMNode(componentOrElement) {
 
 module.exports = findDOMNode;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":43,"./ReactDOMComponentTree":48,"./ReactInstanceMap":76,"./getNativeComponentFromComposite":130,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],123:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./ReactDOMComponentTree":106,"./ReactInstanceMap":134,"./getNativeComponentFromComposite":188,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],181:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -36354,7 +43233,7 @@ function flattenChildren(children) {
 
 module.exports = flattenChildren;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":30,"./traverseAllChildren":143,"_process":389,"fbjs/lib/warning":170}],124:[function(require,module,exports){
+},{"./KeyEscapeUtils":88,"./traverseAllChildren":201,"_process":384,"fbjs/lib/warning":57}],182:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36385,7 +43264,7 @@ var forEachAccumulated = function (arr, cb, scope) {
 };
 
 module.exports = forEachAccumulated;
-},{}],125:[function(require,module,exports){
+},{}],183:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36436,7 +43315,7 @@ function getEventCharCode(nativeEvent) {
 }
 
 module.exports = getEventCharCode;
-},{}],126:[function(require,module,exports){
+},{}],184:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36539,7 +43418,7 @@ function getEventKey(nativeEvent) {
 }
 
 module.exports = getEventKey;
-},{"./getEventCharCode":125}],127:[function(require,module,exports){
+},{"./getEventCharCode":183}],185:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36583,7 +43462,7 @@ function getEventModifierState(nativeEvent) {
 }
 
 module.exports = getEventModifierState;
-},{}],128:[function(require,module,exports){
+},{}],186:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36619,7 +43498,7 @@ function getEventTarget(nativeEvent) {
 }
 
 module.exports = getEventTarget;
-},{}],129:[function(require,module,exports){
+},{}],187:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36660,7 +43539,7 @@ function getIteratorFn(maybeIterable) {
 }
 
 module.exports = getIteratorFn;
-},{}],130:[function(require,module,exports){
+},{}],188:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36691,7 +43570,7 @@ function getNativeComponentFromComposite(inst) {
 }
 
 module.exports = getNativeComponentFromComposite;
-},{"./ReactNodeTypes":85}],131:[function(require,module,exports){
+},{"./ReactNodeTypes":143}],189:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36766,7 +43645,7 @@ function getNodeForCharacterOffset(root, offset) {
 }
 
 module.exports = getNodeForCharacterOffset;
-},{}],132:[function(require,module,exports){
+},{}],190:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36800,7 +43679,7 @@ function getTextContentAccessor() {
 }
 
 module.exports = getTextContentAccessor;
-},{"fbjs/lib/ExecutionEnvironment":146}],133:[function(require,module,exports){
+},{"fbjs/lib/ExecutionEnvironment":33}],191:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36902,7 +43781,7 @@ function getVendorPrefixedEventName(eventName) {
 }
 
 module.exports = getVendorPrefixedEventName;
-},{"fbjs/lib/ExecutionEnvironment":146}],134:[function(require,module,exports){
+},{"fbjs/lib/ExecutionEnvironment":33}],192:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -37049,7 +43928,7 @@ function instantiateReactComponent(node) {
 
 module.exports = instantiateReactComponent;
 }).call(this,require('_process'))
-},{"./ReactCompositeComponent":42,"./ReactEmptyComponent":69,"./ReactInstrumentation":77,"./ReactNativeComponent":83,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170,"object-assign":171}],135:[function(require,module,exports){
+},{"./ReactCompositeComponent":100,"./ReactEmptyComponent":127,"./ReactInstrumentation":135,"./ReactNativeComponent":141,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],193:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37110,7 +43989,7 @@ function isEventSupported(eventNameSuffix, capture) {
 }
 
 module.exports = isEventSupported;
-},{"fbjs/lib/ExecutionEnvironment":146}],136:[function(require,module,exports){
+},{"fbjs/lib/ExecutionEnvironment":33}],194:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37152,7 +44031,7 @@ function isTextInputElement(elem) {
 }
 
 module.exports = isTextInputElement;
-},{}],137:[function(require,module,exports){
+},{}],195:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -37191,7 +44070,7 @@ function onlyChild(children) {
 
 module.exports = onlyChild;
 }).call(this,require('_process'))
-},{"./ReactElement":67,"_process":389,"fbjs/lib/invariant":160}],138:[function(require,module,exports){
+},{"./ReactElement":125,"_process":384,"fbjs/lib/invariant":47}],196:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37218,7 +44097,7 @@ function quoteAttributeValueForBrowser(value) {
 }
 
 module.exports = quoteAttributeValueForBrowser;
-},{"./escapeTextContentForBrowser":121}],139:[function(require,module,exports){
+},{"./escapeTextContentForBrowser":179}],197:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37235,7 +44114,7 @@ module.exports = quoteAttributeValueForBrowser;
 var ReactMount = require('./ReactMount');
 
 module.exports = ReactMount.renderSubtreeIntoContainer;
-},{"./ReactMount":80}],140:[function(require,module,exports){
+},{"./ReactMount":138}],198:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37318,7 +44197,7 @@ if (ExecutionEnvironment.canUseDOM) {
 }
 
 module.exports = setInnerHTML;
-},{"./createMicrosoftUnsafeLocalFunction":119,"fbjs/lib/ExecutionEnvironment":146}],141:[function(require,module,exports){
+},{"./createMicrosoftUnsafeLocalFunction":177,"fbjs/lib/ExecutionEnvironment":33}],199:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37359,7 +44238,7 @@ if (ExecutionEnvironment.canUseDOM) {
 }
 
 module.exports = setTextContent;
-},{"./escapeTextContentForBrowser":121,"./setInnerHTML":140,"fbjs/lib/ExecutionEnvironment":146}],142:[function(require,module,exports){
+},{"./escapeTextContentForBrowser":179,"./setInnerHTML":198,"fbjs/lib/ExecutionEnvironment":33}],200:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37402,7 +44281,7 @@ function shouldUpdateReactComponent(prevElement, nextElement) {
 }
 
 module.exports = shouldUpdateReactComponent;
-},{}],143:[function(require,module,exports){
+},{}],201:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -37563,7 +44442,7 @@ function traverseAllChildren(children, callback, traverseContext) {
 
 module.exports = traverseAllChildren;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":30,"./ReactCurrentOwner":43,"./ReactElement":67,"./getIteratorFn":129,"_process":389,"fbjs/lib/invariant":160,"fbjs/lib/warning":170}],144:[function(require,module,exports){
+},{"./KeyEscapeUtils":88,"./ReactCurrentOwner":101,"./ReactElement":125,"./getIteratorFn":187,"_process":384,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],202:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -37935,1326 +44814,558 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = validateDOMNesting;
 }).call(this,require('_process'))
-},{"_process":389,"fbjs/lib/emptyFunction":152,"fbjs/lib/warning":170,"object-assign":171}],145:[function(require,module,exports){
-(function (process){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * @typechecks
- */
-
-var emptyFunction = require('./emptyFunction');
-
-/**
- * Upstream version of event listener. Does not take into account specific
- * nature of platform.
- */
-var EventListener = {
-  /**
-   * Listen to DOM events during the bubble phase.
-   *
-   * @param {DOMEventTarget} target DOM element to register listener on.
-   * @param {string} eventType Event type, e.g. 'click' or 'mouseover'.
-   * @param {function} callback Callback function.
-   * @return {object} Object with a `remove` method.
-   */
-  listen: function listen(target, eventType, callback) {
-    if (target.addEventListener) {
-      target.addEventListener(eventType, callback, false);
-      return {
-        remove: function remove() {
-          target.removeEventListener(eventType, callback, false);
-        }
-      };
-    } else if (target.attachEvent) {
-      target.attachEvent('on' + eventType, callback);
-      return {
-        remove: function remove() {
-          target.detachEvent('on' + eventType, callback);
-        }
-      };
-    }
-  },
-
-  /**
-   * Listen to DOM events during the capture phase.
-   *
-   * @param {DOMEventTarget} target DOM element to register listener on.
-   * @param {string} eventType Event type, e.g. 'click' or 'mouseover'.
-   * @param {function} callback Callback function.
-   * @return {object} Object with a `remove` method.
-   */
-  capture: function capture(target, eventType, callback) {
-    if (target.addEventListener) {
-      target.addEventListener(eventType, callback, true);
-      return {
-        remove: function remove() {
-          target.removeEventListener(eventType, callback, true);
-        }
-      };
-    } else {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Attempted to listen to events during the capture phase on a ' + 'browser that does not support the capture phase. Your application ' + 'will not receive some events.');
-      }
-      return {
-        remove: emptyFunction
-      };
-    }
-  },
-
-  registerDefault: function registerDefault() {}
-};
-
-module.exports = EventListener;
-}).call(this,require('_process'))
-},{"./emptyFunction":152,"_process":389}],146:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-'use strict';
-
-var canUseDOM = !!(typeof window !== 'undefined' && window.document && window.document.createElement);
-
-/**
- * Simple, lightweight module assisting with the detection and context of
- * Worker. Helps avoid circular dependencies and allows code to reason about
- * whether or not they are in a Worker, even if they never include the main
- * `ReactWorker` dependency.
- */
-var ExecutionEnvironment = {
-
-  canUseDOM: canUseDOM,
-
-  canUseWorkers: typeof Worker !== 'undefined',
-
-  canUseEventListeners: canUseDOM && !!(window.addEventListener || window.attachEvent),
-
-  canUseViewport: canUseDOM && !!window.screen,
-
-  isInWorker: !canUseDOM // For now, this is true - might change in the future.
-
-};
-
-module.exports = ExecutionEnvironment;
-},{}],147:[function(require,module,exports){
-"use strict";
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-var _hyphenPattern = /-(.)/g;
-
-/**
- * Camelcases a hyphenated string, for example:
- *
- *   > camelize('background-color')
- *   < "backgroundColor"
- *
- * @param {string} string
- * @return {string}
- */
-function camelize(string) {
-  return string.replace(_hyphenPattern, function (_, character) {
-    return character.toUpperCase();
-  });
-}
-
-module.exports = camelize;
-},{}],148:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-'use strict';
-
-var camelize = require('./camelize');
-
-var msPattern = /^-ms-/;
-
-/**
- * Camelcases a hyphenated CSS property name, for example:
- *
- *   > camelizeStyleName('background-color')
- *   < "backgroundColor"
- *   > camelizeStyleName('-moz-transition')
- *   < "MozTransition"
- *   > camelizeStyleName('-ms-transition')
- *   < "msTransition"
- *
- * As Andi Smith suggests
- * (http://www.andismith.com/blog/2012/02/modernizr-prefixed/), an `-ms` prefix
- * is converted to lowercase `ms`.
- *
- * @param {string} string
- * @return {string}
- */
-function camelizeStyleName(string) {
-  return camelize(string.replace(msPattern, 'ms-'));
-}
-
-module.exports = camelizeStyleName;
-},{"./camelize":147}],149:[function(require,module,exports){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * 
- */
-
-var isTextNode = require('./isTextNode');
-
-/*eslint-disable no-bitwise */
-
-/**
- * Checks if a given DOM node contains or is another DOM node.
- */
-function containsNode(outerNode, innerNode) {
-  if (!outerNode || !innerNode) {
-    return false;
-  } else if (outerNode === innerNode) {
-    return true;
-  } else if (isTextNode(outerNode)) {
-    return false;
-  } else if (isTextNode(innerNode)) {
-    return containsNode(outerNode, innerNode.parentNode);
-  } else if ('contains' in outerNode) {
-    return outerNode.contains(innerNode);
-  } else if (outerNode.compareDocumentPosition) {
-    return !!(outerNode.compareDocumentPosition(innerNode) & 16);
-  } else {
-    return false;
-  }
-}
-
-module.exports = containsNode;
-},{"./isTextNode":162}],150:[function(require,module,exports){
-(function (process){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-var invariant = require('./invariant');
-
-/**
- * Convert array-like objects to arrays.
- *
- * This API assumes the caller knows the contents of the data type. For less
- * well defined inputs use createArrayFromMixed.
- *
- * @param {object|function|filelist} obj
- * @return {array}
- */
-function toArray(obj) {
-  var length = obj.length;
-
-  // Some browsers builtin objects can report typeof 'function' (e.g. NodeList
-  // in old versions of Safari).
-  !(!Array.isArray(obj) && (typeof obj === 'object' || typeof obj === 'function')) ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Array-like object expected') : invariant(false) : void 0;
-
-  !(typeof length === 'number') ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Object needs a length property') : invariant(false) : void 0;
-
-  !(length === 0 || length - 1 in obj) ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Object should have keys for indices') : invariant(false) : void 0;
-
-  !(typeof obj.callee !== 'function') ? process.env.NODE_ENV !== 'production' ? invariant(false, 'toArray: Object can\'t be `arguments`. Use rest params ' + '(function(...args) {}) or Array.from() instead.') : invariant(false) : void 0;
-
-  // Old IE doesn't give collections access to hasOwnProperty. Assume inputs
-  // without method will throw during the slice call and skip straight to the
-  // fallback.
-  if (obj.hasOwnProperty) {
-    try {
-      return Array.prototype.slice.call(obj);
-    } catch (e) {
-      // IE < 9 does not support Array#slice on collections objects
-    }
-  }
-
-  // Fall back to copying key by key. This assumes all keys have a value,
-  // so will not preserve sparsely populated inputs.
-  var ret = Array(length);
-  for (var ii = 0; ii < length; ii++) {
-    ret[ii] = obj[ii];
-  }
-  return ret;
-}
-
-/**
- * Perform a heuristic test to determine if an object is "array-like".
- *
- *   A monk asked Joshu, a Zen master, "Has a dog Buddha nature?"
- *   Joshu replied: "Mu."
- *
- * This function determines if its argument has "array nature": it returns
- * true if the argument is an actual array, an `arguments' object, or an
- * HTMLCollection (e.g. node.childNodes or node.getElementsByTagName()).
- *
- * It will return false for other array-like objects like Filelist.
- *
- * @param {*} obj
- * @return {boolean}
- */
-function hasArrayNature(obj) {
-  return(
-    // not null/false
-    !!obj && (
-    // arrays are objects, NodeLists are functions in Safari
-    typeof obj == 'object' || typeof obj == 'function') &&
-    // quacks like an array
-    'length' in obj &&
-    // not window
-    !('setInterval' in obj) &&
-    // no DOM node should be considered an array-like
-    // a 'select' element has 'length' and 'item' properties on IE8
-    typeof obj.nodeType != 'number' && (
-    // a real array
-    Array.isArray(obj) ||
-    // arguments
-    'callee' in obj ||
-    // HTMLCollection/NodeList
-    'item' in obj)
-  );
-}
-
-/**
- * Ensure that the argument is an array by wrapping it in an array if it is not.
- * Creates a copy of the argument if it is already an array.
- *
- * This is mostly useful idiomatically:
- *
- *   var createArrayFromMixed = require('createArrayFromMixed');
- *
- *   function takesOneOrMoreThings(things) {
- *     things = createArrayFromMixed(things);
- *     ...
- *   }
- *
- * This allows you to treat `things' as an array, but accept scalars in the API.
- *
- * If you need to convert an array-like object, like `arguments`, into an array
- * use toArray instead.
- *
- * @param {*} obj
- * @return {array}
- */
-function createArrayFromMixed(obj) {
-  if (!hasArrayNature(obj)) {
-    return [obj];
-  } else if (Array.isArray(obj)) {
-    return obj.slice();
-  } else {
-    return toArray(obj);
-  }
-}
-
-module.exports = createArrayFromMixed;
-}).call(this,require('_process'))
-},{"./invariant":160,"_process":389}],151:[function(require,module,exports){
-(function (process){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-/*eslint-disable fb-www/unsafe-html*/
-
-var ExecutionEnvironment = require('./ExecutionEnvironment');
-
-var createArrayFromMixed = require('./createArrayFromMixed');
-var getMarkupWrap = require('./getMarkupWrap');
-var invariant = require('./invariant');
-
-/**
- * Dummy container used to render all markup.
- */
-var dummyNode = ExecutionEnvironment.canUseDOM ? document.createElement('div') : null;
-
-/**
- * Pattern used by `getNodeName`.
- */
-var nodeNamePattern = /^\s*<(\w+)/;
-
-/**
- * Extracts the `nodeName` of the first element in a string of markup.
- *
- * @param {string} markup String of markup.
- * @return {?string} Node name of the supplied markup.
- */
-function getNodeName(markup) {
-  var nodeNameMatch = markup.match(nodeNamePattern);
-  return nodeNameMatch && nodeNameMatch[1].toLowerCase();
-}
-
-/**
- * Creates an array containing the nodes rendered from the supplied markup. The
- * optionally supplied `handleScript` function will be invoked once for each
- * <script> element that is rendered. If no `handleScript` function is supplied,
- * an exception is thrown if any <script> elements are rendered.
- *
- * @param {string} markup A string of valid HTML markup.
- * @param {?function} handleScript Invoked once for each rendered <script>.
- * @return {array<DOMElement|DOMTextNode>} An array of rendered nodes.
- */
-function createNodesFromMarkup(markup, handleScript) {
-  var node = dummyNode;
-  !!!dummyNode ? process.env.NODE_ENV !== 'production' ? invariant(false, 'createNodesFromMarkup dummy not initialized') : invariant(false) : void 0;
-  var nodeName = getNodeName(markup);
-
-  var wrap = nodeName && getMarkupWrap(nodeName);
-  if (wrap) {
-    node.innerHTML = wrap[1] + markup + wrap[2];
-
-    var wrapDepth = wrap[0];
-    while (wrapDepth--) {
-      node = node.lastChild;
-    }
-  } else {
-    node.innerHTML = markup;
-  }
-
-  var scripts = node.getElementsByTagName('script');
-  if (scripts.length) {
-    !handleScript ? process.env.NODE_ENV !== 'production' ? invariant(false, 'createNodesFromMarkup(...): Unexpected <script> element rendered.') : invariant(false) : void 0;
-    createArrayFromMixed(scripts).forEach(handleScript);
-  }
-
-  var nodes = Array.from(node.childNodes);
-  while (node.lastChild) {
-    node.removeChild(node.lastChild);
-  }
-  return nodes;
-}
-
-module.exports = createNodesFromMarkup;
-}).call(this,require('_process'))
-},{"./ExecutionEnvironment":146,"./createArrayFromMixed":150,"./getMarkupWrap":156,"./invariant":160,"_process":389}],152:[function(require,module,exports){
-"use strict";
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * 
- */
-
-function makeEmptyFunction(arg) {
-  return function () {
-    return arg;
-  };
-}
-
-/**
- * This function accepts and discards inputs; it has no side effects. This is
- * primarily useful idiomatically for overridable function endpoints which
- * always need to be callable, since JS lacks a null-call idiom ala Cocoa.
- */
-var emptyFunction = function emptyFunction() {};
-
-emptyFunction.thatReturns = makeEmptyFunction;
-emptyFunction.thatReturnsFalse = makeEmptyFunction(false);
-emptyFunction.thatReturnsTrue = makeEmptyFunction(true);
-emptyFunction.thatReturnsNull = makeEmptyFunction(null);
-emptyFunction.thatReturnsThis = function () {
-  return this;
-};
-emptyFunction.thatReturnsArgument = function (arg) {
-  return arg;
-};
-
-module.exports = emptyFunction;
-},{}],153:[function(require,module,exports){
-(function (process){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-'use strict';
-
-var emptyObject = {};
-
-if (process.env.NODE_ENV !== 'production') {
-  Object.freeze(emptyObject);
-}
-
-module.exports = emptyObject;
-}).call(this,require('_process'))
-},{"_process":389}],154:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-'use strict';
-
-/**
- * @param {DOMElement} node input/textarea to focus
- */
-
-function focusNode(node) {
-  // IE8 can throw "Can't move focus to the control because it is invisible,
-  // not enabled, or of a type that does not accept the focus." for all kinds of
-  // reasons that are too expensive and fragile to test.
-  try {
-    node.focus();
-  } catch (e) {}
-}
-
-module.exports = focusNode;
-},{}],155:[function(require,module,exports){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-/* eslint-disable fb-www/typeof-undefined */
-
-/**
- * Same as document.activeElement but wraps in a try-catch block. In IE it is
- * not safe to call document.activeElement if there is nothing focused.
- *
- * The activeElement will be null only if the document or document body is not
- * yet defined.
- */
-function getActiveElement() /*?DOMElement*/{
-  if (typeof document === 'undefined') {
-    return null;
-  }
-  try {
-    return document.activeElement || document.body;
-  } catch (e) {
-    return document.body;
-  }
-}
-
-module.exports = getActiveElement;
-},{}],156:[function(require,module,exports){
-(function (process){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-/*eslint-disable fb-www/unsafe-html */
-
-var ExecutionEnvironment = require('./ExecutionEnvironment');
-
-var invariant = require('./invariant');
-
-/**
- * Dummy container used to detect which wraps are necessary.
- */
-var dummyNode = ExecutionEnvironment.canUseDOM ? document.createElement('div') : null;
-
-/**
- * Some browsers cannot use `innerHTML` to render certain elements standalone,
- * so we wrap them, render the wrapped nodes, then extract the desired node.
- *
- * In IE8, certain elements cannot render alone, so wrap all elements ('*').
- */
-
-var shouldWrap = {};
-
-var selectWrap = [1, '<select multiple="true">', '</select>'];
-var tableWrap = [1, '<table>', '</table>'];
-var trWrap = [3, '<table><tbody><tr>', '</tr></tbody></table>'];
-
-var svgWrap = [1, '<svg xmlns="http://www.w3.org/2000/svg">', '</svg>'];
-
-var markupWrap = {
-  '*': [1, '?<div>', '</div>'],
-
-  'area': [1, '<map>', '</map>'],
-  'col': [2, '<table><tbody></tbody><colgroup>', '</colgroup></table>'],
-  'legend': [1, '<fieldset>', '</fieldset>'],
-  'param': [1, '<object>', '</object>'],
-  'tr': [2, '<table><tbody>', '</tbody></table>'],
-
-  'optgroup': selectWrap,
-  'option': selectWrap,
-
-  'caption': tableWrap,
-  'colgroup': tableWrap,
-  'tbody': tableWrap,
-  'tfoot': tableWrap,
-  'thead': tableWrap,
-
-  'td': trWrap,
-  'th': trWrap
-};
-
-// Initialize the SVG elements since we know they'll always need to be wrapped
-// consistently. If they are created inside a <div> they will be initialized in
-// the wrong namespace (and will not display).
-var svgElements = ['circle', 'clipPath', 'defs', 'ellipse', 'g', 'image', 'line', 'linearGradient', 'mask', 'path', 'pattern', 'polygon', 'polyline', 'radialGradient', 'rect', 'stop', 'text', 'tspan'];
-svgElements.forEach(function (nodeName) {
-  markupWrap[nodeName] = svgWrap;
-  shouldWrap[nodeName] = true;
-});
-
-/**
- * Gets the markup wrap configuration for the supplied `nodeName`.
- *
- * NOTE: This lazily detects which wraps are necessary for the current browser.
- *
- * @param {string} nodeName Lowercase `nodeName`.
- * @return {?array} Markup wrap configuration, if applicable.
- */
-function getMarkupWrap(nodeName) {
-  !!!dummyNode ? process.env.NODE_ENV !== 'production' ? invariant(false, 'Markup wrapping node not initialized') : invariant(false) : void 0;
-  if (!markupWrap.hasOwnProperty(nodeName)) {
-    nodeName = '*';
-  }
-  if (!shouldWrap.hasOwnProperty(nodeName)) {
-    if (nodeName === '*') {
-      dummyNode.innerHTML = '<link />';
-    } else {
-      dummyNode.innerHTML = '<' + nodeName + '></' + nodeName + '>';
-    }
-    shouldWrap[nodeName] = !dummyNode.firstChild;
-  }
-  return shouldWrap[nodeName] ? markupWrap[nodeName] : null;
-}
-
-module.exports = getMarkupWrap;
-}).call(this,require('_process'))
-},{"./ExecutionEnvironment":146,"./invariant":160,"_process":389}],157:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-'use strict';
-
-/**
- * Gets the scroll position of the supplied element or window.
- *
- * The return values are unbounded, unlike `getScrollPosition`. This means they
- * may be negative or exceed the element boundaries (which is possible using
- * inertial scrolling).
- *
- * @param {DOMWindow|DOMElement} scrollable
- * @return {object} Map with `x` and `y` keys.
- */
-
-function getUnboundedScrollPosition(scrollable) {
-  if (scrollable === window) {
-    return {
-      x: window.pageXOffset || document.documentElement.scrollLeft,
-      y: window.pageYOffset || document.documentElement.scrollTop
-    };
-  }
-  return {
-    x: scrollable.scrollLeft,
-    y: scrollable.scrollTop
-  };
-}
-
-module.exports = getUnboundedScrollPosition;
-},{}],158:[function(require,module,exports){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-var _uppercasePattern = /([A-Z])/g;
-
-/**
- * Hyphenates a camelcased string, for example:
- *
- *   > hyphenate('backgroundColor')
- *   < "background-color"
- *
- * For CSS style names, use `hyphenateStyleName` instead which works properly
- * with all vendor prefixes, including `ms`.
- *
- * @param {string} string
- * @return {string}
- */
-function hyphenate(string) {
-  return string.replace(_uppercasePattern, '-$1').toLowerCase();
-}
-
-module.exports = hyphenate;
-},{}],159:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-'use strict';
-
-var hyphenate = require('./hyphenate');
-
-var msPattern = /^ms-/;
-
-/**
- * Hyphenates a camelcased CSS property name, for example:
- *
- *   > hyphenateStyleName('backgroundColor')
- *   < "background-color"
- *   > hyphenateStyleName('MozTransition')
- *   < "-moz-transition"
- *   > hyphenateStyleName('msTransition')
- *   < "-ms-transition"
- *
- * As Modernizr suggests (http://modernizr.com/docs/#prefixed), an `ms` prefix
- * is converted to `-ms-`.
- *
- * @param {string} string
- * @return {string}
- */
-function hyphenateStyleName(string) {
-  return hyphenate(string).replace(msPattern, '-ms-');
-}
-
-module.exports = hyphenateStyleName;
-},{"./hyphenate":158}],160:[function(require,module,exports){
-(function (process){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-'use strict';
-
-/**
- * Use invariant() to assert state which your program assumes to be true.
- *
- * Provide sprintf-style format (only %s is supported) and arguments
- * to provide information about what broke and what you were
- * expecting.
- *
- * The invariant message will be stripped in production, but the invariant
- * will remain to ensure logic does not differ in production.
- */
-
-function invariant(condition, format, a, b, c, d, e, f) {
-  if (process.env.NODE_ENV !== 'production') {
-    if (format === undefined) {
-      throw new Error('invariant requires an error message argument');
-    }
-  }
-
-  if (!condition) {
-    var error;
-    if (format === undefined) {
-      error = new Error('Minified exception occurred; use the non-minified dev environment ' + 'for the full error message and additional helpful warnings.');
-    } else {
-      var args = [a, b, c, d, e, f];
-      var argIndex = 0;
-      error = new Error(format.replace(/%s/g, function () {
-        return args[argIndex++];
-      }));
-      error.name = 'Invariant Violation';
-    }
-
-    error.framesToPop = 1; // we don't care about invariant's own frame
-    throw error;
-  }
-}
-
-module.exports = invariant;
-}).call(this,require('_process'))
-},{"_process":389}],161:[function(require,module,exports){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-/**
- * @param {*} object The object to check.
- * @return {boolean} Whether or not the object is a DOM node.
- */
-function isNode(object) {
-  return !!(object && (typeof Node === 'function' ? object instanceof Node : typeof object === 'object' && typeof object.nodeType === 'number' && typeof object.nodeName === 'string'));
-}
-
-module.exports = isNode;
-},{}],162:[function(require,module,exports){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-var isNode = require('./isNode');
-
-/**
- * @param {*} object The object to check.
- * @return {boolean} Whether or not the object is a DOM text node.
- */
-function isTextNode(object) {
-  return isNode(object) && object.nodeType == 3;
-}
-
-module.exports = isTextNode;
-},{"./isNode":161}],163:[function(require,module,exports){
-(function (process){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks static-only
- */
-
-'use strict';
-
-var invariant = require('./invariant');
-
-/**
- * Constructs an enumeration with keys equal to their value.
- *
- * For example:
- *
- *   var COLORS = keyMirror({blue: null, red: null});
- *   var myColor = COLORS.blue;
- *   var isColorValid = !!COLORS[myColor];
- *
- * The last line could not be performed if the values of the generated enum were
- * not equal to their keys.
- *
- *   Input:  {key1: val1, key2: val2}
- *   Output: {key1: key1, key2: key2}
- *
- * @param {object} obj
- * @return {object}
- */
-var keyMirror = function keyMirror(obj) {
-  var ret = {};
-  var key;
-  !(obj instanceof Object && !Array.isArray(obj)) ? process.env.NODE_ENV !== 'production' ? invariant(false, 'keyMirror(...): Argument must be an object.') : invariant(false) : void 0;
-  for (key in obj) {
-    if (!obj.hasOwnProperty(key)) {
-      continue;
-    }
-    ret[key] = key;
-  }
-  return ret;
-};
-
-module.exports = keyMirror;
-}).call(this,require('_process'))
-},{"./invariant":160,"_process":389}],164:[function(require,module,exports){
-"use strict";
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-/**
- * Allows extraction of a minified key. Let's the build system minify keys
- * without losing the ability to dynamically use key strings as values
- * themselves. Pass in an object with a single key/val pair and it will return
- * you the string key of that single record. Suppose you want to grab the
- * value for a key 'className' inside of an object. Key/val minification may
- * have aliased that key to be 'xa12'. keyOf({className: null}) will return
- * 'xa12' in that case. Resolve keys you want to use once at startup time, then
- * reuse those resolutions.
- */
-var keyOf = function keyOf(oneKeyObj) {
-  var key;
-  for (key in oneKeyObj) {
-    if (!oneKeyObj.hasOwnProperty(key)) {
-      continue;
-    }
-    return key;
-  }
-  return null;
-};
-
-module.exports = keyOf;
-},{}],165:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-'use strict';
-
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-
-/**
- * Executes the provided `callback` once for each enumerable own property in the
- * object and constructs a new object from the results. The `callback` is
- * invoked with three arguments:
- *
- *  - the property value
- *  - the property name
- *  - the object being traversed
- *
- * Properties that are added after the call to `mapObject` will not be visited
- * by `callback`. If the values of existing properties are changed, the value
- * passed to `callback` will be the value at the time `mapObject` visits them.
- * Properties that are deleted before being visited are not visited.
- *
- * @grep function objectMap()
- * @grep function objMap()
- *
- * @param {?object} object
- * @param {function} callback
- * @param {*} context
- * @return {?object}
- */
-function mapObject(object, callback, context) {
-  if (!object) {
-    return null;
-  }
-  var result = {};
-  for (var name in object) {
-    if (hasOwnProperty.call(object, name)) {
-      result[name] = callback.call(context, object[name], name, object);
-    }
-  }
-  return result;
-}
-
-module.exports = mapObject;
-},{}],166:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * 
- * @typechecks static-only
- */
-
-'use strict';
-
-/**
- * Memoizes the return value of a function that accepts one string argument.
- */
-
-function memoizeStringOnly(callback) {
-  var cache = {};
-  return function (string) {
-    if (!cache.hasOwnProperty(string)) {
-      cache[string] = callback.call(this, string);
-    }
-    return cache[string];
-  };
-}
-
-module.exports = memoizeStringOnly;
-},{}],167:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-'use strict';
-
-var ExecutionEnvironment = require('./ExecutionEnvironment');
-
-var performance;
-
-if (ExecutionEnvironment.canUseDOM) {
-  performance = window.performance || window.msPerformance || window.webkitPerformance;
-}
-
-module.exports = performance || {};
-},{"./ExecutionEnvironment":146}],168:[function(require,module,exports){
-'use strict';
-
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- */
-
-var performance = require('./performance');
-
-var performanceNow;
-
-/**
- * Detect if we can use `window.performance.now()` and gracefully fallback to
- * `Date.now()` if it doesn't exist. We need to support Firefox < 15 for now
- * because of Facebook's testing infrastructure.
- */
-if (performance.now) {
-  performanceNow = function performanceNow() {
-    return performance.now();
-  };
-} else {
-  performanceNow = function performanceNow() {
-    return Date.now();
-  };
-}
-
-module.exports = performanceNow;
-},{"./performance":167}],169:[function(require,module,exports){
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- * @typechecks
- * 
- */
-
-/*eslint-disable no-self-compare */
-
-'use strict';
-
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-
-/**
- * inlined Object.is polyfill to avoid requiring consumers ship their own
- * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
- */
-function is(x, y) {
-  // SameValue algorithm
-  if (x === y) {
-    // Steps 1-5, 7-10
-    // Steps 6.b-6.e: +0 != -0
-    return x !== 0 || 1 / x === 1 / y;
-  } else {
-    // Step 6.a: NaN == NaN
-    return x !== x && y !== y;
-  }
-}
-
-/**
- * Performs equality by iterating through keys on an object and returning false
- * when any key has values which are not strictly equal between the arguments.
- * Returns true when the values of all keys are strictly equal.
- */
-function shallowEqual(objA, objB) {
-  if (is(objA, objB)) {
-    return true;
-  }
-
-  if (typeof objA !== 'object' || objA === null || typeof objB !== 'object' || objB === null) {
-    return false;
-  }
-
-  var keysA = Object.keys(objA);
-  var keysB = Object.keys(objB);
-
-  if (keysA.length !== keysB.length) {
-    return false;
-  }
-
-  // Test for A's keys different from B.
-  for (var i = 0; i < keysA.length; i++) {
-    if (!hasOwnProperty.call(objB, keysA[i]) || !is(objA[keysA[i]], objB[keysA[i]])) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-module.exports = shallowEqual;
-},{}],170:[function(require,module,exports){
-(function (process){
-/**
- * Copyright 2014-2015, Facebook, Inc.
- * All rights reserved.
- *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
-'use strict';
-
-var emptyFunction = require('./emptyFunction');
-
-/**
- * Similar to invariant but only logs a warning if the condition is not met.
- * This can be used to log issues in development environments in critical
- * paths. Removing the logging code for production environments will keep the
- * same logic and follow the same code paths.
- */
-
-var warning = emptyFunction;
-
-if (process.env.NODE_ENV !== 'production') {
-  warning = function warning(condition, format) {
-    for (var _len = arguments.length, args = Array(_len > 2 ? _len - 2 : 0), _key = 2; _key < _len; _key++) {
-      args[_key - 2] = arguments[_key];
-    }
-
-    if (format === undefined) {
-      throw new Error('`warning(condition, format, ...args)` requires a warning ' + 'message argument');
-    }
-
-    if (format.indexOf('Failed Composite propType: ') === 0) {
-      return; // Ignore CompositeComponent proptype check.
-    }
-
-    if (!condition) {
-      var argIndex = 0;
-      var message = 'Warning: ' + format.replace(/%s/g, function () {
-        return args[argIndex++];
-      });
-      if (typeof console !== 'undefined') {
-        console.error(message);
-      }
-      try {
-        // --- Welcome to debugging React ---
-        // This error was thrown as a convenience so that you can use this stack
-        // to find the callsite that caused this warning to fire.
-        throw new Error(message);
-      } catch (x) {}
-    }
-  };
-}
-
-module.exports = warning;
-}).call(this,require('_process'))
-},{"./emptyFunction":152,"_process":389}],171:[function(require,module,exports){
-'use strict';
-/* eslint-disable no-unused-vars */
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-var propIsEnumerable = Object.prototype.propertyIsEnumerable;
-
-function toObject(val) {
-	if (val === null || val === undefined) {
-		throw new TypeError('Object.assign cannot be called with null or undefined');
-	}
-
-	return Object(val);
-}
-
-function shouldUseNative() {
-	try {
-		if (!Object.assign) {
-			return false;
-		}
-
-		// Detect buggy property enumeration order in older V8 versions.
-
-		// https://bugs.chromium.org/p/v8/issues/detail?id=4118
-		var test1 = new String('abc');  // eslint-disable-line
-		test1[5] = 'de';
-		if (Object.getOwnPropertyNames(test1)[0] === '5') {
-			return false;
-		}
-
-		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
-		var test2 = {};
-		for (var i = 0; i < 10; i++) {
-			test2['_' + String.fromCharCode(i)] = i;
-		}
-		var order2 = Object.getOwnPropertyNames(test2).map(function (n) {
-			return test2[n];
-		});
-		if (order2.join('') !== '0123456789') {
-			return false;
-		}
-
-		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
-		var test3 = {};
-		'abcdefghijklmnopqrst'.split('').forEach(function (letter) {
-			test3[letter] = letter;
-		});
-		if (Object.keys(Object.assign({}, test3)).join('') !==
-				'abcdefghijklmnopqrst') {
-			return false;
-		}
-
-		return true;
-	} catch (e) {
-		// We don't expect any of the above to throw, but better to be safe.
-		return false;
-	}
-}
-
-module.exports = shouldUseNative() ? Object.assign : function (target, source) {
-	var from;
-	var to = toObject(target);
-	var symbols;
-
-	for (var s = 1; s < arguments.length; s++) {
-		from = Object(arguments[s]);
-
-		for (var key in from) {
-			if (hasOwnProperty.call(from, key)) {
-				to[key] = from[key];
-			}
-		}
-
-		if (Object.getOwnPropertySymbols) {
-			symbols = Object.getOwnPropertySymbols(from);
-			for (var i = 0; i < symbols.length; i++) {
-				if (propIsEnumerable.call(from, symbols[i])) {
-					to[symbols[i]] = from[symbols[i]];
-				}
-			}
-		}
-	}
-
-	return to;
-};
-
-},{}],172:[function(require,module,exports){
+},{"_process":384,"fbjs/lib/emptyFunction":39,"fbjs/lib/warning":57,"object-assign":64}],203:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./lib/React');
 
-},{"./lib/React":33}],173:[function(require,module,exports){
+},{"./lib/React":91}],204:[function(require,module,exports){
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define(['exports'], factory) :
+  (factory((global.topojson = global.topojson || {})));
+}(this, function (exports) { 'use strict';
+
+  function noop() {}
+
+  function transformAbsolute(transform) {
+    if (!transform) return noop;
+    var x0,
+        y0,
+        kx = transform.scale[0],
+        ky = transform.scale[1],
+        dx = transform.translate[0],
+        dy = transform.translate[1];
+    return function(point, i) {
+      if (!i) x0 = y0 = 0;
+      point[0] = (x0 += point[0]) * kx + dx;
+      point[1] = (y0 += point[1]) * ky + dy;
+    };
+  }
+
+  function transformRelative(transform) {
+    if (!transform) return noop;
+    var x0,
+        y0,
+        kx = transform.scale[0],
+        ky = transform.scale[1],
+        dx = transform.translate[0],
+        dy = transform.translate[1];
+    return function(point, i) {
+      if (!i) x0 = y0 = 0;
+      var x1 = Math.round((point[0] - dx) / kx),
+          y1 = Math.round((point[1] - dy) / ky);
+      point[0] = x1 - x0;
+      point[1] = y1 - y0;
+      x0 = x1;
+      y0 = y1;
+    };
+  }
+
+  function reverse(array, n) {
+    var t, j = array.length, i = j - n;
+    while (i < --j) t = array[i], array[i++] = array[j], array[j] = t;
+  }
+
+  function bisect(a, x) {
+    var lo = 0, hi = a.length;
+    while (lo < hi) {
+      var mid = lo + hi >>> 1;
+      if (a[mid] < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function feature(topology, o) {
+    return o.type === "GeometryCollection" ? {
+      type: "FeatureCollection",
+      features: o.geometries.map(function(o) { return feature$1(topology, o); })
+    } : feature$1(topology, o);
+  }
+
+  function feature$1(topology, o) {
+    var f = {
+      type: "Feature",
+      id: o.id,
+      properties: o.properties || {},
+      geometry: object(topology, o)
+    };
+    if (o.id == null) delete f.id;
+    return f;
+  }
+
+  function object(topology, o) {
+    var absolute = transformAbsolute(topology.transform),
+        arcs = topology.arcs;
+
+    function arc(i, points) {
+      if (points.length) points.pop();
+      for (var a = arcs[i < 0 ? ~i : i], k = 0, n = a.length, p; k < n; ++k) {
+        points.push(p = a[k].slice());
+        absolute(p, k);
+      }
+      if (i < 0) reverse(points, n);
+    }
+
+    function point(p) {
+      p = p.slice();
+      absolute(p, 0);
+      return p;
+    }
+
+    function line(arcs) {
+      var points = [];
+      for (var i = 0, n = arcs.length; i < n; ++i) arc(arcs[i], points);
+      if (points.length < 2) points.push(points[0].slice());
+      return points;
+    }
+
+    function ring(arcs) {
+      var points = line(arcs);
+      while (points.length < 4) points.push(points[0].slice());
+      return points;
+    }
+
+    function polygon(arcs) {
+      return arcs.map(ring);
+    }
+
+    function geometry(o) {
+      var t = o.type;
+      return t === "GeometryCollection" ? {type: t, geometries: o.geometries.map(geometry)}
+          : t in geometryType ? {type: t, coordinates: geometryType[t](o)}
+          : null;
+    }
+
+    var geometryType = {
+      Point: function(o) { return point(o.coordinates); },
+      MultiPoint: function(o) { return o.coordinates.map(point); },
+      LineString: function(o) { return line(o.arcs); },
+      MultiLineString: function(o) { return o.arcs.map(line); },
+      Polygon: function(o) { return polygon(o.arcs); },
+      MultiPolygon: function(o) { return o.arcs.map(polygon); }
+    };
+
+    return geometry(o);
+  }
+
+  function stitchArcs(topology, arcs) {
+    var stitchedArcs = {},
+        fragmentByStart = {},
+        fragmentByEnd = {},
+        fragments = [],
+        emptyIndex = -1;
+
+    // Stitch empty arcs first, since they may be subsumed by other arcs.
+    arcs.forEach(function(i, j) {
+      var arc = topology.arcs[i < 0 ? ~i : i], t;
+      if (arc.length < 3 && !arc[1][0] && !arc[1][1]) {
+        t = arcs[++emptyIndex], arcs[emptyIndex] = i, arcs[j] = t;
+      }
+    });
+
+    arcs.forEach(function(i) {
+      var e = ends(i),
+          start = e[0],
+          end = e[1],
+          f, g;
+
+      if (f = fragmentByEnd[start]) {
+        delete fragmentByEnd[f.end];
+        f.push(i);
+        f.end = end;
+        if (g = fragmentByStart[end]) {
+          delete fragmentByStart[g.start];
+          var fg = g === f ? f : f.concat(g);
+          fragmentByStart[fg.start = f.start] = fragmentByEnd[fg.end = g.end] = fg;
+        } else {
+          fragmentByStart[f.start] = fragmentByEnd[f.end] = f;
+        }
+      } else if (f = fragmentByStart[end]) {
+        delete fragmentByStart[f.start];
+        f.unshift(i);
+        f.start = start;
+        if (g = fragmentByEnd[start]) {
+          delete fragmentByEnd[g.end];
+          var gf = g === f ? f : g.concat(f);
+          fragmentByStart[gf.start = g.start] = fragmentByEnd[gf.end = f.end] = gf;
+        } else {
+          fragmentByStart[f.start] = fragmentByEnd[f.end] = f;
+        }
+      } else {
+        f = [i];
+        fragmentByStart[f.start = start] = fragmentByEnd[f.end = end] = f;
+      }
+    });
+
+    function ends(i) {
+      var arc = topology.arcs[i < 0 ? ~i : i], p0 = arc[0], p1;
+      if (topology.transform) p1 = [0, 0], arc.forEach(function(dp) { p1[0] += dp[0], p1[1] += dp[1]; });
+      else p1 = arc[arc.length - 1];
+      return i < 0 ? [p1, p0] : [p0, p1];
+    }
+
+    function flush(fragmentByEnd, fragmentByStart) {
+      for (var k in fragmentByEnd) {
+        var f = fragmentByEnd[k];
+        delete fragmentByStart[f.start];
+        delete f.start;
+        delete f.end;
+        f.forEach(function(i) { stitchedArcs[i < 0 ? ~i : i] = 1; });
+        fragments.push(f);
+      }
+    }
+
+    flush(fragmentByEnd, fragmentByStart);
+    flush(fragmentByStart, fragmentByEnd);
+    arcs.forEach(function(i) { if (!stitchedArcs[i < 0 ? ~i : i]) fragments.push([i]); });
+
+    return fragments;
+  }
+
+  function mesh(topology) {
+    return object(topology, meshArcs.apply(this, arguments));
+  }
+
+  function meshArcs(topology, o, filter) {
+    var arcs = [];
+
+    function arc(i) {
+      var j = i < 0 ? ~i : i;
+      (geomsByArc[j] || (geomsByArc[j] = [])).push({i: i, g: geom});
+    }
+
+    function line(arcs) {
+      arcs.forEach(arc);
+    }
+
+    function polygon(arcs) {
+      arcs.forEach(line);
+    }
+
+    function geometry(o) {
+      if (o.type === "GeometryCollection") o.geometries.forEach(geometry);
+      else if (o.type in geometryType) geom = o, geometryType[o.type](o.arcs);
+    }
+
+    if (arguments.length > 1) {
+      var geomsByArc = [],
+          geom;
+
+      var geometryType = {
+        LineString: line,
+        MultiLineString: polygon,
+        Polygon: polygon,
+        MultiPolygon: function(arcs) { arcs.forEach(polygon); }
+      };
+
+      geometry(o);
+
+      geomsByArc.forEach(arguments.length < 3
+          ? function(geoms) { arcs.push(geoms[0].i); }
+          : function(geoms) { if (filter(geoms[0].g, geoms[geoms.length - 1].g)) arcs.push(geoms[0].i); });
+    } else {
+      for (var i = 0, n = topology.arcs.length; i < n; ++i) arcs.push(i);
+    }
+
+    return {type: "MultiLineString", arcs: stitchArcs(topology, arcs)};
+  }
+
+  function cartesianTriangleArea(triangle) {
+    var a = triangle[0], b = triangle[1], c = triangle[2];
+    return Math.abs((a[0] - c[0]) * (b[1] - a[1]) - (a[0] - b[0]) * (c[1] - a[1]));
+  }
+
+  function ring(ring) {
+    var i = -1,
+        n = ring.length,
+        a,
+        b = ring[n - 1],
+        area = 0;
+
+    while (++i < n) {
+      a = b;
+      b = ring[i];
+      area += a[0] * b[1] - a[1] * b[0];
+    }
+
+    return area / 2;
+  }
+
+  function merge(topology) {
+    return object(topology, mergeArcs.apply(this, arguments));
+  }
+
+  function mergeArcs(topology, objects) {
+    var polygonsByArc = {},
+        polygons = [],
+        components = [];
+
+    objects.forEach(function(o) {
+      if (o.type === "Polygon") register(o.arcs);
+      else if (o.type === "MultiPolygon") o.arcs.forEach(register);
+    });
+
+    function register(polygon) {
+      polygon.forEach(function(ring$$) {
+        ring$$.forEach(function(arc) {
+          (polygonsByArc[arc = arc < 0 ? ~arc : arc] || (polygonsByArc[arc] = [])).push(polygon);
+        });
+      });
+      polygons.push(polygon);
+    }
+
+    function area(ring$$) {
+      return Math.abs(ring(object(topology, {type: "Polygon", arcs: [ring$$]}).coordinates[0]));
+    }
+
+    polygons.forEach(function(polygon) {
+      if (!polygon._) {
+        var component = [],
+            neighbors = [polygon];
+        polygon._ = 1;
+        components.push(component);
+        while (polygon = neighbors.pop()) {
+          component.push(polygon);
+          polygon.forEach(function(ring$$) {
+            ring$$.forEach(function(arc) {
+              polygonsByArc[arc < 0 ? ~arc : arc].forEach(function(polygon) {
+                if (!polygon._) {
+                  polygon._ = 1;
+                  neighbors.push(polygon);
+                }
+              });
+            });
+          });
+        }
+      }
+    });
+
+    polygons.forEach(function(polygon) {
+      delete polygon._;
+    });
+
+    return {
+      type: "MultiPolygon",
+      arcs: components.map(function(polygons) {
+        var arcs = [], n;
+
+        // Extract the exterior (unique) arcs.
+        polygons.forEach(function(polygon) {
+          polygon.forEach(function(ring$$) {
+            ring$$.forEach(function(arc) {
+              if (polygonsByArc[arc < 0 ? ~arc : arc].length < 2) {
+                arcs.push(arc);
+              }
+            });
+          });
+        });
+
+        // Stitch the arcs into one or more rings.
+        arcs = stitchArcs(topology, arcs);
+
+        // If more than one ring is returned,
+        // at most one of these rings can be the exterior;
+        // choose the one with the greatest absolute area.
+        if ((n = arcs.length) > 1) {
+          for (var i = 1, k = area(arcs[0]), ki, t; i < n; ++i) {
+            if ((ki = area(arcs[i])) > k) {
+              t = arcs[0], arcs[0] = arcs[i], arcs[i] = t, k = ki;
+            }
+          }
+        }
+
+        return arcs;
+      })
+    };
+  }
+
+  function neighbors(objects) {
+    var indexesByArc = {}, // arc index -> array of object indexes
+        neighbors = objects.map(function() { return []; });
+
+    function line(arcs, i) {
+      arcs.forEach(function(a) {
+        if (a < 0) a = ~a;
+        var o = indexesByArc[a];
+        if (o) o.push(i);
+        else indexesByArc[a] = [i];
+      });
+    }
+
+    function polygon(arcs, i) {
+      arcs.forEach(function(arc) { line(arc, i); });
+    }
+
+    function geometry(o, i) {
+      if (o.type === "GeometryCollection") o.geometries.forEach(function(o) { geometry(o, i); });
+      else if (o.type in geometryType) geometryType[o.type](o.arcs, i);
+    }
+
+    var geometryType = {
+      LineString: line,
+      MultiLineString: polygon,
+      Polygon: polygon,
+      MultiPolygon: function(arcs, i) { arcs.forEach(function(arc) { polygon(arc, i); }); }
+    };
+
+    objects.forEach(geometry);
+
+    for (var i in indexesByArc) {
+      for (var indexes = indexesByArc[i], m = indexes.length, j = 0; j < m; ++j) {
+        for (var k = j + 1; k < m; ++k) {
+          var ij = indexes[j], ik = indexes[k], n;
+          if ((n = neighbors[ij])[i = bisect(n, ik)] !== ik) n.splice(i, 0, ik);
+          if ((n = neighbors[ik])[i = bisect(n, ij)] !== ij) n.splice(i, 0, ij);
+        }
+      }
+    }
+
+    return neighbors;
+  }
+
+  function compareArea(a, b) {
+    return a[1][2] - b[1][2];
+  }
+
+  function minAreaHeap() {
+    var heap = {},
+        array = [],
+        size = 0;
+
+    heap.push = function(object) {
+      up(array[object._ = size] = object, size++);
+      return size;
+    };
+
+    heap.pop = function() {
+      if (size <= 0) return;
+      var removed = array[0], object;
+      if (--size > 0) object = array[size], down(array[object._ = 0] = object, 0);
+      return removed;
+    };
+
+    heap.remove = function(removed) {
+      var i = removed._, object;
+      if (array[i] !== removed) return; // invalid request
+      if (i !== --size) object = array[size], (compareArea(object, removed) < 0 ? up : down)(array[object._ = i] = object, i);
+      return i;
+    };
+
+    function up(object, i) {
+      while (i > 0) {
+        var j = ((i + 1) >> 1) - 1,
+            parent = array[j];
+        if (compareArea(object, parent) >= 0) break;
+        array[parent._ = i] = parent;
+        array[object._ = i = j] = object;
+      }
+    }
+
+    function down(object, i) {
+      while (true) {
+        var r = (i + 1) << 1,
+            l = r - 1,
+            j = i,
+            child = array[j];
+        if (l < size && compareArea(array[l], child) < 0) child = array[j = l];
+        if (r < size && compareArea(array[r], child) < 0) child = array[j = r];
+        if (j === i) break;
+        array[child._ = i] = child;
+        array[object._ = i = j] = object;
+      }
+    }
+
+    return heap;
+  }
+
+  function presimplify(topology, triangleArea) {
+    var absolute = transformAbsolute(topology.transform),
+        relative = transformRelative(topology.transform),
+        heap = minAreaHeap();
+
+    if (!triangleArea) triangleArea = cartesianTriangleArea;
+
+    topology.arcs.forEach(function(arc) {
+      var triangles = [],
+          maxArea = 0,
+          triangle,
+          i,
+          n,
+          p;
+
+      // To store each point’s effective area, we create a new array rather than
+      // extending the passed-in point to workaround a Chrome/V8 bug (getting
+      // stuck in smi mode). For midpoints, the initial effective area of
+      // Infinity will be computed in the next step.
+      for (i = 0, n = arc.length; i < n; ++i) {
+        p = arc[i];
+        absolute(arc[i] = [p[0], p[1], Infinity], i);
+      }
+
+      for (i = 1, n = arc.length - 1; i < n; ++i) {
+        triangle = arc.slice(i - 1, i + 2);
+        triangle[1][2] = triangleArea(triangle);
+        triangles.push(triangle);
+        heap.push(triangle);
+      }
+
+      for (i = 0, n = triangles.length; i < n; ++i) {
+        triangle = triangles[i];
+        triangle.previous = triangles[i - 1];
+        triangle.next = triangles[i + 1];
+      }
+
+      while (triangle = heap.pop()) {
+        var previous = triangle.previous,
+            next = triangle.next;
+
+        // If the area of the current point is less than that of the previous point
+        // to be eliminated, use the latter's area instead. This ensures that the
+        // current point cannot be eliminated without eliminating previously-
+        // eliminated points.
+        if (triangle[1][2] < maxArea) triangle[1][2] = maxArea;
+        else maxArea = triangle[1][2];
+
+        if (previous) {
+          previous.next = next;
+          previous[2] = triangle[2];
+          update(previous);
+        }
+
+        if (next) {
+          next.previous = previous;
+          next[0] = triangle[0];
+          update(next);
+        }
+      }
+
+      arc.forEach(relative);
+    });
+
+    function update(triangle) {
+      heap.remove(triangle);
+      triangle[1][2] = triangleArea(triangle);
+      heap.push(triangle);
+    }
+
+    return topology;
+  }
+
+  var version = "1.6.26";
+
+  exports.version = version;
+  exports.mesh = mesh;
+  exports.meshArcs = meshArcs;
+  exports.merge = merge;
+  exports.mergeArcs = mergeArcs;
+  exports.feature = feature;
+  exports.neighbors = neighbors;
+  exports.presimplify = presimplify;
+
+}));
+},{}],205:[function(require,module,exports){
 //     Underscore.js 1.8.3
 //     http://underscorejs.org
 //     (c) 2009-2015 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -40804,11552 +46915,7 @@ module.exports = require('./lib/React');
   }
 }.call(this));
 
-},{}],174:[function(require,module,exports){
-(function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
-  typeof define === 'function' && define.amd ? define('d3-time', ['exports'], factory) :
-  factory((global.d3_time = {}));
-}(this, function (exports) { 'use strict';
-
-  var t0 = new Date;
-  var t1 = new Date;
-  function newInterval(floori, offseti, count, field) {
-
-    function interval(date) {
-      return floori(date = new Date(+date)), date;
-    }
-
-    interval.floor = interval;
-
-    interval.round = function(date) {
-      var d0 = new Date(+date),
-          d1 = new Date(date - 1);
-      floori(d0), floori(d1), offseti(d1, 1);
-      return date - d0 < d1 - date ? d0 : d1;
-    };
-
-    interval.ceil = function(date) {
-      return floori(date = new Date(date - 1)), offseti(date, 1), date;
-    };
-
-    interval.offset = function(date, step) {
-      return offseti(date = new Date(+date), step == null ? 1 : Math.floor(step)), date;
-    };
-
-    interval.range = function(start, stop, step) {
-      var range = [];
-      start = new Date(start - 1);
-      stop = new Date(+stop);
-      step = step == null ? 1 : Math.floor(step);
-      if (!(start < stop) || !(step > 0)) return range; // also handles Invalid Date
-      offseti(start, 1), floori(start);
-      if (start < stop) range.push(new Date(+start));
-      while (offseti(start, step), floori(start), start < stop) range.push(new Date(+start));
-      return range;
-    };
-
-    interval.filter = function(test) {
-      return newInterval(function(date) {
-        while (floori(date), !test(date)) date.setTime(date - 1);
-      }, function(date, step) {
-        while (--step >= 0) while (offseti(date, 1), !test(date));
-      });
-    };
-
-    if (count) {
-      interval.count = function(start, end) {
-        t0.setTime(+start), t1.setTime(+end);
-        floori(t0), floori(t1);
-        return Math.floor(count(t0, t1));
-      };
-
-      interval.every = function(step) {
-        step = Math.floor(step);
-        return !isFinite(step) || !(step > 0) ? null
-            : !(step > 1) ? interval
-            : interval.filter(field
-                ? function(d) { return field(d) % step === 0; }
-                : function(d) { return interval.count(0, d) % step === 0; });
-      };
-    }
-
-    return interval;
-  };
-
-  var millisecond = newInterval(function() {
-    // noop
-  }, function(date, step) {
-    date.setTime(+date + step);
-  }, function(start, end) {
-    return end - start;
-  });
-
-  // An optimized implementation for this simple case.
-  millisecond.every = function(k) {
-    k = Math.floor(k);
-    if (!isFinite(k) || !(k > 0)) return null;
-    if (!(k > 1)) return millisecond;
-    return newInterval(function(date) {
-      date.setTime(Math.floor(date / k) * k);
-    }, function(date, step) {
-      date.setTime(+date + step * k);
-    }, function(start, end) {
-      return (end - start) / k;
-    });
-  };
-
-  var second = newInterval(function(date) {
-    date.setMilliseconds(0);
-  }, function(date, step) {
-    date.setTime(+date + step * 1e3);
-  }, function(start, end) {
-    return (end - start) / 1e3;
-  }, function(date) {
-    return date.getSeconds();
-  });
-
-  var minute = newInterval(function(date) {
-    date.setSeconds(0, 0);
-  }, function(date, step) {
-    date.setTime(+date + step * 6e4);
-  }, function(start, end) {
-    return (end - start) / 6e4;
-  }, function(date) {
-    return date.getMinutes();
-  });
-
-  var hour = newInterval(function(date) {
-    date.setMinutes(0, 0, 0);
-  }, function(date, step) {
-    date.setTime(+date + step * 36e5);
-  }, function(start, end) {
-    return (end - start) / 36e5;
-  }, function(date) {
-    return date.getHours();
-  });
-
-  var day = newInterval(function(date) {
-    date.setHours(0, 0, 0, 0);
-  }, function(date, step) {
-    date.setDate(date.getDate() + step);
-  }, function(start, end) {
-    return (end - start - (end.getTimezoneOffset() - start.getTimezoneOffset()) * 6e4) / 864e5;
-  }, function(date) {
-    return date.getDate() - 1;
-  });
-
-  function weekday(i) {
-    return newInterval(function(date) {
-      date.setHours(0, 0, 0, 0);
-      date.setDate(date.getDate() - (date.getDay() + 7 - i) % 7);
-    }, function(date, step) {
-      date.setDate(date.getDate() + step * 7);
-    }, function(start, end) {
-      return (end - start - (end.getTimezoneOffset() - start.getTimezoneOffset()) * 6e4) / 6048e5;
-    });
-  }
-
-  var sunday = weekday(0);
-  var monday = weekday(1);
-  var tuesday = weekday(2);
-  var wednesday = weekday(3);
-  var thursday = weekday(4);
-  var friday = weekday(5);
-  var saturday = weekday(6);
-
-  var month = newInterval(function(date) {
-    date.setHours(0, 0, 0, 0);
-    date.setDate(1);
-  }, function(date, step) {
-    date.setMonth(date.getMonth() + step);
-  }, function(start, end) {
-    return end.getMonth() - start.getMonth() + (end.getFullYear() - start.getFullYear()) * 12;
-  }, function(date) {
-    return date.getMonth();
-  });
-
-  var year = newInterval(function(date) {
-    date.setHours(0, 0, 0, 0);
-    date.setMonth(0, 1);
-  }, function(date, step) {
-    date.setFullYear(date.getFullYear() + step);
-  }, function(start, end) {
-    return end.getFullYear() - start.getFullYear();
-  }, function(date) {
-    return date.getFullYear();
-  });
-
-  var utcSecond = newInterval(function(date) {
-    date.setUTCMilliseconds(0);
-  }, function(date, step) {
-    date.setTime(+date + step * 1e3);
-  }, function(start, end) {
-    return (end - start) / 1e3;
-  }, function(date) {
-    return date.getUTCSeconds();
-  });
-
-  var utcMinute = newInterval(function(date) {
-    date.setUTCSeconds(0, 0);
-  }, function(date, step) {
-    date.setTime(+date + step * 6e4);
-  }, function(start, end) {
-    return (end - start) / 6e4;
-  }, function(date) {
-    return date.getUTCMinutes();
-  });
-
-  var utcHour = newInterval(function(date) {
-    date.setUTCMinutes(0, 0, 0);
-  }, function(date, step) {
-    date.setTime(+date + step * 36e5);
-  }, function(start, end) {
-    return (end - start) / 36e5;
-  }, function(date) {
-    return date.getUTCHours();
-  });
-
-  var utcDay = newInterval(function(date) {
-    date.setUTCHours(0, 0, 0, 0);
-  }, function(date, step) {
-    date.setUTCDate(date.getUTCDate() + step);
-  }, function(start, end) {
-    return (end - start) / 864e5;
-  }, function(date) {
-    return date.getUTCDate() - 1;
-  });
-
-  function utcWeekday(i) {
-    return newInterval(function(date) {
-      date.setUTCHours(0, 0, 0, 0);
-      date.setUTCDate(date.getUTCDate() - (date.getUTCDay() + 7 - i) % 7);
-    }, function(date, step) {
-      date.setUTCDate(date.getUTCDate() + step * 7);
-    }, function(start, end) {
-      return (end - start) / 6048e5;
-    });
-  }
-
-  var utcSunday = utcWeekday(0);
-  var utcMonday = utcWeekday(1);
-  var utcTuesday = utcWeekday(2);
-  var utcWednesday = utcWeekday(3);
-  var utcThursday = utcWeekday(4);
-  var utcFriday = utcWeekday(5);
-  var utcSaturday = utcWeekday(6);
-
-  var utcMonth = newInterval(function(date) {
-    date.setUTCHours(0, 0, 0, 0);
-    date.setUTCDate(1);
-  }, function(date, step) {
-    date.setUTCMonth(date.getUTCMonth() + step);
-  }, function(start, end) {
-    return end.getUTCMonth() - start.getUTCMonth() + (end.getUTCFullYear() - start.getUTCFullYear()) * 12;
-  }, function(date) {
-    return date.getUTCMonth();
-  });
-
-  var utcYear = newInterval(function(date) {
-    date.setUTCHours(0, 0, 0, 0);
-    date.setUTCMonth(0, 1);
-  }, function(date, step) {
-    date.setUTCFullYear(date.getUTCFullYear() + step);
-  }, function(start, end) {
-    return end.getUTCFullYear() - start.getUTCFullYear();
-  }, function(date) {
-    return date.getUTCFullYear();
-  });
-
-  var milliseconds = millisecond.range;
-  var seconds = second.range;
-  var minutes = minute.range;
-  var hours = hour.range;
-  var days = day.range;
-  var sundays = sunday.range;
-  var mondays = monday.range;
-  var tuesdays = tuesday.range;
-  var wednesdays = wednesday.range;
-  var thursdays = thursday.range;
-  var fridays = friday.range;
-  var saturdays = saturday.range;
-  var weeks = sunday.range;
-  var months = month.range;
-  var years = year.range;
-
-  var utcMillisecond = millisecond;
-  var utcMilliseconds = milliseconds;
-  var utcSeconds = utcSecond.range;
-  var utcMinutes = utcMinute.range;
-  var utcHours = utcHour.range;
-  var utcDays = utcDay.range;
-  var utcSundays = utcSunday.range;
-  var utcMondays = utcMonday.range;
-  var utcTuesdays = utcTuesday.range;
-  var utcWednesdays = utcWednesday.range;
-  var utcThursdays = utcThursday.range;
-  var utcFridays = utcFriday.range;
-  var utcSaturdays = utcSaturday.range;
-  var utcWeeks = utcSunday.range;
-  var utcMonths = utcMonth.range;
-  var utcYears = utcYear.range;
-
-  var version = "0.1.1";
-
-  exports.version = version;
-  exports.milliseconds = milliseconds;
-  exports.seconds = seconds;
-  exports.minutes = minutes;
-  exports.hours = hours;
-  exports.days = days;
-  exports.sundays = sundays;
-  exports.mondays = mondays;
-  exports.tuesdays = tuesdays;
-  exports.wednesdays = wednesdays;
-  exports.thursdays = thursdays;
-  exports.fridays = fridays;
-  exports.saturdays = saturdays;
-  exports.weeks = weeks;
-  exports.months = months;
-  exports.years = years;
-  exports.utcMillisecond = utcMillisecond;
-  exports.utcMilliseconds = utcMilliseconds;
-  exports.utcSeconds = utcSeconds;
-  exports.utcMinutes = utcMinutes;
-  exports.utcHours = utcHours;
-  exports.utcDays = utcDays;
-  exports.utcSundays = utcSundays;
-  exports.utcMondays = utcMondays;
-  exports.utcTuesdays = utcTuesdays;
-  exports.utcWednesdays = utcWednesdays;
-  exports.utcThursdays = utcThursdays;
-  exports.utcFridays = utcFridays;
-  exports.utcSaturdays = utcSaturdays;
-  exports.utcWeeks = utcWeeks;
-  exports.utcMonths = utcMonths;
-  exports.utcYears = utcYears;
-  exports.millisecond = millisecond;
-  exports.second = second;
-  exports.minute = minute;
-  exports.hour = hour;
-  exports.day = day;
-  exports.sunday = sunday;
-  exports.monday = monday;
-  exports.tuesday = tuesday;
-  exports.wednesday = wednesday;
-  exports.thursday = thursday;
-  exports.friday = friday;
-  exports.saturday = saturday;
-  exports.week = sunday;
-  exports.month = month;
-  exports.year = year;
-  exports.utcSecond = utcSecond;
-  exports.utcMinute = utcMinute;
-  exports.utcHour = utcHour;
-  exports.utcDay = utcDay;
-  exports.utcSunday = utcSunday;
-  exports.utcMonday = utcMonday;
-  exports.utcTuesday = utcTuesday;
-  exports.utcWednesday = utcWednesday;
-  exports.utcThursday = utcThursday;
-  exports.utcFriday = utcFriday;
-  exports.utcSaturday = utcSaturday;
-  exports.utcWeek = utcSunday;
-  exports.utcMonth = utcMonth;
-  exports.utcYear = utcYear;
-  exports.interval = newInterval;
-
-}));
-},{}],175:[function(require,module,exports){
-var util = require('../util'),
-    time = require('../time'),
-    EPSILON = 1e-15;
-
-function bins(opt) {
-  if (!opt) { throw Error("Missing binning options."); }
-
-  // determine range
-  var maxb = opt.maxbins || 15,
-      base = opt.base || 10,
-      logb = Math.log(base),
-      div = opt.div || [5, 2],
-      min = opt.min,
-      max = opt.max,
-      span = max - min,
-      step, level, minstep, precision, v, i, eps;
-
-  if (opt.step) {
-    // if step size is explicitly given, use that
-    step = opt.step;
-  } else if (opt.steps) {
-    // if provided, limit choice to acceptable step sizes
-    step = opt.steps[Math.min(
-      opt.steps.length - 1,
-      bisect(opt.steps, span/maxb, 0, opt.steps.length)
-    )];
-  } else {
-    // else use span to determine step size
-    level = Math.ceil(Math.log(maxb) / logb);
-    minstep = opt.minstep || 0;
-    step = Math.max(
-      minstep,
-      Math.pow(base, Math.round(Math.log(span) / logb) - level)
-    );
-
-    // increase step size if too many bins
-    while (Math.ceil(span/step) > maxb) { step *= base; }
-
-    // decrease step size if allowed
-    for (i=0; i<div.length; ++i) {
-      v = step / div[i];
-      if (v >= minstep && span / v <= maxb) step = v;
-    }
-  }
-
-  // update precision, min and max
-  v = Math.log(step);
-  precision = v >= 0 ? 0 : ~~(-v / logb) + 1;
-  eps = Math.pow(base, -precision - 1);
-  min = Math.min(min, Math.floor(min / step + eps) * step);
-  max = Math.ceil(max / step) * step;
-
-  return {
-    start: min,
-    stop:  max,
-    step:  step,
-    unit:  {precision: precision},
-    value: value,
-    index: index
-  };
-}
-
-function bisect(a, x, lo, hi) {
-  while (lo < hi) {
-    var mid = lo + hi >>> 1;
-    if (util.cmp(a[mid], x) < 0) { lo = mid + 1; }
-    else { hi = mid; }
-  }
-  return lo;
-}
-
-function value(v) {
-  return this.step * Math.floor(v / this.step + EPSILON);
-}
-
-function index(v) {
-  return Math.floor((v - this.start) / this.step + EPSILON);
-}
-
-function date_value(v) {
-  return this.unit.date(value.call(this, v));
-}
-
-function date_index(v) {
-  return index.call(this, this.unit.unit(v));
-}
-
-bins.date = function(opt) {
-  if (!opt) { throw Error("Missing date binning options."); }
-
-  // find time step, then bin
-  var units = opt.utc ? time.utc : time,
-      dmin = opt.min,
-      dmax = opt.max,
-      maxb = opt.maxbins || 20,
-      minb = opt.minbins || 4,
-      span = (+dmax) - (+dmin),
-      unit = opt.unit ? units[opt.unit] : units.find(span, minb, maxb),
-      spec = bins({
-        min:     unit.min != null ? unit.min : unit.unit(dmin),
-        max:     unit.max != null ? unit.max : unit.unit(dmax),
-        maxbins: maxb,
-        minstep: unit.minstep,
-        steps:   unit.step
-      });
-
-  spec.unit = unit;
-  spec.index = date_index;
-  if (!opt.raw) spec.value = date_value;
-  return spec;
-};
-
-module.exports = bins;
-
-},{"../time":177,"../util":178}],176:[function(require,module,exports){
-var util = require('./util'),
-    gen = module.exports;
-
-gen.repeat = function(val, n) {
-  var a = Array(n), i;
-  for (i=0; i<n; ++i) a[i] = val;
-  return a;
-};
-
-gen.zeros = function(n) {
-  return gen.repeat(0, n);
-};
-
-gen.range = function(start, stop, step) {
-  if (arguments.length < 3) {
-    step = 1;
-    if (arguments.length < 2) {
-      stop = start;
-      start = 0;
-    }
-  }
-  if ((stop - start) / step == Infinity) throw new Error('Infinite range');
-  var range = [], i = -1, j;
-  if (step < 0) while ((j = start + step * ++i) > stop) range.push(j);
-  else while ((j = start + step * ++i) < stop) range.push(j);
-  return range;
-};
-
-gen.random = {};
-
-gen.random.uniform = function(min, max) {
-  if (max === undefined) {
-    max = min === undefined ? 1 : min;
-    min = 0;
-  }
-  var d = max - min;
-  var f = function() {
-    return min + d * Math.random();
-  };
-  f.samples = function(n) {
-    return gen.zeros(n).map(f);
-  };
-  f.pdf = function(x) {
-    return (x >= min && x <= max) ? 1/d : 0;
-  };
-  f.cdf = function(x) {
-    return x < min ? 0 : x > max ? 1 : (x - min) / d;
-  };
-  f.icdf = function(p) {
-    return (p >= 0 && p <= 1) ? min + p*d : NaN;
-  };
-  return f;
-};
-
-gen.random.integer = function(a, b) {
-  if (b === undefined) {
-    b = a;
-    a = 0;
-  }
-  var d = b - a;
-  var f = function() {
-    return a + Math.floor(d * Math.random());
-  };
-  f.samples = function(n) {
-    return gen.zeros(n).map(f);
-  };
-  f.pdf = function(x) {
-    return (x === Math.floor(x) && x >= a && x < b) ? 1/d : 0;
-  };
-  f.cdf = function(x) {
-    var v = Math.floor(x);
-    return v < a ? 0 : v >= b ? 1 : (v - a + 1) / d;
-  };
-  f.icdf = function(p) {
-    return (p >= 0 && p <= 1) ? a - 1 + Math.floor(p*d) : NaN;
-  };
-  return f;
-};
-
-gen.random.normal = function(mean, stdev) {
-  mean = mean || 0;
-  stdev = stdev || 1;
-  var next;
-  var f = function() {
-    var x = 0, y = 0, rds, c;
-    if (next !== undefined) {
-      x = next;
-      next = undefined;
-      return x;
-    }
-    do {
-      x = Math.random()*2-1;
-      y = Math.random()*2-1;
-      rds = x*x + y*y;
-    } while (rds === 0 || rds > 1);
-    c = Math.sqrt(-2*Math.log(rds)/rds); // Box-Muller transform
-    next = mean + y*c*stdev;
-    return mean + x*c*stdev;
-  };
-  f.samples = function(n) {
-    return gen.zeros(n).map(f);
-  };
-  f.pdf = function(x) {
-    var exp = Math.exp(Math.pow(x-mean, 2) / (-2 * Math.pow(stdev, 2)));
-    return (1 / (stdev * Math.sqrt(2*Math.PI))) * exp;
-  };
-  f.cdf = function(x) {
-    // Approximation from West (2009)
-    // Better Approximations to Cumulative Normal Functions
-    var cd,
-        z = (x - mean) / stdev,
-        Z = Math.abs(z);
-    if (Z > 37) {
-      cd = 0;
-    } else {
-      var sum, exp = Math.exp(-Z*Z/2);
-      if (Z < 7.07106781186547) {
-        sum = 3.52624965998911e-02 * Z + 0.700383064443688;
-        sum = sum * Z + 6.37396220353165;
-        sum = sum * Z + 33.912866078383;
-        sum = sum * Z + 112.079291497871;
-        sum = sum * Z + 221.213596169931;
-        sum = sum * Z + 220.206867912376;
-        cd = exp * sum;
-        sum = 8.83883476483184e-02 * Z + 1.75566716318264;
-        sum = sum * Z + 16.064177579207;
-        sum = sum * Z + 86.7807322029461;
-        sum = sum * Z + 296.564248779674;
-        sum = sum * Z + 637.333633378831;
-        sum = sum * Z + 793.826512519948;
-        sum = sum * Z + 440.413735824752;
-        cd = cd / sum;
-      } else {
-        sum = Z + 0.65;
-        sum = Z + 4 / sum;
-        sum = Z + 3 / sum;
-        sum = Z + 2 / sum;
-        sum = Z + 1 / sum;
-        cd = exp / sum / 2.506628274631;
-      }
-    }
-    return z > 0 ? 1 - cd : cd;
-  };
-  f.icdf = function(p) {
-    // Approximation of Probit function using inverse error function.
-    if (p <= 0 || p >= 1) return NaN;
-    var x = 2*p - 1,
-        v = (8 * (Math.PI - 3)) / (3 * Math.PI * (4-Math.PI)),
-        a = (2 / (Math.PI*v)) + (Math.log(1 - Math.pow(x,2)) / 2),
-        b = Math.log(1 - (x*x)) / v,
-        s = (x > 0 ? 1 : -1) * Math.sqrt(Math.sqrt((a*a) - b) - a);
-    return mean + stdev * Math.SQRT2 * s;
-  };
-  return f;
-};
-
-gen.random.bootstrap = function(domain, smooth) {
-  // Generates a bootstrap sample from a set of observations.
-  // Smooth bootstrapping adds random zero-centered noise to the samples.
-  var val = domain.filter(util.isValid),
-      len = val.length,
-      err = smooth ? gen.random.normal(0, smooth) : null;
-  var f = function() {
-    return val[~~(Math.random()*len)] + (err ? err() : 0);
-  };
-  f.samples = function(n) {
-    return gen.zeros(n).map(f);
-  };
-  return f;
-};
-},{"./util":178}],177:[function(require,module,exports){
-var d3_time = require('d3-time');
-
-var tempDate = new Date(),
-    baseDate = new Date(0, 0, 1).setFullYear(0), // Jan 1, 0 AD
-    utcBaseDate = new Date(Date.UTC(0, 0, 1)).setUTCFullYear(0);
-
-function date(d) {
-  return (tempDate.setTime(+d), tempDate);
-}
-
-// create a time unit entry
-function entry(type, date, unit, step, min, max) {
-  var e = {
-    type: type,
-    date: date,
-    unit: unit
-  };
-  if (step) {
-    e.step = step;
-  } else {
-    e.minstep = 1;
-  }
-  if (min != null) e.min = min;
-  if (max != null) e.max = max;
-  return e;
-}
-
-function create(type, unit, base, step, min, max) {
-  return entry(type,
-    function(d) { return unit.offset(base, d); },
-    function(d) { return unit.count(base, d); },
-    step, min, max);
-}
-
-var locale = [
-  create('second', d3_time.second, baseDate),
-  create('minute', d3_time.minute, baseDate),
-  create('hour',   d3_time.hour,   baseDate),
-  create('day',    d3_time.day,    baseDate, [1, 7]),
-  create('month',  d3_time.month,  baseDate, [1, 3, 6]),
-  create('year',   d3_time.year,   baseDate),
-
-  // periodic units
-  entry('seconds',
-    function(d) { return new Date(1970, 0, 1, 0, 0, d); },
-    function(d) { return date(d).getSeconds(); },
-    null, 0, 59
-  ),
-  entry('minutes',
-    function(d) { return new Date(1970, 0, 1, 0, d); },
-    function(d) { return date(d).getMinutes(); },
-    null, 0, 59
-  ),
-  entry('hours',
-    function(d) { return new Date(1970, 0, 1, d); },
-    function(d) { return date(d).getHours(); },
-    null, 0, 23
-  ),
-  entry('weekdays',
-    function(d) { return new Date(1970, 0, 4+d); },
-    function(d) { return date(d).getDay(); },
-    [1], 0, 6
-  ),
-  entry('dates',
-    function(d) { return new Date(1970, 0, d); },
-    function(d) { return date(d).getDate(); },
-    [1], 1, 31
-  ),
-  entry('months',
-    function(d) { return new Date(1970, d % 12, 1); },
-    function(d) { return date(d).getMonth(); },
-    [1], 0, 11
-  )
-];
-
-var utc = [
-  create('second', d3_time.utcSecond, utcBaseDate),
-  create('minute', d3_time.utcMinute, utcBaseDate),
-  create('hour',   d3_time.utcHour,   utcBaseDate),
-  create('day',    d3_time.utcDay,    utcBaseDate, [1, 7]),
-  create('month',  d3_time.utcMonth,  utcBaseDate, [1, 3, 6]),
-  create('year',   d3_time.utcYear,   utcBaseDate),
-
-  // periodic units
-  entry('seconds',
-    function(d) { return new Date(Date.UTC(1970, 0, 1, 0, 0, d)); },
-    function(d) { return date(d).getUTCSeconds(); },
-    null, 0, 59
-  ),
-  entry('minutes',
-    function(d) { return new Date(Date.UTC(1970, 0, 1, 0, d)); },
-    function(d) { return date(d).getUTCMinutes(); },
-    null, 0, 59
-  ),
-  entry('hours',
-    function(d) { return new Date(Date.UTC(1970, 0, 1, d)); },
-    function(d) { return date(d).getUTCHours(); },
-    null, 0, 23
-  ),
-  entry('weekdays',
-    function(d) { return new Date(Date.UTC(1970, 0, 4+d)); },
-    function(d) { return date(d).getUTCDay(); },
-    [1], 0, 6
-  ),
-  entry('dates',
-    function(d) { return new Date(Date.UTC(1970, 0, d)); },
-    function(d) { return date(d).getUTCDate(); },
-    [1], 1, 31
-  ),
-  entry('months',
-    function(d) { return new Date(Date.UTC(1970, d % 12, 1)); },
-    function(d) { return date(d).getUTCMonth(); },
-    [1], 0, 11
-  )
-];
-
-var STEPS = [
-  [31536e6, 5],  // 1-year
-  [7776e6, 4],   // 3-month
-  [2592e6, 4],   // 1-month
-  [12096e5, 3],  // 2-week
-  [6048e5, 3],   // 1-week
-  [1728e5, 3],   // 2-day
-  [864e5, 3],    // 1-day
-  [432e5, 2],    // 12-hour
-  [216e5, 2],    // 6-hour
-  [108e5, 2],    // 3-hour
-  [36e5, 2],     // 1-hour
-  [18e5, 1],     // 30-minute
-  [9e5, 1],      // 15-minute
-  [3e5, 1],      // 5-minute
-  [6e4, 1],      // 1-minute
-  [3e4, 0],      // 30-second
-  [15e3, 0],     // 15-second
-  [5e3, 0],      // 5-second
-  [1e3, 0]       // 1-second
-];
-
-function find(units, span, minb, maxb) {
-  var step = STEPS[0], i, n, bins;
-
-  for (i=1, n=STEPS.length; i<n; ++i) {
-    step = STEPS[i];
-    if (span > step[0]) {
-      bins = span / step[0];
-      if (bins > maxb) {
-        return units[STEPS[i-1][1]];
-      }
-      if (bins >= minb) {
-        return units[step[1]];
-      }
-    }
-  }
-  return units[STEPS[n-1][1]];
-}
-
-function toUnitMap(units) {
-  var map = {}, i, n;
-  for (i=0, n=units.length; i<n; ++i) {
-    map[units[i].type] = units[i];
-  }
-  map.find = function(span, minb, maxb) {
-    return find(units, span, minb, maxb);
-  };
-  return map;
-}
-
-module.exports = toUnitMap(locale);
-module.exports.utc = toUnitMap(utc);
-},{"d3-time":174}],178:[function(require,module,exports){
-(function (Buffer){
-var u = module.exports;
-
-// utility functions
-
-var FNAME = '__name__';
-
-u.namedfunc = function(name, f) { return (f[FNAME] = name, f); };
-
-u.name = function(f) { return f==null ? null : f[FNAME]; };
-
-u.identity = function(x) { return x; };
-
-u.true = u.namedfunc('true', function() { return true; });
-
-u.false = u.namedfunc('false', function() { return false; });
-
-u.duplicate = function(obj) {
-  return JSON.parse(JSON.stringify(obj));
-};
-
-u.equal = function(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
-};
-
-u.extend = function(obj) {
-  for (var x, name, i=1, len=arguments.length; i<len; ++i) {
-    x = arguments[i];
-    for (name in x) { obj[name] = x[name]; }
-  }
-  return obj;
-};
-
-u.length = function(x) {
-  return x != null && x.length != null ? x.length : null;
-};
-
-u.keys = function(x) {
-  var keys = [], k;
-  for (k in x) keys.push(k);
-  return keys;
-};
-
-u.vals = function(x) {
-  var vals = [], k;
-  for (k in x) vals.push(x[k]);
-  return vals;
-};
-
-u.toMap = function(list, f) {
-  return (f = u.$(f)) ?
-    list.reduce(function(obj, x) { return (obj[f(x)] = 1, obj); }, {}) :
-    list.reduce(function(obj, x) { return (obj[x] = 1, obj); }, {});
-};
-
-u.keystr = function(values) {
-  // use to ensure consistent key generation across modules
-  var n = values.length;
-  if (!n) return '';
-  for (var s=String(values[0]), i=1; i<n; ++i) {
-    s += '|' + String(values[i]);
-  }
-  return s;
-};
-
-// type checking functions
-
-var toString = Object.prototype.toString;
-
-u.isObject = function(obj) {
-  return obj === Object(obj);
-};
-
-u.isFunction = function(obj) {
-  return toString.call(obj) === '[object Function]';
-};
-
-u.isString = function(obj) {
-  return typeof value === 'string' || toString.call(obj) === '[object String]';
-};
-
-u.isArray = Array.isArray || function(obj) {
-  return toString.call(obj) === '[object Array]';
-};
-
-u.isNumber = function(obj) {
-  return typeof obj === 'number' || toString.call(obj) === '[object Number]';
-};
-
-u.isBoolean = function(obj) {
-  return obj === true || obj === false || toString.call(obj) == '[object Boolean]';
-};
-
-u.isDate = function(obj) {
-  return toString.call(obj) === '[object Date]';
-};
-
-u.isValid = function(obj) {
-  return obj != null && obj === obj;
-};
-
-u.isBuffer = (typeof Buffer === 'function' && Buffer.isBuffer) || u.false;
-
-// type coercion functions
-
-u.number = function(s) {
-  return s == null || s === '' ? null : +s;
-};
-
-u.boolean = function(s) {
-  return s == null || s === '' ? null : s==='false' ? false : !!s;
-};
-
-// parse a date with optional d3.time-format format
-u.date = function(s, format) {
-  var d = format ? format : Date;
-  return s == null || s === '' ? null : d.parse(s);
-};
-
-u.array = function(x) {
-  return x != null ? (u.isArray(x) ? x : [x]) : [];
-};
-
-u.str = function(x) {
-  return u.isArray(x) ? '[' + x.map(u.str) + ']'
-    : u.isObject(x) || u.isString(x) ?
-      // Output valid JSON and JS source strings.
-      // See http://timelessrepo.com/json-isnt-a-javascript-subset
-      JSON.stringify(x).replace('\u2028','\\u2028').replace('\u2029', '\\u2029')
-    : x;
-};
-
-// data access functions
-
-var field_re = /\[(.*?)\]|[^.\[]+/g;
-
-u.field = function(f) {
-  return String(f).match(field_re).map(function(d) {
-    return d[0] !== '[' ? d :
-      d[1] !== "'" && d[1] !== '"' ? d.slice(1, -1) :
-      d.slice(2, -2).replace(/\\(["'])/g, '$1');
-  });
-};
-
-u.accessor = function(f) {
-  /* jshint evil: true */
-  return f==null || u.isFunction(f) ? f :
-    u.namedfunc(f, Function('x', 'return x[' + u.field(f).map(u.str).join('][') + '];'));
-};
-
-// short-cut for accessor
-u.$ = u.accessor;
-
-u.mutator = function(f) {
-  var s;
-  return u.isString(f) && (s=u.field(f)).length > 1 ?
-    function(x, v) {
-      for (var i=0; i<s.length-1; ++i) x = x[s[i]];
-      x[s[i]] = v;
-    } :
-    function(x, v) { x[f] = v; };
-};
-
-
-u.$func = function(name, op) {
-  return function(f) {
-    f = u.$(f) || u.identity;
-    var n = name + (u.name(f) ? '_'+u.name(f) : '');
-    return u.namedfunc(n, function(d) { return op(f(d)); });
-  };
-};
-
-u.$valid  = u.$func('valid', u.isValid);
-u.$length = u.$func('length', u.length);
-
-u.$in = function(f, values) {
-  f = u.$(f);
-  var map = u.isArray(values) ? u.toMap(values) : values;
-  return function(d) { return !!map[f(d)]; };
-};
-
-// comparison / sorting functions
-
-u.comparator = function(sort) {
-  var sign = [];
-  if (sort === undefined) sort = [];
-  sort = u.array(sort).map(function(f) {
-    var s = 1;
-    if      (f[0] === '-') { s = -1; f = f.slice(1); }
-    else if (f[0] === '+') { s = +1; f = f.slice(1); }
-    sign.push(s);
-    return u.accessor(f);
-  });
-  return function(a,b) {
-    var i, n, f, x, y;
-    for (i=0, n=sort.length; i<n; ++i) {
-      f = sort[i]; x = f(a); y = f(b);
-      if (x < y) return -1 * sign[i];
-      if (x > y) return sign[i];
-    }
-    return 0;
-  };
-};
-
-u.cmp = function(a, b) {
-  if (a < b) {
-    return -1;
-  } else if (a > b) {
-    return 1;
-  } else if (a >= b) {
-    return 0;
-  } else if (a === null) {
-    return -1;
-  } else if (b === null) {
-    return 1;
-  }
-  return NaN;
-};
-
-u.numcmp = function(a, b) { return a - b; };
-
-u.stablesort = function(array, sortBy, keyFn) {
-  var indices = array.reduce(function(idx, v, i) {
-    return (idx[keyFn(v)] = i, idx);
-  }, {});
-
-  array.sort(function(a, b) {
-    var sa = sortBy(a),
-        sb = sortBy(b);
-    return sa < sb ? -1 : sa > sb ? 1
-         : (indices[keyFn(a)] - indices[keyFn(b)]);
-  });
-
-  return array;
-};
-
-// permutes an array using a Knuth shuffle
-u.permute = function(a) {
-  var m = a.length,
-      swap,
-      i;
-
-  while (m) {
-    i = Math.floor(Math.random() * m--);
-    swap = a[m];
-    a[m] = a[i];
-    a[i] = swap;
-  }
-};
-
-// string functions
-
-u.pad = function(s, length, pos, padchar) {
-  padchar = padchar || " ";
-  var d = length - s.length;
-  if (d <= 0) return s;
-  switch (pos) {
-    case 'left':
-      return strrep(d, padchar) + s;
-    case 'middle':
-    case 'center':
-      return strrep(Math.floor(d/2), padchar) +
-         s + strrep(Math.ceil(d/2), padchar);
-    default:
-      return s + strrep(d, padchar);
-  }
-};
-
-function strrep(n, str) {
-  var s = "", i;
-  for (i=0; i<n; ++i) s += str;
-  return s;
-}
-
-u.truncate = function(s, length, pos, word, ellipsis) {
-  var len = s.length;
-  if (len <= length) return s;
-  ellipsis = ellipsis !== undefined ? String(ellipsis) : '\u2026';
-  var l = Math.max(0, length - ellipsis.length);
-
-  switch (pos) {
-    case 'left':
-      return ellipsis + (word ? truncateOnWord(s,l,1) : s.slice(len-l));
-    case 'middle':
-    case 'center':
-      var l1 = Math.ceil(l/2), l2 = Math.floor(l/2);
-      return (word ? truncateOnWord(s,l1) : s.slice(0,l1)) +
-        ellipsis + (word ? truncateOnWord(s,l2,1) : s.slice(len-l2));
-    default:
-      return (word ? truncateOnWord(s,l) : s.slice(0,l)) + ellipsis;
-  }
-};
-
-function truncateOnWord(s, len, rev) {
-  var cnt = 0, tok = s.split(truncate_word_re);
-  if (rev) {
-    s = (tok = tok.reverse())
-      .filter(function(w) { cnt += w.length; return cnt <= len; })
-      .reverse();
-  } else {
-    s = tok.filter(function(w) { cnt += w.length; return cnt <= len; });
-  }
-  return s.length ? s.join('').trim() : tok[0].slice(0, len);
-}
-
-var truncate_word_re = /([\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u180E\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u2028\u2029\u3000\uFEFF])/;
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":388}],179:[function(require,module,exports){
-var json = typeof JSON !== 'undefined' ? JSON : require('jsonify');
-
-module.exports = function (obj, opts) {
-    if (!opts) opts = {};
-    if (typeof opts === 'function') opts = { cmp: opts };
-    var space = opts.space || '';
-    if (typeof space === 'number') space = Array(space+1).join(' ');
-    var cycles = (typeof opts.cycles === 'boolean') ? opts.cycles : false;
-    var replacer = opts.replacer || function(key, value) { return value; };
-
-    var cmp = opts.cmp && (function (f) {
-        return function (node) {
-            return function (a, b) {
-                var aobj = { key: a, value: node[a] };
-                var bobj = { key: b, value: node[b] };
-                return f(aobj, bobj);
-            };
-        };
-    })(opts.cmp);
-
-    var seen = [];
-    return (function stringify (parent, key, node, level) {
-        var indent = space ? ('\n' + new Array(level + 1).join(space)) : '';
-        var colonSeparator = space ? ': ' : ':';
-
-        if (node && node.toJSON && typeof node.toJSON === 'function') {
-            node = node.toJSON();
-        }
-
-        node = replacer.call(parent, key, node);
-
-        if (node === undefined) {
-            return;
-        }
-        if (typeof node !== 'object' || node === null) {
-            return json.stringify(node);
-        }
-        if (isArray(node)) {
-            var out = [];
-            for (var i = 0; i < node.length; i++) {
-                var item = stringify(node, i, node[i], level+1) || json.stringify(null);
-                out.push(indent + space + item);
-            }
-            return '[' + out.join(',') + indent + ']';
-        }
-        else {
-            if (seen.indexOf(node) !== -1) {
-                if (cycles) return json.stringify('__cycle__');
-                throw new TypeError('Converting circular structure to JSON');
-            }
-            else seen.push(node);
-
-            var keys = objectKeys(node).sort(cmp && cmp(node));
-            var out = [];
-            for (var i = 0; i < keys.length; i++) {
-                var key = keys[i];
-                var value = stringify(node, key, node[key], level+1);
-
-                if(!value) continue;
-
-                var keyValue = json.stringify(key)
-                    + colonSeparator
-                    + value;
-                ;
-                out.push(indent + space + keyValue);
-            }
-            seen.splice(seen.indexOf(node), 1);
-            return '{' + out.join(',') + indent + '}';
-        }
-    })({ '': obj }, '', obj, 0);
-};
-
-var isArray = Array.isArray || function (x) {
-    return {}.toString.call(x) === '[object Array]';
-};
-
-var objectKeys = Object.keys || function (obj) {
-    var has = Object.prototype.hasOwnProperty || function () { return true };
-    var keys = [];
-    for (var key in obj) {
-        if (has.call(obj, key)) keys.push(key);
-    }
-    return keys;
-};
-
-},{"jsonify":180}],180:[function(require,module,exports){
-exports.parse = require('./lib/parse');
-exports.stringify = require('./lib/stringify');
-
-},{"./lib/parse":181,"./lib/stringify":182}],181:[function(require,module,exports){
-var at, // The index of the current character
-    ch, // The current character
-    escapee = {
-        '"':  '"',
-        '\\': '\\',
-        '/':  '/',
-        b:    '\b',
-        f:    '\f',
-        n:    '\n',
-        r:    '\r',
-        t:    '\t'
-    },
-    text,
-
-    error = function (m) {
-        // Call error when something is wrong.
-        throw {
-            name:    'SyntaxError',
-            message: m,
-            at:      at,
-            text:    text
-        };
-    },
-    
-    next = function (c) {
-        // If a c parameter is provided, verify that it matches the current character.
-        if (c && c !== ch) {
-            error("Expected '" + c + "' instead of '" + ch + "'");
-        }
-        
-        // Get the next character. When there are no more characters,
-        // return the empty string.
-        
-        ch = text.charAt(at);
-        at += 1;
-        return ch;
-    },
-    
-    number = function () {
-        // Parse a number value.
-        var number,
-            string = '';
-        
-        if (ch === '-') {
-            string = '-';
-            next('-');
-        }
-        while (ch >= '0' && ch <= '9') {
-            string += ch;
-            next();
-        }
-        if (ch === '.') {
-            string += '.';
-            while (next() && ch >= '0' && ch <= '9') {
-                string += ch;
-            }
-        }
-        if (ch === 'e' || ch === 'E') {
-            string += ch;
-            next();
-            if (ch === '-' || ch === '+') {
-                string += ch;
-                next();
-            }
-            while (ch >= '0' && ch <= '9') {
-                string += ch;
-                next();
-            }
-        }
-        number = +string;
-        if (!isFinite(number)) {
-            error("Bad number");
-        } else {
-            return number;
-        }
-    },
-    
-    string = function () {
-        // Parse a string value.
-        var hex,
-            i,
-            string = '',
-            uffff;
-        
-        // When parsing for string values, we must look for " and \ characters.
-        if (ch === '"') {
-            while (next()) {
-                if (ch === '"') {
-                    next();
-                    return string;
-                } else if (ch === '\\') {
-                    next();
-                    if (ch === 'u') {
-                        uffff = 0;
-                        for (i = 0; i < 4; i += 1) {
-                            hex = parseInt(next(), 16);
-                            if (!isFinite(hex)) {
-                                break;
-                            }
-                            uffff = uffff * 16 + hex;
-                        }
-                        string += String.fromCharCode(uffff);
-                    } else if (typeof escapee[ch] === 'string') {
-                        string += escapee[ch];
-                    } else {
-                        break;
-                    }
-                } else {
-                    string += ch;
-                }
-            }
-        }
-        error("Bad string");
-    },
-
-    white = function () {
-
-// Skip whitespace.
-
-        while (ch && ch <= ' ') {
-            next();
-        }
-    },
-
-    word = function () {
-
-// true, false, or null.
-
-        switch (ch) {
-        case 't':
-            next('t');
-            next('r');
-            next('u');
-            next('e');
-            return true;
-        case 'f':
-            next('f');
-            next('a');
-            next('l');
-            next('s');
-            next('e');
-            return false;
-        case 'n':
-            next('n');
-            next('u');
-            next('l');
-            next('l');
-            return null;
-        }
-        error("Unexpected '" + ch + "'");
-    },
-
-    value,  // Place holder for the value function.
-
-    array = function () {
-
-// Parse an array value.
-
-        var array = [];
-
-        if (ch === '[') {
-            next('[');
-            white();
-            if (ch === ']') {
-                next(']');
-                return array;   // empty array
-            }
-            while (ch) {
-                array.push(value());
-                white();
-                if (ch === ']') {
-                    next(']');
-                    return array;
-                }
-                next(',');
-                white();
-            }
-        }
-        error("Bad array");
-    },
-
-    object = function () {
-
-// Parse an object value.
-
-        var key,
-            object = {};
-
-        if (ch === '{') {
-            next('{');
-            white();
-            if (ch === '}') {
-                next('}');
-                return object;   // empty object
-            }
-            while (ch) {
-                key = string();
-                white();
-                next(':');
-                if (Object.hasOwnProperty.call(object, key)) {
-                    error('Duplicate key "' + key + '"');
-                }
-                object[key] = value();
-                white();
-                if (ch === '}') {
-                    next('}');
-                    return object;
-                }
-                next(',');
-                white();
-            }
-        }
-        error("Bad object");
-    };
-
-value = function () {
-
-// Parse a JSON value. It could be an object, an array, a string, a number,
-// or a word.
-
-    white();
-    switch (ch) {
-    case '{':
-        return object();
-    case '[':
-        return array();
-    case '"':
-        return string();
-    case '-':
-        return number();
-    default:
-        return ch >= '0' && ch <= '9' ? number() : word();
-    }
-};
-
-// Return the json_parse function. It will have access to all of the above
-// functions and variables.
-
-module.exports = function (source, reviver) {
-    var result;
-    
-    text = source;
-    at = 0;
-    ch = ' ';
-    result = value();
-    white();
-    if (ch) {
-        error("Syntax error");
-    }
-
-    // If there is a reviver function, we recursively walk the new structure,
-    // passing each name/value pair to the reviver function for possible
-    // transformation, starting with a temporary root object that holds the result
-    // in an empty key. If there is not a reviver function, we simply return the
-    // result.
-
-    return typeof reviver === 'function' ? (function walk(holder, key) {
-        var k, v, value = holder[key];
-        if (value && typeof value === 'object') {
-            for (k in value) {
-                if (Object.prototype.hasOwnProperty.call(value, k)) {
-                    v = walk(value, k);
-                    if (v !== undefined) {
-                        value[k] = v;
-                    } else {
-                        delete value[k];
-                    }
-                }
-            }
-        }
-        return reviver.call(holder, key, value);
-    }({'': result}, '')) : result;
-};
-
-},{}],182:[function(require,module,exports){
-var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-    escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-    gap,
-    indent,
-    meta = {    // table of character substitutions
-        '\b': '\\b',
-        '\t': '\\t',
-        '\n': '\\n',
-        '\f': '\\f',
-        '\r': '\\r',
-        '"' : '\\"',
-        '\\': '\\\\'
-    },
-    rep;
-
-function quote(string) {
-    // If the string contains no control characters, no quote characters, and no
-    // backslash characters, then we can safely slap some quotes around it.
-    // Otherwise we must also replace the offending characters with safe escape
-    // sequences.
-    
-    escapable.lastIndex = 0;
-    return escapable.test(string) ? '"' + string.replace(escapable, function (a) {
-        var c = meta[a];
-        return typeof c === 'string' ? c :
-            '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
-    }) + '"' : '"' + string + '"';
-}
-
-function str(key, holder) {
-    // Produce a string from holder[key].
-    var i,          // The loop counter.
-        k,          // The member key.
-        v,          // The member value.
-        length,
-        mind = gap,
-        partial,
-        value = holder[key];
-    
-    // If the value has a toJSON method, call it to obtain a replacement value.
-    if (value && typeof value === 'object' &&
-            typeof value.toJSON === 'function') {
-        value = value.toJSON(key);
-    }
-    
-    // If we were called with a replacer function, then call the replacer to
-    // obtain a replacement value.
-    if (typeof rep === 'function') {
-        value = rep.call(holder, key, value);
-    }
-    
-    // What happens next depends on the value's type.
-    switch (typeof value) {
-        case 'string':
-            return quote(value);
-        
-        case 'number':
-            // JSON numbers must be finite. Encode non-finite numbers as null.
-            return isFinite(value) ? String(value) : 'null';
-        
-        case 'boolean':
-        case 'null':
-            // If the value is a boolean or null, convert it to a string. Note:
-            // typeof null does not produce 'null'. The case is included here in
-            // the remote chance that this gets fixed someday.
-            return String(value);
-            
-        case 'object':
-            if (!value) return 'null';
-            gap += indent;
-            partial = [];
-            
-            // Array.isArray
-            if (Object.prototype.toString.apply(value) === '[object Array]') {
-                length = value.length;
-                for (i = 0; i < length; i += 1) {
-                    partial[i] = str(i, value) || 'null';
-                }
-                
-                // Join all of the elements together, separated with commas, and
-                // wrap them in brackets.
-                v = partial.length === 0 ? '[]' : gap ?
-                    '[\n' + gap + partial.join(',\n' + gap) + '\n' + mind + ']' :
-                    '[' + partial.join(',') + ']';
-                gap = mind;
-                return v;
-            }
-            
-            // If the replacer is an array, use it to select the members to be
-            // stringified.
-            if (rep && typeof rep === 'object') {
-                length = rep.length;
-                for (i = 0; i < length; i += 1) {
-                    k = rep[i];
-                    if (typeof k === 'string') {
-                        v = str(k, value);
-                        if (v) {
-                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                        }
-                    }
-                }
-            }
-            else {
-                // Otherwise, iterate through all of the keys in the object.
-                for (k in value) {
-                    if (Object.prototype.hasOwnProperty.call(value, k)) {
-                        v = str(k, value);
-                        if (v) {
-                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                        }
-                    }
-                }
-            }
-            
-        // Join all of the member texts together, separated with commas,
-        // and wrap them in braces.
-
-        v = partial.length === 0 ? '{}' : gap ?
-            '{\n' + gap + partial.join(',\n' + gap) + '\n' + mind + '}' :
-            '{' + partial.join(',') + '}';
-        gap = mind;
-        return v;
-    }
-}
-
-module.exports = function (value, replacer, space) {
-    var i;
-    gap = '';
-    indent = '';
-    
-    // If the space parameter is a number, make an indent string containing that
-    // many spaces.
-    if (typeof space === 'number') {
-        for (i = 0; i < space; i += 1) {
-            indent += ' ';
-        }
-    }
-    // If the space parameter is a string, it will be used as the indent string.
-    else if (typeof space === 'string') {
-        indent = space;
-    }
-
-    // If there is a replacer, it must be a function or an array.
-    // Otherwise, throw an error.
-    rep = replacer;
-    if (replacer && typeof replacer !== 'function'
-    && (typeof replacer !== 'object' || typeof replacer.length !== 'number')) {
-        throw new Error('JSON.stringify');
-    }
-    
-    // Make a fake root object containing our value under the key of ''.
-    // Return the result of stringifying the value.
-    return str('', {'': value});
-};
-
-},{}],183:[function(require,module,exports){
-"use strict";
-(function (AggregateOp) {
-    AggregateOp[AggregateOp["VALUES"] = 'values'] = "VALUES";
-    AggregateOp[AggregateOp["COUNT"] = 'count'] = "COUNT";
-    AggregateOp[AggregateOp["VALID"] = 'valid'] = "VALID";
-    AggregateOp[AggregateOp["MISSING"] = 'missing'] = "MISSING";
-    AggregateOp[AggregateOp["DISTINCT"] = 'distinct'] = "DISTINCT";
-    AggregateOp[AggregateOp["SUM"] = 'sum'] = "SUM";
-    AggregateOp[AggregateOp["MEAN"] = 'mean'] = "MEAN";
-    AggregateOp[AggregateOp["AVERAGE"] = 'average'] = "AVERAGE";
-    AggregateOp[AggregateOp["VARIANCE"] = 'variance'] = "VARIANCE";
-    AggregateOp[AggregateOp["VARIANCEP"] = 'variancep'] = "VARIANCEP";
-    AggregateOp[AggregateOp["STDEV"] = 'stdev'] = "STDEV";
-    AggregateOp[AggregateOp["STDEVP"] = 'stdevp'] = "STDEVP";
-    AggregateOp[AggregateOp["MEDIAN"] = 'median'] = "MEDIAN";
-    AggregateOp[AggregateOp["Q1"] = 'q1'] = "Q1";
-    AggregateOp[AggregateOp["Q3"] = 'q3'] = "Q3";
-    AggregateOp[AggregateOp["MODESKEW"] = 'modeskew'] = "MODESKEW";
-    AggregateOp[AggregateOp["MIN"] = 'min'] = "MIN";
-    AggregateOp[AggregateOp["MAX"] = 'max'] = "MAX";
-    AggregateOp[AggregateOp["ARGMIN"] = 'argmin'] = "ARGMIN";
-    AggregateOp[AggregateOp["ARGMAX"] = 'argmax'] = "ARGMAX";
-})(exports.AggregateOp || (exports.AggregateOp = {}));
-var AggregateOp = exports.AggregateOp;
-exports.AGGREGATE_OPS = [
-    AggregateOp.VALUES,
-    AggregateOp.COUNT,
-    AggregateOp.VALID,
-    AggregateOp.MISSING,
-    AggregateOp.DISTINCT,
-    AggregateOp.SUM,
-    AggregateOp.MEAN,
-    AggregateOp.AVERAGE,
-    AggregateOp.VARIANCE,
-    AggregateOp.VARIANCEP,
-    AggregateOp.STDEV,
-    AggregateOp.STDEVP,
-    AggregateOp.MEDIAN,
-    AggregateOp.Q1,
-    AggregateOp.Q3,
-    AggregateOp.MODESKEW,
-    AggregateOp.MIN,
-    AggregateOp.MAX,
-    AggregateOp.ARGMIN,
-    AggregateOp.ARGMAX,
-];
-exports.SHARED_DOMAIN_OPS = [
-    AggregateOp.MEAN,
-    AggregateOp.AVERAGE,
-    AggregateOp.STDEV,
-    AggregateOp.STDEVP,
-    AggregateOp.MEDIAN,
-    AggregateOp.Q1,
-    AggregateOp.Q3,
-    AggregateOp.MIN,
-    AggregateOp.MAX,
-];
-
-},{}],184:[function(require,module,exports){
-"use strict";
-(function (AxisOrient) {
-    AxisOrient[AxisOrient["TOP"] = 'top'] = "TOP";
-    AxisOrient[AxisOrient["RIGHT"] = 'right'] = "RIGHT";
-    AxisOrient[AxisOrient["LEFT"] = 'left'] = "LEFT";
-    AxisOrient[AxisOrient["BOTTOM"] = 'bottom'] = "BOTTOM";
-})(exports.AxisOrient || (exports.AxisOrient = {}));
-var AxisOrient = exports.AxisOrient;
-exports.defaultAxisConfig = {
-    offset: undefined,
-    grid: undefined,
-    labels: true,
-    labelMaxLength: 25,
-    tickSize: undefined,
-    characterWidth: 6
-};
-exports.defaultFacetAxisConfig = {
-    axisWidth: 0,
-    labels: true,
-    grid: false,
-    tickSize: 0
-};
-
-},{}],185:[function(require,module,exports){
-"use strict";
-var channel_1 = require('./channel');
-function autoMaxBins(channel) {
-    switch (channel) {
-        case channel_1.ROW:
-        case channel_1.COLUMN:
-        case channel_1.SIZE:
-        case channel_1.SHAPE:
-            return 6;
-        default:
-            return 10;
-    }
-}
-exports.autoMaxBins = autoMaxBins;
-
-},{"./channel":186}],186:[function(require,module,exports){
-"use strict";
-var util_1 = require('./util');
-(function (Channel) {
-    Channel[Channel["X"] = 'x'] = "X";
-    Channel[Channel["Y"] = 'y'] = "Y";
-    Channel[Channel["ROW"] = 'row'] = "ROW";
-    Channel[Channel["COLUMN"] = 'column'] = "COLUMN";
-    Channel[Channel["SHAPE"] = 'shape'] = "SHAPE";
-    Channel[Channel["SIZE"] = 'size'] = "SIZE";
-    Channel[Channel["COLOR"] = 'color'] = "COLOR";
-    Channel[Channel["TEXT"] = 'text'] = "TEXT";
-    Channel[Channel["DETAIL"] = 'detail'] = "DETAIL";
-    Channel[Channel["LABEL"] = 'label'] = "LABEL";
-    Channel[Channel["PATH"] = 'path'] = "PATH";
-    Channel[Channel["ORDER"] = 'order'] = "ORDER";
-    Channel[Channel["OPACITY"] = 'opacity'] = "OPACITY";
-})(exports.Channel || (exports.Channel = {}));
-var Channel = exports.Channel;
-exports.X = Channel.X;
-exports.Y = Channel.Y;
-exports.ROW = Channel.ROW;
-exports.COLUMN = Channel.COLUMN;
-exports.SHAPE = Channel.SHAPE;
-exports.SIZE = Channel.SIZE;
-exports.COLOR = Channel.COLOR;
-exports.TEXT = Channel.TEXT;
-exports.DETAIL = Channel.DETAIL;
-exports.LABEL = Channel.LABEL;
-exports.PATH = Channel.PATH;
-exports.ORDER = Channel.ORDER;
-exports.OPACITY = Channel.OPACITY;
-exports.CHANNELS = [exports.X, exports.Y, exports.ROW, exports.COLUMN, exports.SIZE, exports.SHAPE, exports.COLOR, exports.PATH, exports.ORDER, exports.OPACITY, exports.TEXT, exports.DETAIL, exports.LABEL];
-exports.UNIT_CHANNELS = util_1.without(exports.CHANNELS, [exports.ROW, exports.COLUMN]);
-exports.UNIT_SCALE_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.PATH, exports.ORDER, exports.DETAIL, exports.TEXT, exports.LABEL]);
-exports.NONSPATIAL_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.X, exports.Y]);
-exports.NONSPATIAL_SCALE_CHANNELS = util_1.without(exports.UNIT_SCALE_CHANNELS, [exports.X, exports.Y]);
-;
-function supportMark(channel, mark) {
-    return !!getSupportedMark(channel)[mark];
-}
-exports.supportMark = supportMark;
-function getSupportedMark(channel) {
-    switch (channel) {
-        case exports.X:
-        case exports.Y:
-        case exports.COLOR:
-        case exports.DETAIL:
-        case exports.ORDER:
-        case exports.OPACITY:
-        case exports.ROW:
-        case exports.COLUMN:
-            return {
-                point: true, tick: true, rule: true, circle: true, square: true,
-                bar: true, line: true, area: true, text: true
-            };
-        case exports.SIZE:
-            return {
-                point: true, tick: true, rule: true, circle: true, square: true,
-                bar: true, text: true
-            };
-        case exports.SHAPE:
-            return { point: true };
-        case exports.TEXT:
-            return { text: true };
-        case exports.PATH:
-            return { line: true };
-    }
-    return {};
-}
-exports.getSupportedMark = getSupportedMark;
-;
-function getSupportedRole(channel) {
-    switch (channel) {
-        case exports.X:
-        case exports.Y:
-        case exports.COLOR:
-        case exports.OPACITY:
-        case exports.LABEL:
-            return {
-                measure: true,
-                dimension: true
-            };
-        case exports.ROW:
-        case exports.COLUMN:
-        case exports.SHAPE:
-        case exports.DETAIL:
-            return {
-                measure: false,
-                dimension: true
-            };
-        case exports.SIZE:
-        case exports.TEXT:
-            return {
-                measure: true,
-                dimension: false
-            };
-        case exports.PATH:
-            return {
-                measure: false,
-                dimension: true
-            };
-    }
-    throw new Error('Invalid encoding channel' + channel);
-}
-exports.getSupportedRole = getSupportedRole;
-function hasScale(channel) {
-    return !util_1.contains([exports.DETAIL, exports.PATH, exports.TEXT, exports.LABEL, exports.ORDER], channel);
-}
-exports.hasScale = hasScale;
-
-},{"./util":233}],187:[function(require,module,exports){
-"use strict";
-var axis_1 = require('../axis');
-var channel_1 = require('../channel');
-var fielddef_1 = require('../fielddef');
-var type_1 = require('../type');
-var util_1 = require('../util');
-var common_1 = require('./common');
-function parseAxisComponent(model, axisChannels) {
-    return axisChannels.reduce(function (axis, channel) {
-        if (model.axis(channel)) {
-            axis[channel] = parseAxis(channel, model);
-        }
-        return axis;
-    }, {});
-}
-exports.parseAxisComponent = parseAxisComponent;
-function parseInnerAxis(channel, model) {
-    var isCol = channel === channel_1.COLUMN, isRow = channel === channel_1.ROW, type = isCol ? 'x' : isRow ? 'y' : channel;
-    var def = {
-        type: type,
-        scale: model.scaleName(channel),
-        grid: true,
-        tickSize: 0,
-        properties: {
-            labels: {
-                text: { value: '' }
-            },
-            axis: {
-                stroke: { value: 'transparent' }
-            }
-        }
-    };
-    var axis = model.axis(channel);
-    ['layer', 'ticks', 'values', 'subdivide'].forEach(function (property) {
-        var method;
-        var value = (method = exports[property]) ?
-            method(model, channel, def) :
-            axis[property];
-        if (value !== undefined) {
-            def[property] = value;
-        }
-    });
-    var props = model.axis(channel).properties || {};
-    ['grid'].forEach(function (group) {
-        var value = properties[group] ?
-            properties[group](model, channel, props[group] || {}, def) :
-            props[group];
-        if (value !== undefined && util_1.keys(value).length > 0) {
-            def.properties = def.properties || {};
-            def.properties[group] = value;
-        }
-    });
-    return def;
-}
-exports.parseInnerAxis = parseInnerAxis;
-function parseAxis(channel, model) {
-    var isCol = channel === channel_1.COLUMN, isRow = channel === channel_1.ROW, type = isCol ? 'x' : isRow ? 'y' : channel;
-    var axis = model.axis(channel);
-    var def = {
-        type: type,
-        scale: model.scaleName(channel)
-    };
-    util_1.extend(def, common_1.formatMixins(model, channel, model.axis(channel).format));
-    [
-        'grid', 'layer', 'offset', 'orient', 'tickSize', 'ticks', 'tickSizeEnd', 'title', 'titleOffset',
-        'tickPadding', 'tickSize', 'tickSizeMajor', 'tickSizeMinor', 'values', 'subdivide'
-    ].forEach(function (property) {
-        var method;
-        var value = (method = exports[property]) ?
-            method(model, channel, def) :
-            axis[property];
-        if (value !== undefined) {
-            def[property] = value;
-        }
-    });
-    var props = model.axis(channel).properties || {};
-    [
-        'axis', 'labels',
-        'grid', 'title', 'ticks', 'majorTicks', 'minorTicks'
-    ].forEach(function (group) {
-        var value = properties[group] ?
-            properties[group](model, channel, props[group] || {}, def) :
-            props[group];
-        if (value !== undefined && util_1.keys(value).length > 0) {
-            def.properties = def.properties || {};
-            def.properties[group] = value;
-        }
-    });
-    return def;
-}
-exports.parseAxis = parseAxis;
-function offset(model, channel) {
-    return model.axis(channel).offset;
-}
-exports.offset = offset;
-function gridShow(model, channel) {
-    var grid = model.axis(channel).grid;
-    if (grid !== undefined) {
-        return grid;
-    }
-    return !model.isOrdinalScale(channel) && !model.fieldDef(channel).bin;
-}
-exports.gridShow = gridShow;
-function grid(model, channel) {
-    if (channel === channel_1.ROW || channel === channel_1.COLUMN) {
-        return undefined;
-    }
-    return gridShow(model, channel) && ((channel === channel_1.Y || channel === channel_1.X) && !(model.parent() && model.parent().isFacet()));
-}
-exports.grid = grid;
-function layer(model, channel, def) {
-    var layer = model.axis(channel).layer;
-    if (layer !== undefined) {
-        return layer;
-    }
-    if (def.grid) {
-        return 'back';
-    }
-    return undefined;
-}
-exports.layer = layer;
-;
-function orient(model, channel) {
-    var orient = model.axis(channel).orient;
-    if (orient) {
-        return orient;
-    }
-    else if (channel === channel_1.COLUMN) {
-        return axis_1.AxisOrient.TOP;
-    }
-    return undefined;
-}
-exports.orient = orient;
-function ticks(model, channel) {
-    var ticks = model.axis(channel).ticks;
-    if (ticks !== undefined) {
-        return ticks;
-    }
-    if (channel === channel_1.X && !model.fieldDef(channel).bin) {
-        return 5;
-    }
-    return undefined;
-}
-exports.ticks = ticks;
-function tickSize(model, channel) {
-    var tickSize = model.axis(channel).tickSize;
-    if (tickSize !== undefined) {
-        return tickSize;
-    }
-    return undefined;
-}
-exports.tickSize = tickSize;
-function tickSizeEnd(model, channel) {
-    var tickSizeEnd = model.axis(channel).tickSizeEnd;
-    if (tickSizeEnd !== undefined) {
-        return tickSizeEnd;
-    }
-    return undefined;
-}
-exports.tickSizeEnd = tickSizeEnd;
-function title(model, channel) {
-    var axis = model.axis(channel);
-    if (axis.title !== undefined) {
-        return axis.title;
-    }
-    var fieldTitle = fielddef_1.title(model.fieldDef(channel));
-    var maxLength;
-    if (axis.titleMaxLength) {
-        maxLength = axis.titleMaxLength;
-    }
-    else if (channel === channel_1.X && !model.isOrdinalScale(channel_1.X)) {
-        var unitModel = model;
-        maxLength = unitModel.config().cell.width / model.axis(channel_1.X).characterWidth;
-    }
-    else if (channel === channel_1.Y && !model.isOrdinalScale(channel_1.Y)) {
-        var unitModel = model;
-        maxLength = unitModel.config().cell.height / model.axis(channel_1.Y).characterWidth;
-    }
-    return maxLength ? util_1.truncate(fieldTitle, maxLength) : fieldTitle;
-}
-exports.title = title;
-function titleOffset(model, channel) {
-    var titleOffset = model.axis(channel).titleOffset;
-    if (titleOffset !== undefined) {
-        return titleOffset;
-    }
-    return undefined;
-}
-exports.titleOffset = titleOffset;
-var properties;
-(function (properties) {
-    function axis(model, channel, axisPropsSpec) {
-        var axis = model.axis(channel);
-        return util_1.extend(axis.axisColor !== undefined ?
-            { stroke: { value: axis.axisColor } } :
-            {}, axis.axisWidth !== undefined ?
-            { strokeWidth: { value: axis.axisWidth } } :
-            {}, axisPropsSpec || {});
-    }
-    properties.axis = axis;
-    function grid(model, channel, gridPropsSpec) {
-        var axis = model.axis(channel);
-        return util_1.extend(axis.gridColor !== undefined ? { stroke: { value: axis.gridColor } } : {}, axis.gridOpacity !== undefined ? { strokeOpacity: { value: axis.gridOpacity } } : {}, axis.gridWidth !== undefined ? { strokeWidth: { value: axis.gridWidth } } : {}, axis.gridDash !== undefined ? { strokeDashOffset: { value: axis.gridDash } } : {}, gridPropsSpec || {});
-    }
-    properties.grid = grid;
-    function labels(model, channel, labelsSpec, def) {
-        var fieldDef = model.fieldDef(channel);
-        var axis = model.axis(channel);
-        if (!axis.labels) {
-            return util_1.extend({
-                text: ''
-            }, labelsSpec);
-        }
-        if (util_1.contains([type_1.NOMINAL, type_1.ORDINAL], fieldDef.type) && axis.labelMaxLength) {
-            labelsSpec = util_1.extend({
-                text: {
-                    template: '{{ datum.data | truncate:' + axis.labelMaxLength + '}}'
-                }
-            }, labelsSpec || {});
-        }
-        if (axis.labelAngle !== undefined) {
-            labelsSpec.angle = { value: axis.labelAngle };
-        }
-        else {
-            if (channel === channel_1.X && (fielddef_1.isDimension(fieldDef) || fieldDef.type === type_1.TEMPORAL)) {
-                labelsSpec.angle = { value: 270 };
-            }
-        }
-        if (axis.labelAlign !== undefined) {
-            labelsSpec.align = { value: axis.labelAlign };
-        }
-        else {
-            if (labelsSpec.angle) {
-                if (labelsSpec.angle.value === 270) {
-                    labelsSpec.align = {
-                        value: def.orient === 'top' ? 'left' :
-                            def.type === 'x' ? 'right' :
-                                'center'
-                    };
-                }
-                else if (labelsSpec.angle.value === 90) {
-                    labelsSpec.align = { value: 'center' };
-                }
-            }
-        }
-        if (axis.labelBaseline !== undefined) {
-            labelsSpec.baseline = { value: axis.labelBaseline };
-        }
-        else {
-            if (labelsSpec.angle) {
-                if (labelsSpec.angle.value === 270) {
-                    labelsSpec.baseline = { value: def.type === 'x' ? 'middle' : 'bottom' };
-                }
-                else if (labelsSpec.angle.value === 90) {
-                    labelsSpec.baseline = { value: 'bottom' };
-                }
-            }
-        }
-        if (axis.tickLabelColor !== undefined) {
-            labelsSpec.stroke = { value: axis.tickLabelColor };
-        }
-        if (axis.tickLabelFont !== undefined) {
-            labelsSpec.font = { value: axis.tickLabelFont };
-        }
-        if (axis.tickLabelFontSize !== undefined) {
-            labelsSpec.fontSize = { value: axis.tickLabelFontSize };
-        }
-        return util_1.keys(labelsSpec).length === 0 ? undefined : labelsSpec;
-    }
-    properties.labels = labels;
-    function ticks(model, channel, ticksPropsSpec) {
-        var axis = model.axis(channel);
-        return util_1.extend(axis.tickColor !== undefined ? { stroke: { value: axis.tickColor } } : {}, axis.tickWidth !== undefined ? { strokeWidth: { value: axis.tickWidth } } : {}, ticksPropsSpec || {});
-    }
-    properties.ticks = ticks;
-    function title(model, channel, titlePropsSpec) {
-        var axis = model.axis(channel);
-        return util_1.extend(axis.titleColor !== undefined ? { stroke: { value: axis.titleColor } } : {}, axis.titleFont !== undefined ? { font: { value: axis.titleFont } } : {}, axis.titleFontSize !== undefined ? { fontSize: { value: axis.titleFontSize } } : {}, axis.titleFontWeight !== undefined ? { fontWeight: { value: axis.titleFontWeight } } : {}, titlePropsSpec || {});
-    }
-    properties.title = title;
-})(properties = exports.properties || (exports.properties = {}));
-
-},{"../axis":184,"../channel":186,"../fielddef":224,"../type":232,"../util":233,"./common":188}],188:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../channel');
-var fielddef_1 = require('../fielddef');
-var sort_1 = require('../sort');
-var type_1 = require('../type');
-var util_1 = require('../util');
-var facet_1 = require('./facet');
-var layer_1 = require('./layer');
-var timeunit_1 = require('../timeunit');
-var unit_1 = require('./unit');
-var spec_1 = require('../spec');
-function buildModel(spec, parent, parentGivenName) {
-    if (spec_1.isFacetSpec(spec)) {
-        return new facet_1.FacetModel(spec, parent, parentGivenName);
-    }
-    if (spec_1.isLayerSpec(spec)) {
-        return new layer_1.LayerModel(spec, parent, parentGivenName);
-    }
-    if (spec_1.isUnitSpec(spec)) {
-        return new unit_1.UnitModel(spec, parent, parentGivenName);
-    }
-    console.error('Invalid spec.');
-    return null;
-}
-exports.buildModel = buildModel;
-exports.STROKE_CONFIG = ['stroke', 'strokeWidth',
-    'strokeDash', 'strokeDashOffset', 'strokeOpacity', 'opacity'];
-exports.FILL_CONFIG = ['fill', 'fillOpacity',
-    'opacity'];
-exports.FILL_STROKE_CONFIG = util_1.union(exports.STROKE_CONFIG, exports.FILL_CONFIG);
-function applyColorAndOpacity(p, model) {
-    var filled = model.config().mark.filled;
-    var colorFieldDef = model.fieldDef(channel_1.COLOR);
-    var opacityFieldDef = model.fieldDef(channel_1.OPACITY);
-    if (filled) {
-        applyMarkConfig(p, model, exports.FILL_CONFIG);
-    }
-    else {
-        applyMarkConfig(p, model, exports.STROKE_CONFIG);
-    }
-    var colorValue;
-    var opacityValue;
-    if (model.has(channel_1.COLOR)) {
-        colorValue = {
-            scale: model.scaleName(channel_1.COLOR),
-            field: model.field(channel_1.COLOR, colorFieldDef.type === type_1.ORDINAL ? { prefn: 'rank_' } : {})
-        };
-    }
-    else if (colorFieldDef && colorFieldDef.value) {
-        colorValue = { value: colorFieldDef.value };
-    }
-    if (model.has(channel_1.OPACITY)) {
-        opacityValue = {
-            scale: model.scaleName(channel_1.OPACITY),
-            field: model.field(channel_1.OPACITY, opacityFieldDef.type === type_1.ORDINAL ? { prefn: 'rank_' } : {})
-        };
-    }
-    else if (opacityFieldDef && opacityFieldDef.value) {
-        opacityValue = { value: opacityFieldDef.value };
-    }
-    if (colorValue !== undefined) {
-        if (filled) {
-            p.fill = colorValue;
-        }
-        else {
-            p.stroke = colorValue;
-        }
-    }
-    else {
-        p[filled ? 'fill' : 'stroke'] = p[filled ? 'fill' : 'stroke'] ||
-            { value: model.config().mark.color };
-    }
-    if (opacityValue !== undefined) {
-        p.opacity = opacityValue;
-    }
-}
-exports.applyColorAndOpacity = applyColorAndOpacity;
-function applyConfig(properties, config, propsList) {
-    propsList.forEach(function (property) {
-        var value = config[property];
-        if (value !== undefined) {
-            properties[property] = { value: value };
-        }
-    });
-    return properties;
-}
-exports.applyConfig = applyConfig;
-function applyMarkConfig(marksProperties, model, propsList) {
-    return applyConfig(marksProperties, model.config().mark, propsList);
-}
-exports.applyMarkConfig = applyMarkConfig;
-function formatMixins(model, channel, format) {
-    var fieldDef = model.fieldDef(channel);
-    if (!util_1.contains([type_1.QUANTITATIVE, type_1.TEMPORAL], fieldDef.type)) {
-        return {};
-    }
-    var def = {};
-    if (fieldDef.type === type_1.TEMPORAL) {
-        def.formatType = 'time';
-    }
-    if (format !== undefined) {
-        def.format = format;
-    }
-    else {
-        switch (fieldDef.type) {
-            case type_1.QUANTITATIVE:
-                def.format = model.config().numberFormat;
-                break;
-            case type_1.TEMPORAL:
-                def.format = timeFormat(model, channel) || model.config().timeFormat;
-                break;
-        }
-    }
-    if (channel === channel_1.TEXT) {
-        var filter = (def.formatType || 'number') + (def.format ? ':\'' + def.format + '\'' : '');
-        return {
-            text: {
-                template: '{{' + model.field(channel, { datum: true }) + ' | ' + filter + '}}'
-            }
-        };
-    }
-    return def;
-}
-exports.formatMixins = formatMixins;
-function isAbbreviated(model, channel, fieldDef) {
-    switch (channel) {
-        case channel_1.ROW:
-        case channel_1.COLUMN:
-        case channel_1.X:
-        case channel_1.Y:
-            return model.axis(channel).shortTimeLabels;
-        case channel_1.COLOR:
-        case channel_1.OPACITY:
-        case channel_1.SHAPE:
-        case channel_1.SIZE:
-            return model.legend(channel).shortTimeLabels;
-        case channel_1.TEXT:
-            return model.config().mark.shortTimeLabels;
-        case channel_1.LABEL:
-    }
-    return false;
-}
-function sortField(orderChannelDef) {
-    return (orderChannelDef.sort === sort_1.SortOrder.DESCENDING ? '-' : '') + fielddef_1.field(orderChannelDef);
-}
-exports.sortField = sortField;
-function timeFormat(model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    return timeunit_1.format(fieldDef.timeUnit, isAbbreviated(model, channel, fieldDef));
-}
-exports.timeFormat = timeFormat;
-
-},{"../channel":186,"../fielddef":224,"../sort":229,"../spec":230,"../timeunit":231,"../type":232,"../util":233,"./facet":204,"./layer":205,"./unit":220}],189:[function(require,module,exports){
-"use strict";
-var data_1 = require('../data');
-var spec_1 = require('../spec');
-var util_1 = require('../util');
-var common_1 = require('./common');
-function compile(inputSpec) {
-    var spec = spec_1.normalize(inputSpec);
-    var model = common_1.buildModel(spec, null, '');
-    model.parse();
-    return assemble(model);
-}
-exports.compile = compile;
-function assemble(model) {
-    var config = model.config();
-    var output = util_1.extend({
-        width: 1,
-        height: 1,
-        padding: 'auto'
-    }, config.viewport ? { viewport: config.viewport } : {}, config.background ? { background: config.background } : {}, {
-        data: [].concat(model.assembleData([]), model.assembleLayout([])),
-        marks: [assembleRootGroup(model)]
-    });
-    return {
-        spec: output
-    };
-}
-function assembleRootGroup(model) {
-    var rootGroup = util_1.extend({
-        name: model.name('root'),
-        type: 'group',
-    }, model.description() ? { description: model.description() } : {}, {
-        from: { data: data_1.LAYOUT },
-        properties: {
-            update: util_1.extend({
-                width: { field: 'width' },
-                height: { field: 'height' }
-            }, model.assembleParentGroupProperties(model.config().cell))
-        }
-    });
-    return util_1.extend(rootGroup, model.assembleGroup());
-}
-exports.assembleRootGroup = assembleRootGroup;
-
-},{"../data":222,"../spec":230,"../util":233,"./common":188}],190:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../channel');
-var encoding_1 = require('../encoding');
-var fielddef_1 = require('../fielddef');
-var mark_1 = require('../mark');
-var util_1 = require('../util');
-function initMarkConfig(mark, encoding, config) {
-    return util_1.extend(['filled', 'opacity', 'orient', 'align'].reduce(function (cfg, property) {
-        var value = config.mark[property];
-        switch (property) {
-            case 'filled':
-                if (value === undefined) {
-                    cfg[property] = mark !== mark_1.POINT && mark !== mark_1.LINE && mark !== mark_1.RULE;
-                }
-                break;
-            case 'opacity':
-                if (value === undefined && util_1.contains([mark_1.POINT, mark_1.TICK, mark_1.CIRCLE, mark_1.SQUARE], mark)) {
-                    if (!encoding_1.isAggregate(encoding) || encoding_1.has(encoding, channel_1.DETAIL)) {
-                        cfg[property] = 0.7;
-                    }
-                }
-                break;
-            case 'orient':
-                var xIsMeasure = fielddef_1.isMeasure(encoding.x);
-                var yIsMeasure = fielddef_1.isMeasure(encoding.y);
-                if (xIsMeasure && !yIsMeasure) {
-                    if (mark === mark_1.TICK) {
-                        cfg[property] = 'vertical';
-                    }
-                    else {
-                        cfg[property] = 'horizontal';
-                    }
-                }
-                else if (!xIsMeasure && yIsMeasure) {
-                    if (mark === mark_1.TICK) {
-                        cfg[property] = 'horizontal';
-                    }
-                    else {
-                        cfg[property] = 'vertical';
-                    }
-                }
-                break;
-            case 'align':
-                if (value === undefined) {
-                    cfg[property] = encoding_1.has(encoding, channel_1.X) ? 'center' : 'right';
-                }
-        }
-        return cfg;
-    }, {}), config.mark);
-}
-exports.initMarkConfig = initMarkConfig;
-
-},{"../channel":186,"../encoding":223,"../fielddef":224,"../mark":226,"../util":233}],191:[function(require,module,exports){
-"use strict";
-var bin_1 = require('../../bin');
-var channel_1 = require('../../channel');
-var fielddef_1 = require('../../fielddef');
-var util_1 = require('../../util');
-var bin;
-(function (bin_2) {
-    function parse(model) {
-        return model.reduce(function (binComponent, fieldDef, channel) {
-            var bin = model.fieldDef(channel).bin;
-            if (bin) {
-                var binTrans = util_1.extend({
-                    type: 'bin',
-                    field: fieldDef.field,
-                    output: {
-                        start: fielddef_1.field(fieldDef, { binSuffix: '_start' }),
-                        mid: fielddef_1.field(fieldDef, { binSuffix: '_mid' }),
-                        end: fielddef_1.field(fieldDef, { binSuffix: '_end' })
-                    }
-                }, typeof bin === 'boolean' ? {} : bin);
-                if (!binTrans.maxbins && !binTrans.step) {
-                    binTrans.maxbins = bin_1.autoMaxBins(channel);
-                }
-                var transform = [binTrans];
-                var isOrdinalColor = model.isOrdinalScale(channel) || channel === channel_1.COLOR;
-                if (isOrdinalColor) {
-                    transform.push({
-                        type: 'formula',
-                        field: fielddef_1.field(fieldDef, { binSuffix: '_range' }),
-                        expr: fielddef_1.field(fieldDef, { datum: true, binSuffix: '_start' }) +
-                            ' + \'-\' + ' +
-                            fielddef_1.field(fieldDef, { datum: true, binSuffix: '_end' })
-                    });
-                }
-                var key = util_1.hash(bin) + '_' + fieldDef.field + 'oc:' + isOrdinalColor;
-                binComponent[key] = transform;
-            }
-            return binComponent;
-        }, {});
-    }
-    bin_2.parseUnit = parse;
-    function parseFacet(model) {
-        var binComponent = parse(model);
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source) {
-            util_1.extend(binComponent, childDataComponent.bin);
-            delete childDataComponent.bin;
-        }
-        return binComponent;
-    }
-    bin_2.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var binComponent = parse(model);
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (!childDataComponent.source) {
-                util_1.extend(binComponent, childDataComponent.bin);
-                delete childDataComponent.bin;
-            }
-        });
-        return binComponent;
-    }
-    bin_2.parseLayer = parseLayer;
-    function assemble(component) {
-        return util_1.flatten(util_1.vals(component.bin));
-    }
-    bin_2.assemble = assemble;
-})(bin = exports.bin || (exports.bin = {}));
-
-},{"../../bin":185,"../../channel":186,"../../fielddef":224,"../../util":233}],192:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var type_1 = require('../../type');
-var util_1 = require('../../util');
-var colorRank;
-(function (colorRank) {
-    function parseUnit(model) {
-        var colorRankComponent = {};
-        if (model.has(channel_1.COLOR) && model.fieldDef(channel_1.COLOR).type === type_1.ORDINAL) {
-            colorRankComponent[model.field(channel_1.COLOR)] = [{
-                    type: 'sort',
-                    by: model.field(channel_1.COLOR)
-                }, {
-                    type: 'rank',
-                    field: model.field(channel_1.COLOR),
-                    output: {
-                        rank: model.field(channel_1.COLOR, { prefn: 'rank_' })
-                    }
-                }];
-        }
-        return colorRankComponent;
-    }
-    colorRank.parseUnit = parseUnit;
-    function parseFacet(model) {
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source) {
-            var colorRankComponent = childDataComponent.colorRank;
-            delete childDataComponent.colorRank;
-            return colorRankComponent;
-        }
-        return {};
-    }
-    colorRank.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var colorRankComponent = {};
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (!childDataComponent.source) {
-                util_1.extend(colorRankComponent, childDataComponent.colorRank);
-                delete childDataComponent.colorRank;
-            }
-        });
-        return colorRankComponent;
-    }
-    colorRank.parseLayer = parseLayer;
-    function assemble(component) {
-        return util_1.flatten(util_1.vals(component.colorRank));
-    }
-    colorRank.assemble = assemble;
-})(colorRank = exports.colorRank || (exports.colorRank = {}));
-
-},{"../../channel":186,"../../type":232,"../../util":233}],193:[function(require,module,exports){
-"use strict";
-var util_1 = require('../../util');
-var source_1 = require('./source');
-var formatparse_1 = require('./formatparse');
-var nullfilter_1 = require('./nullfilter');
-var filter_1 = require('./filter');
-var bin_1 = require('./bin');
-var formula_1 = require('./formula');
-var nonpositivenullfilter_1 = require('./nonpositivenullfilter');
-var summary_1 = require('./summary');
-var stackscale_1 = require('./stackscale');
-var timeunit_1 = require('./timeunit');
-var timeunitdomain_1 = require('./timeunitdomain');
-var colorrank_1 = require('./colorrank');
-function parseUnitData(model) {
-    return {
-        formatParse: formatparse_1.formatParse.parseUnit(model),
-        nullFilter: nullfilter_1.nullFilter.parseUnit(model),
-        filter: filter_1.filter.parseUnit(model),
-        nonPositiveFilter: nonpositivenullfilter_1.nonPositiveFilter.parseUnit(model),
-        source: source_1.source.parseUnit(model),
-        bin: bin_1.bin.parseUnit(model),
-        calculate: formula_1.formula.parseUnit(model),
-        timeUnit: timeunit_1.timeUnit.parseUnit(model),
-        timeUnitDomain: timeunitdomain_1.timeUnitDomain.parseUnit(model),
-        summary: summary_1.summary.parseUnit(model),
-        stackScale: stackscale_1.stackScale.parseUnit(model),
-        colorRank: colorrank_1.colorRank.parseUnit(model)
-    };
-}
-exports.parseUnitData = parseUnitData;
-function parseFacetData(model) {
-    return {
-        formatParse: formatparse_1.formatParse.parseFacet(model),
-        nullFilter: nullfilter_1.nullFilter.parseFacet(model),
-        filter: filter_1.filter.parseFacet(model),
-        nonPositiveFilter: nonpositivenullfilter_1.nonPositiveFilter.parseFacet(model),
-        source: source_1.source.parseFacet(model),
-        bin: bin_1.bin.parseFacet(model),
-        calculate: formula_1.formula.parseFacet(model),
-        timeUnit: timeunit_1.timeUnit.parseFacet(model),
-        timeUnitDomain: timeunitdomain_1.timeUnitDomain.parseFacet(model),
-        summary: summary_1.summary.parseFacet(model),
-        stackScale: stackscale_1.stackScale.parseFacet(model),
-        colorRank: colorrank_1.colorRank.parseFacet(model)
-    };
-}
-exports.parseFacetData = parseFacetData;
-function parseLayerData(model) {
-    return {
-        filter: filter_1.filter.parseLayer(model),
-        formatParse: formatparse_1.formatParse.parseLayer(model),
-        nullFilter: nullfilter_1.nullFilter.parseLayer(model),
-        nonPositiveFilter: nonpositivenullfilter_1.nonPositiveFilter.parseLayer(model),
-        source: source_1.source.parseLayer(model),
-        bin: bin_1.bin.parseLayer(model),
-        calculate: formula_1.formula.parseLayer(model),
-        timeUnit: timeunit_1.timeUnit.parseLayer(model),
-        timeUnitDomain: timeunitdomain_1.timeUnitDomain.parseLayer(model),
-        summary: summary_1.summary.parseLayer(model),
-        stackScale: stackscale_1.stackScale.parseLayer(model),
-        colorRank: colorrank_1.colorRank.parseLayer(model)
-    };
-}
-exports.parseLayerData = parseLayerData;
-function assembleData(model, data) {
-    var component = model.component.data;
-    var sourceData = source_1.source.assemble(model, component);
-    if (sourceData) {
-        data.push(sourceData);
-    }
-    summary_1.summary.assemble(component, model).forEach(function (summaryData) {
-        data.push(summaryData);
-    });
-    if (data.length > 0) {
-        var dataTable = data[data.length - 1];
-        var colorRankTransform = colorrank_1.colorRank.assemble(component);
-        if (colorRankTransform.length > 0) {
-            dataTable.transform = (dataTable.transform || []).concat(colorRankTransform);
-        }
-        var nonPositiveFilterTransform = nonpositivenullfilter_1.nonPositiveFilter.assemble(component);
-        if (nonPositiveFilterTransform.length > 0) {
-            dataTable.transform = (dataTable.transform || []).concat(nonPositiveFilterTransform);
-        }
-    }
-    else {
-        if (util_1.keys(component.colorRank).length > 0) {
-            throw new Error('Invalid colorRank not merged');
-        }
-        else if (util_1.keys(component.nonPositiveFilter).length > 0) {
-            throw new Error('Invalid nonPositiveFilter not merged');
-        }
-    }
-    var stackData = stackscale_1.stackScale.assemble(component);
-    if (stackData) {
-        data.push(stackData);
-    }
-    timeunitdomain_1.timeUnitDomain.assemble(component).forEach(function (timeUnitDomainData) {
-        data.push(timeUnitDomainData);
-    });
-    return data;
-}
-exports.assembleData = assembleData;
-
-},{"../../util":233,"./bin":191,"./colorrank":192,"./filter":194,"./formatparse":195,"./formula":196,"./nonpositivenullfilter":197,"./nullfilter":198,"./source":199,"./stackscale":200,"./summary":201,"./timeunit":202,"./timeunitdomain":203}],194:[function(require,module,exports){
-"use strict";
-var filter;
-(function (filter_1) {
-    function parse(model) {
-        return model.transform().filter;
-    }
-    filter_1.parseUnit = parse;
-    function parseFacet(model) {
-        var filterComponent = parse(model);
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source && childDataComponent.filter) {
-            filterComponent =
-                (filterComponent ? filterComponent + ' && ' : '') +
-                    childDataComponent.filter;
-            delete childDataComponent.filter;
-        }
-        return filterComponent;
-    }
-    filter_1.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var filterComponent = parse(model);
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (model.compatibleSource(child) && childDataComponent.filter && childDataComponent.filter === filterComponent) {
-                delete childDataComponent.filter;
-            }
-        });
-        return filterComponent;
-    }
-    filter_1.parseLayer = parseLayer;
-    function assemble(component) {
-        var filter = component.filter;
-        return filter ? [{
-                type: 'filter',
-                test: filter
-            }] : [];
-    }
-    filter_1.assemble = assemble;
-})(filter = exports.filter || (exports.filter = {}));
-
-},{}],195:[function(require,module,exports){
-"use strict";
-var fielddef_1 = require('../../fielddef');
-var type_1 = require('../../type');
-var util_1 = require('../../util');
-var formatParse;
-(function (formatParse) {
-    function parse(model) {
-        var calcFieldMap = (model.transform().calculate || []).reduce(function (fieldMap, formula) {
-            fieldMap[formula.field] = true;
-            return fieldMap;
-        }, {});
-        var parseComponent = {};
-        model.forEach(function (fieldDef) {
-            if (fieldDef.type === type_1.TEMPORAL) {
-                parseComponent[fieldDef.field] = 'date';
-            }
-            else if (fieldDef.type === type_1.QUANTITATIVE) {
-                if (fielddef_1.isCount(fieldDef) || calcFieldMap[fieldDef.field]) {
-                    return;
-                }
-                parseComponent[fieldDef.field] = 'number';
-            }
-        });
-        return parseComponent;
-    }
-    formatParse.parseUnit = parse;
-    function parseFacet(model) {
-        var parseComponent = parse(model);
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source && childDataComponent.formatParse) {
-            util_1.extend(parseComponent, childDataComponent.formatParse);
-            delete childDataComponent.formatParse;
-        }
-        return parseComponent;
-    }
-    formatParse.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var parseComponent = parse(model);
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (model.compatibleSource(child) && !util_1.differ(childDataComponent.formatParse, parseComponent)) {
-                util_1.extend(parseComponent, childDataComponent.formatParse);
-                delete childDataComponent.formatParse;
-            }
-        });
-        return parseComponent;
-    }
-    formatParse.parseLayer = parseLayer;
-})(formatParse = exports.formatParse || (exports.formatParse = {}));
-
-},{"../../fielddef":224,"../../type":232,"../../util":233}],196:[function(require,module,exports){
-"use strict";
-var util_1 = require('../../util');
-var formula;
-(function (formula_1) {
-    function parse(model) {
-        return (model.transform().calculate || []).reduce(function (formulaComponent, formula) {
-            formulaComponent[util_1.hash(formula)] = formula;
-            return formulaComponent;
-        }, {});
-    }
-    formula_1.parseUnit = parse;
-    function parseFacet(model) {
-        var formulaComponent = parse(model);
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source) {
-            util_1.extend(formulaComponent, childDataComponent.calculate);
-            delete childDataComponent.calculate;
-        }
-        return formulaComponent;
-    }
-    formula_1.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var formulaComponent = parse(model);
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (!childDataComponent.source && childDataComponent.calculate) {
-                util_1.extend(formulaComponent || {}, childDataComponent.calculate);
-                delete childDataComponent.calculate;
-            }
-        });
-        return formulaComponent;
-    }
-    formula_1.parseLayer = parseLayer;
-    function assemble(component) {
-        return util_1.vals(component.calculate).reduce(function (transform, formula) {
-            transform.push(util_1.extend({ type: 'formula' }, formula));
-            return transform;
-        }, []);
-    }
-    formula_1.assemble = assemble;
-})(formula = exports.formula || (exports.formula = {}));
-
-},{"../../util":233}],197:[function(require,module,exports){
-"use strict";
-var scale_1 = require('../../scale');
-var util_1 = require('../../util');
-var nonPositiveFilter;
-(function (nonPositiveFilter_1) {
-    function parseUnit(model) {
-        return model.channels().reduce(function (nonPositiveComponent, channel) {
-            var scale = model.scale(channel);
-            if (!model.field(channel) || !scale) {
-                return nonPositiveComponent;
-            }
-            nonPositiveComponent[model.field(channel)] = scale.type === scale_1.ScaleType.LOG;
-            return nonPositiveComponent;
-        }, {});
-    }
-    nonPositiveFilter_1.parseUnit = parseUnit;
-    function parseFacet(model) {
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source) {
-            var nonPositiveFilterComponent = childDataComponent.nonPositiveFilter;
-            delete childDataComponent.nonPositiveFilter;
-            return nonPositiveFilterComponent;
-        }
-        return {};
-    }
-    nonPositiveFilter_1.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var nonPositiveFilter = {};
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (model.compatibleSource(child) && !util_1.differ(childDataComponent.nonPositiveFilter, nonPositiveFilter)) {
-                util_1.extend(nonPositiveFilter, childDataComponent.nonPositiveFilter);
-                delete childDataComponent.nonPositiveFilter;
-            }
-        });
-        return nonPositiveFilter;
-    }
-    nonPositiveFilter_1.parseLayer = parseLayer;
-    function assemble(component) {
-        return util_1.keys(component.nonPositiveFilter).filter(function (field) {
-            return component.nonPositiveFilter[field];
-        }).map(function (field) {
-            return {
-                type: 'filter',
-                test: 'datum.' + field + ' > 0'
-            };
-        });
-    }
-    nonPositiveFilter_1.assemble = assemble;
-})(nonPositiveFilter = exports.nonPositiveFilter || (exports.nonPositiveFilter = {}));
-
-},{"../../scale":227,"../../util":233}],198:[function(require,module,exports){
-"use strict";
-var util_1 = require('../../util');
-var DEFAULT_NULL_FILTERS = {
-    nominal: false,
-    ordinal: false,
-    quantitative: true,
-    temporal: true
-};
-var nullFilter;
-(function (nullFilter) {
-    function parse(model) {
-        var filterNull = model.transform().filterNull;
-        return model.reduce(function (aggregator, fieldDef) {
-            if (filterNull ||
-                (filterNull === undefined && fieldDef.field && fieldDef.field !== '*' && DEFAULT_NULL_FILTERS[fieldDef.type])) {
-                aggregator[fieldDef.field] = true;
-            }
-            else {
-                aggregator[fieldDef.field] = false;
-            }
-            return aggregator;
-        }, {});
-    }
-    nullFilter.parseUnit = parse;
-    function parseFacet(model) {
-        var nullFilterComponent = parse(model);
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source) {
-            util_1.extend(nullFilterComponent, childDataComponent.nullFilter);
-            delete childDataComponent.nullFilter;
-        }
-        return nullFilterComponent;
-    }
-    nullFilter.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var nullFilterComponent = parse(model);
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (model.compatibleSource(child) && !util_1.differ(childDataComponent.nullFilter, nullFilterComponent)) {
-                util_1.extend(nullFilterComponent, childDataComponent.nullFilter);
-                delete childDataComponent.nullFilter;
-            }
-        });
-        return nullFilterComponent;
-    }
-    nullFilter.parseLayer = parseLayer;
-    function assemble(component) {
-        var filteredFields = util_1.keys(component.nullFilter).filter(function (field) {
-            return component.nullFilter[field];
-        });
-        return filteredFields.length > 0 ?
-            [{
-                    type: 'filter',
-                    test: filteredFields.map(function (fieldName) {
-                        return 'datum.' + fieldName + '!==null';
-                    }).join(' && ')
-                }] : [];
-    }
-    nullFilter.assemble = assemble;
-})(nullFilter = exports.nullFilter || (exports.nullFilter = {}));
-
-},{"../../util":233}],199:[function(require,module,exports){
-"use strict";
-var data_1 = require('../../data');
-var util_1 = require('../../util');
-var nullfilter_1 = require('./nullfilter');
-var filter_1 = require('./filter');
-var bin_1 = require('./bin');
-var formula_1 = require('./formula');
-var timeunit_1 = require('./timeunit');
-var source;
-(function (source) {
-    function parse(model) {
-        var data = model.data();
-        if (data) {
-            var sourceData = { name: model.dataName(data_1.SOURCE) };
-            if (data.values && data.values.length > 0) {
-                sourceData.values = model.data().values;
-                sourceData.format = { type: 'json' };
-            }
-            else if (data.url) {
-                sourceData.url = data.url;
-                var defaultExtension = /(?:\.([^.]+))?$/.exec(sourceData.url)[1];
-                if (!util_1.contains(['json', 'csv', 'tsv'], defaultExtension)) {
-                    defaultExtension = 'json';
-                }
-                sourceData.format = { type: model.data().formatType || defaultExtension };
-            }
-            return sourceData;
-        }
-        else if (!model.parent()) {
-            return { name: model.dataName(data_1.SOURCE) };
-        }
-        return undefined;
-    }
-    source.parseUnit = parse;
-    function parseFacet(model) {
-        var sourceData = parse(model);
-        if (!model.child().component.data.source) {
-            model.child().renameData(model.child().dataName(data_1.SOURCE), model.dataName(data_1.SOURCE));
-        }
-        return sourceData;
-    }
-    source.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var sourceData = parse(model);
-        model.children().forEach(function (child) {
-            var childData = child.component.data;
-            if (model.compatibleSource(child)) {
-                var canMerge = !childData.filter && !childData.formatParse && !childData.nullFilter;
-                if (canMerge) {
-                    child.renameData(child.dataName(data_1.SOURCE), model.dataName(data_1.SOURCE));
-                    delete childData.source;
-                }
-                else {
-                    childData.source = {
-                        name: child.dataName(data_1.SOURCE),
-                        source: model.dataName(data_1.SOURCE)
-                    };
-                }
-            }
-        });
-        return sourceData;
-    }
-    source.parseLayer = parseLayer;
-    function assemble(model, component) {
-        if (component.source) {
-            var sourceData = component.source;
-            if (component.formatParse) {
-                component.source.format = component.source.format || {};
-                component.source.format.parse = component.formatParse;
-            }
-            sourceData.transform = [].concat(nullfilter_1.nullFilter.assemble(component), formula_1.formula.assemble(component), filter_1.filter.assemble(component), bin_1.bin.assemble(component), timeunit_1.timeUnit.assemble(component));
-            return sourceData;
-        }
-        return null;
-    }
-    source.assemble = assemble;
-})(source = exports.source || (exports.source = {}));
-
-},{"../../data":222,"../../util":233,"./bin":191,"./filter":194,"./formula":196,"./nullfilter":198,"./timeunit":202}],200:[function(require,module,exports){
-"use strict";
-var data_1 = require('../../data');
-var fielddef_1 = require('../../fielddef');
-var stackScale;
-(function (stackScale) {
-    function parseUnit(model) {
-        var stackProps = model.stack();
-        if (stackProps) {
-            var groupbyChannel = stackProps.groupbyChannel;
-            var fieldChannel = stackProps.fieldChannel;
-            return {
-                name: model.dataName(data_1.STACKED_SCALE),
-                source: model.dataName(data_1.SUMMARY),
-                transform: [{
-                        type: 'aggregate',
-                        groupby: [model.field(groupbyChannel)],
-                        summarize: [{ ops: ['sum'], field: model.field(fieldChannel) }]
-                    }]
-            };
-        }
-        return null;
-    }
-    stackScale.parseUnit = parseUnit;
-    ;
-    function parseFacet(model) {
-        var child = model.child();
-        var childDataComponent = child.component.data;
-        if (!childDataComponent.source && childDataComponent.stackScale) {
-            var stackComponent = childDataComponent.stackScale;
-            var newName = model.dataName(data_1.STACKED_SCALE);
-            child.renameData(stackComponent.name, newName);
-            stackComponent.name = newName;
-            stackComponent.source = model.dataName(data_1.SUMMARY);
-            stackComponent.transform[0].groupby = model.reduce(function (groupby, fieldDef) {
-                groupby.push(fielddef_1.field(fieldDef));
-                return groupby;
-            }, stackComponent.transform[0].groupby);
-            delete childDataComponent.stackScale;
-            return stackComponent;
-        }
-        return null;
-    }
-    stackScale.parseFacet = parseFacet;
-    function parseLayer(model) {
-        return null;
-    }
-    stackScale.parseLayer = parseLayer;
-    function assemble(component) {
-        return component.stackScale;
-    }
-    stackScale.assemble = assemble;
-})(stackScale = exports.stackScale || (exports.stackScale = {}));
-
-},{"../../data":222,"../../fielddef":224}],201:[function(require,module,exports){
-"use strict";
-var aggregate_1 = require('../../aggregate');
-var data_1 = require('../../data');
-var fielddef_1 = require('../../fielddef');
-var util_1 = require('../../util');
-var summary;
-(function (summary) {
-    function addDimension(dims, fieldDef) {
-        if (fieldDef.bin) {
-            dims[fielddef_1.field(fieldDef, { binSuffix: '_start' })] = true;
-            dims[fielddef_1.field(fieldDef, { binSuffix: '_mid' })] = true;
-            dims[fielddef_1.field(fieldDef, { binSuffix: '_end' })] = true;
-            dims[fielddef_1.field(fieldDef, { binSuffix: '_range' })] = true;
-        }
-        else {
-            dims[fielddef_1.field(fieldDef)] = true;
-        }
-        return dims;
-    }
-    function parseUnit(model) {
-        var dims = {};
-        var meas = {};
-        model.forEach(function (fieldDef, channel) {
-            if (fieldDef.aggregate) {
-                if (fieldDef.aggregate === aggregate_1.AggregateOp.COUNT) {
-                    meas['*'] = meas['*'] || {};
-                    meas['*']['count'] = true;
-                }
-                else {
-                    meas[fieldDef.field] = meas[fieldDef.field] || {};
-                    meas[fieldDef.field][fieldDef.aggregate] = true;
-                }
-            }
-            else {
-                addDimension(dims, fieldDef);
-            }
-        });
-        return [{
-                name: model.dataName(data_1.SUMMARY),
-                dimensions: dims,
-                measures: meas
-            }];
-    }
-    summary.parseUnit = parseUnit;
-    function parseFacet(model) {
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source && childDataComponent.summary) {
-            var summaryComponents = childDataComponent.summary.map(function (summaryComponent) {
-                summaryComponent.dimensions = model.reduce(addDimension, summaryComponent.dimensions);
-                var summaryNameWithoutPrefix = summaryComponent.name.substr(model.child().name('').length);
-                model.child().renameData(summaryComponent.name, summaryNameWithoutPrefix);
-                summaryComponent.name = summaryNameWithoutPrefix;
-                return summaryComponent;
-            });
-            delete childDataComponent.summary;
-            return summaryComponents;
-        }
-        return [];
-    }
-    summary.parseFacet = parseFacet;
-    function mergeMeasures(parentMeasures, childMeasures) {
-        for (var field_1 in childMeasures) {
-            if (childMeasures.hasOwnProperty(field_1)) {
-                var ops = childMeasures[field_1];
-                for (var op in ops) {
-                    if (ops.hasOwnProperty(op)) {
-                        if (field_1 in parentMeasures) {
-                            parentMeasures[field_1][op] = true;
-                        }
-                        else {
-                            parentMeasures[field_1] = { op: true };
-                        }
-                    }
-                }
-            }
-        }
-    }
-    function parseLayer(model) {
-        var summaries = {};
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (!childDataComponent.source && childDataComponent.summary) {
-                childDataComponent.summary.forEach(function (childSummary) {
-                    var key = util_1.hash(childSummary.dimensions);
-                    if (key in summaries) {
-                        mergeMeasures(summaries[key].measures, childSummary.measures);
-                    }
-                    else {
-                        childSummary.name = model.dataName(data_1.SUMMARY) + '_' + util_1.keys(summaries).length;
-                        summaries[key] = childSummary;
-                    }
-                    child.renameData(child.dataName(data_1.SUMMARY), summaries[key].name);
-                    delete childDataComponent.summary;
-                });
-            }
-        });
-        return util_1.vals(summaries);
-    }
-    summary.parseLayer = parseLayer;
-    function assemble(component, model) {
-        if (!component.summary) {
-            return [];
-        }
-        return component.summary.reduce(function (summaryData, summaryComponent) {
-            var dims = summaryComponent.dimensions;
-            var meas = summaryComponent.measures;
-            var groupby = util_1.keys(dims);
-            var summarize = util_1.reduce(meas, function (aggregator, fnDictSet, field) {
-                aggregator[field] = util_1.keys(fnDictSet);
-                return aggregator;
-            }, {});
-            if (util_1.keys(meas).length > 0) {
-                summaryData.push({
-                    name: summaryComponent.name,
-                    source: model.dataName(data_1.SOURCE),
-                    transform: [{
-                            type: 'aggregate',
-                            groupby: groupby,
-                            summarize: summarize
-                        }]
-                });
-            }
-            return summaryData;
-        }, []);
-    }
-    summary.assemble = assemble;
-})(summary = exports.summary || (exports.summary = {}));
-
-},{"../../aggregate":183,"../../data":222,"../../fielddef":224,"../../util":233}],202:[function(require,module,exports){
-"use strict";
-var fielddef_1 = require('../../fielddef');
-var type_1 = require('../../type');
-var util_1 = require('../../util');
-var time_1 = require('./../time');
-var timeUnit;
-(function (timeUnit) {
-    function parse(model) {
-        return model.reduce(function (timeUnitComponent, fieldDef, channel) {
-            var ref = fielddef_1.field(fieldDef, { nofn: true, datum: true });
-            if (fieldDef.type === type_1.TEMPORAL && fieldDef.timeUnit) {
-                var hash = fielddef_1.field(fieldDef);
-                timeUnitComponent[hash] = {
-                    type: 'formula',
-                    field: fielddef_1.field(fieldDef),
-                    expr: time_1.parseExpression(fieldDef.timeUnit, ref)
-                };
-            }
-            return timeUnitComponent;
-        }, {});
-    }
-    timeUnit.parseUnit = parse;
-    function parseFacet(model) {
-        var timeUnitComponent = parse(model);
-        var childDataComponent = model.child().component.data;
-        if (!childDataComponent.source) {
-            util_1.extend(timeUnitComponent, childDataComponent.timeUnit);
-            delete childDataComponent.timeUnit;
-        }
-        return timeUnitComponent;
-    }
-    timeUnit.parseFacet = parseFacet;
-    function parseLayer(model) {
-        var timeUnitComponent = parse(model);
-        model.children().forEach(function (child) {
-            var childDataComponent = child.component.data;
-            if (!childDataComponent.source) {
-                util_1.extend(timeUnitComponent, childDataComponent.timeUnit);
-                delete childDataComponent.timeUnit;
-            }
-        });
-        return timeUnitComponent;
-    }
-    timeUnit.parseLayer = parseLayer;
-    function assemble(component) {
-        return util_1.vals(component.timeUnit);
-    }
-    timeUnit.assemble = assemble;
-})(timeUnit = exports.timeUnit || (exports.timeUnit = {}));
-
-},{"../../fielddef":224,"../../type":232,"../../util":233,"./../time":219}],203:[function(require,module,exports){
-"use strict";
-var util_1 = require('../../util');
-var time_1 = require('./../time');
-var timeUnitDomain;
-(function (timeUnitDomain) {
-    function parse(model) {
-        return model.reduce(function (timeUnitDomainMap, fieldDef, channel) {
-            if (fieldDef.timeUnit) {
-                var domain = time_1.rawDomain(fieldDef.timeUnit, channel);
-                if (domain) {
-                    timeUnitDomainMap[fieldDef.timeUnit] = true;
-                }
-            }
-            return timeUnitDomainMap;
-        }, {});
-    }
-    timeUnitDomain.parseUnit = parse;
-    function parseFacet(model) {
-        return util_1.extend(parse(model), model.child().component.data.timeUnitDomain);
-    }
-    timeUnitDomain.parseFacet = parseFacet;
-    function parseLayer(model) {
-        return util_1.extend(parse(model), model.children().forEach(function (child) {
-            return child.component.data.timeUnitDomain;
-        }));
-    }
-    timeUnitDomain.parseLayer = parseLayer;
-    function assemble(component) {
-        return util_1.keys(component.timeUnitDomain).reduce(function (timeUnitData, tu) {
-            var timeUnit = tu;
-            var domain = time_1.rawDomain(timeUnit, null);
-            if (domain) {
-                timeUnitData.push({
-                    name: timeUnit,
-                    values: domain,
-                    transform: [{
-                            type: 'formula',
-                            field: 'date',
-                            expr: time_1.parseExpression(timeUnit, 'datum.data', true)
-                        }]
-                });
-            }
-            return timeUnitData;
-        }, []);
-    }
-    timeUnitDomain.assemble = assemble;
-})(timeUnitDomain = exports.timeUnitDomain || (exports.timeUnitDomain = {}));
-
-},{"../../util":233,"./../time":219}],204:[function(require,module,exports){
-"use strict";
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
-var axis_1 = require('../axis');
-var channel_1 = require('../channel');
-var config_1 = require('../config');
-var data_1 = require('../data');
-var encoding_1 = require('../encoding');
-var fielddef_1 = require('../fielddef');
-var scale_1 = require('../scale');
-var type_1 = require('../type');
-var util_1 = require('../util');
-var axis_2 = require('./axis');
-var common_1 = require('./common');
-var data_2 = require('./data/data');
-var layout_1 = require('./layout');
-var model_1 = require('./model');
-var scale_2 = require('./scale');
-var FacetModel = (function (_super) {
-    __extends(FacetModel, _super);
-    function FacetModel(spec, parent, parentGivenName) {
-        _super.call(this, spec, parent, parentGivenName);
-        var config = this._config = this._initConfig(spec.config, parent);
-        var child = this._child = common_1.buildModel(spec.spec, this, this.name('child'));
-        var facet = this._facet = this._initFacet(spec.facet);
-        this._scale = this._initScale(facet, config, child);
-        this._axis = this._initAxis(facet, config, child);
-    }
-    FacetModel.prototype._initConfig = function (specConfig, parent) {
-        return util_1.mergeDeep(util_1.duplicate(config_1.defaultConfig), specConfig, parent ? parent.config() : {});
-    };
-    FacetModel.prototype._initFacet = function (facet) {
-        facet = util_1.duplicate(facet);
-        var model = this;
-        encoding_1.channelMappingForEach(this.channels(), facet, function (fieldDef, channel) {
-            if (!fielddef_1.isDimension(fieldDef)) {
-                model.addWarning(channel + ' encoding should be ordinal.');
-            }
-            if (fieldDef.type) {
-                fieldDef.type = type_1.getFullName(fieldDef.type);
-            }
-        });
-        return facet;
-    };
-    FacetModel.prototype._initScale = function (facet, config, child) {
-        return [channel_1.ROW, channel_1.COLUMN].reduce(function (_scale, channel) {
-            if (facet[channel]) {
-                var scaleSpec = facet[channel].scale || {};
-                _scale[channel] = util_1.extend({
-                    type: scale_1.ScaleType.ORDINAL,
-                    round: config.facet.scale.round,
-                    padding: (channel === channel_1.ROW && child.has(channel_1.Y)) || (channel === channel_1.COLUMN && child.has(channel_1.X)) ?
-                        config.facet.scale.padding : 0
-                }, scaleSpec);
-            }
-            return _scale;
-        }, {});
-    };
-    FacetModel.prototype._initAxis = function (facet, config, child) {
-        return [channel_1.ROW, channel_1.COLUMN].reduce(function (_axis, channel) {
-            if (facet[channel]) {
-                var axisSpec = facet[channel].axis;
-                if (axisSpec !== false) {
-                    var modelAxis = _axis[channel] = util_1.extend({}, config.facet.axis, axisSpec === true ? {} : axisSpec || {});
-                    if (channel === channel_1.ROW) {
-                        var yAxis = child.axis(channel_1.Y);
-                        if (yAxis && yAxis.orient !== axis_1.AxisOrient.RIGHT && !modelAxis.orient) {
-                            modelAxis.orient = axis_1.AxisOrient.RIGHT;
-                        }
-                        if (child.has(channel_1.X) && !modelAxis.labelAngle) {
-                            modelAxis.labelAngle = modelAxis.orient === axis_1.AxisOrient.RIGHT ? 90 : 270;
-                        }
-                    }
-                }
-            }
-            return _axis;
-        }, {});
-    };
-    FacetModel.prototype.facet = function () {
-        return this._facet;
-    };
-    FacetModel.prototype.has = function (channel) {
-        return !!this._facet[channel];
-    };
-    FacetModel.prototype.child = function () {
-        return this._child;
-    };
-    FacetModel.prototype.hasSummary = function () {
-        var summary = this.component.data.summary;
-        for (var i = 0; i < summary.length; i++) {
-            if (util_1.keys(summary[i].measures).length > 0) {
-                return true;
-            }
-        }
-        return false;
-    };
-    FacetModel.prototype.dataTable = function () {
-        return (this.hasSummary() ? data_1.SUMMARY : data_1.SOURCE) + '';
-    };
-    FacetModel.prototype.fieldDef = function (channel) {
-        return this.facet()[channel];
-    };
-    FacetModel.prototype.stack = function () {
-        return null;
-    };
-    FacetModel.prototype.parseData = function () {
-        this.child().parseData();
-        this.component.data = data_2.parseFacetData(this);
-    };
-    FacetModel.prototype.parseSelectionData = function () {
-    };
-    FacetModel.prototype.parseLayoutData = function () {
-        this.child().parseLayoutData();
-        this.component.layout = layout_1.parseFacetLayout(this);
-    };
-    FacetModel.prototype.parseScale = function () {
-        var child = this.child();
-        var model = this;
-        child.parseScale();
-        var scaleComponent = this.component.scale = scale_2.parseScaleComponent(this);
-        util_1.keys(child.component.scale).forEach(function (channel) {
-            if (true) {
-                scaleComponent[channel] = child.component.scale[channel];
-                util_1.vals(scaleComponent[channel]).forEach(function (scale) {
-                    var scaleNameWithoutPrefix = scale.name.substr(child.name('').length);
-                    var newName = model.scaleName(scaleNameWithoutPrefix);
-                    child.renameScale(scale.name, newName);
-                    scale.name = newName;
-                });
-                delete child.component.scale[channel];
-            }
-        });
-    };
-    FacetModel.prototype.parseMark = function () {
-        this.child().parseMark();
-        this.component.mark = util_1.extend({
-            name: this.name('cell'),
-            type: 'group',
-            from: util_1.extend(this.dataTable() ? { data: this.dataTable() } : {}, {
-                transform: [{
-                        type: 'facet',
-                        groupby: [].concat(this.has(channel_1.ROW) ? [this.field(channel_1.ROW)] : [], this.has(channel_1.COLUMN) ? [this.field(channel_1.COLUMN)] : [])
-                    }]
-            }),
-            properties: {
-                update: getFacetGroupProperties(this)
-            }
-        }, this.child().assembleGroup());
-    };
-    FacetModel.prototype.parseAxis = function () {
-        this.child().parseAxis();
-        this.component.axis = axis_2.parseAxisComponent(this, [channel_1.ROW, channel_1.COLUMN]);
-    };
-    FacetModel.prototype.parseAxisGroup = function () {
-        var xAxisGroup = parseAxisGroup(this, channel_1.X);
-        var yAxisGroup = parseAxisGroup(this, channel_1.Y);
-        this.component.axisGroup = util_1.extend(xAxisGroup ? { x: xAxisGroup } : {}, yAxisGroup ? { y: yAxisGroup } : {});
-    };
-    FacetModel.prototype.parseGridGroup = function () {
-        var child = this.child();
-        this.component.gridGroup = util_1.extend(!child.has(channel_1.X) && this.has(channel_1.COLUMN) ? { column: getColumnGridGroups(this) } : {}, !child.has(channel_1.Y) && this.has(channel_1.ROW) ? { row: getRowGridGroups(this) } : {});
-    };
-    FacetModel.prototype.parseLegend = function () {
-        this.child().parseLegend();
-        this.component.legend = this._child.component.legend;
-        this._child.component.legend = {};
-    };
-    FacetModel.prototype.assembleParentGroupProperties = function () {
-        return null;
-    };
-    FacetModel.prototype.assembleData = function (data) {
-        data_2.assembleData(this, data);
-        return this._child.assembleData(data);
-    };
-    FacetModel.prototype.assembleLayout = function (layoutData) {
-        this._child.assembleLayout(layoutData);
-        return layout_1.assembleLayout(this, layoutData);
-    };
-    FacetModel.prototype.assembleMarks = function () {
-        return [].concat(util_1.vals(this.component.axisGroup), util_1.flatten(util_1.vals(this.component.gridGroup)), this.component.mark);
-    };
-    FacetModel.prototype.channels = function () {
-        return [channel_1.ROW, channel_1.COLUMN];
-    };
-    FacetModel.prototype.mapping = function () {
-        return this.facet();
-    };
-    FacetModel.prototype.isFacet = function () {
-        return true;
-    };
-    return FacetModel;
-}(model_1.Model));
-exports.FacetModel = FacetModel;
-function getFacetGroupProperties(model) {
-    var child = model.child();
-    var mergedCellConfig = util_1.extend({}, child.config().cell, child.config().facet.cell);
-    return util_1.extend({
-        x: model.has(channel_1.COLUMN) ? {
-            scale: model.scaleName(channel_1.COLUMN),
-            field: model.field(channel_1.COLUMN),
-            offset: model.scale(channel_1.COLUMN).padding / 2
-        } : { value: model.config().facet.scale.padding / 2 },
-        y: model.has(channel_1.ROW) ? {
-            scale: model.scaleName(channel_1.ROW),
-            field: model.field(channel_1.ROW),
-            offset: model.scale(channel_1.ROW).padding / 2
-        } : { value: model.config().facet.scale.padding / 2 },
-        width: { field: { parent: model.child().sizeName('width') } },
-        height: { field: { parent: model.child().sizeName('height') } }
-    }, child.assembleParentGroupProperties(mergedCellConfig));
-}
-function parseAxisGroup(model, channel) {
-    var axisGroup = null;
-    var child = model.child();
-    if (child.has(channel)) {
-        if (child.axis(channel)) {
-            if (true) {
-                axisGroup = channel === channel_1.X ? getXAxesGroup(model) : getYAxesGroup(model);
-                if (child.axis(channel) && axis_2.gridShow(child, channel)) {
-                    child.component.axis[channel] = axis_2.parseInnerAxis(channel, child);
-                }
-                else {
-                    delete child.component.axis[channel];
-                }
-            }
-            else {
-            }
-        }
-    }
-    return axisGroup;
-}
-function getXAxesGroup(model) {
-    var hasCol = model.has(channel_1.COLUMN);
-    return util_1.extend({
-        name: model.name('x-axes'),
-        type: 'group'
-    }, hasCol ? {
-        from: {
-            data: model.dataTable(),
-            transform: [{
-                    type: 'aggregate',
-                    groupby: [model.field(channel_1.COLUMN)],
-                    summarize: { '*': ['count'] }
-                }]
-        }
-    } : {}, {
-        properties: {
-            update: {
-                width: { field: { parent: model.child().sizeName('width') } },
-                height: {
-                    field: { group: 'height' }
-                },
-                x: hasCol ? {
-                    scale: model.scaleName(channel_1.COLUMN),
-                    field: model.field(channel_1.COLUMN),
-                    offset: model.scale(channel_1.COLUMN).padding / 2
-                } : {
-                    value: model.config().facet.scale.padding / 2
-                }
-            }
-        },
-        axes: [axis_2.parseAxis(channel_1.X, model.child())]
-    });
-}
-function getYAxesGroup(model) {
-    var hasRow = model.has(channel_1.ROW);
-    return util_1.extend({
-        name: model.name('y-axes'),
-        type: 'group'
-    }, hasRow ? {
-        from: {
-            data: model.dataTable(),
-            transform: [{
-                    type: 'aggregate',
-                    groupby: [model.field(channel_1.ROW)],
-                    summarize: { '*': ['count'] }
-                }]
-        }
-    } : {}, {
-        properties: {
-            update: {
-                width: {
-                    field: { group: 'width' }
-                },
-                height: { field: { parent: model.child().sizeName('height') } },
-                y: hasRow ? {
-                    scale: model.scaleName(channel_1.ROW),
-                    field: model.field(channel_1.ROW),
-                    offset: model.scale(channel_1.ROW).padding / 2
-                } : {
-                    value: model.config().facet.scale.padding / 2
-                }
-            }
-        },
-        axes: [axis_2.parseAxis(channel_1.Y, model.child())]
-    });
-}
-function getRowGridGroups(model) {
-    var facetGridConfig = model.config().facet.grid;
-    var rowGrid = {
-        name: model.name('row-grid'),
-        type: 'rule',
-        from: {
-            data: model.dataTable(),
-            transform: [{ type: 'facet', groupby: [model.field(channel_1.ROW)] }]
-        },
-        properties: {
-            update: {
-                y: {
-                    scale: model.scaleName(channel_1.ROW),
-                    field: model.field(channel_1.ROW)
-                },
-                x: { value: 0, offset: -facetGridConfig.offset },
-                x2: { field: { group: 'width' }, offset: facetGridConfig.offset },
-                stroke: { value: facetGridConfig.color },
-                strokeOpacity: { value: facetGridConfig.opacity },
-                strokeWidth: { value: 0.5 }
-            }
-        }
-    };
-    return [rowGrid, {
-            name: model.name('row-grid-end'),
-            type: 'rule',
-            properties: {
-                update: {
-                    y: { field: { group: 'height' } },
-                    x: { value: 0, offset: -facetGridConfig.offset },
-                    x2: { field: { group: 'width' }, offset: facetGridConfig.offset },
-                    stroke: { value: facetGridConfig.color },
-                    strokeOpacity: { value: facetGridConfig.opacity },
-                    strokeWidth: { value: 0.5 }
-                }
-            }
-        }];
-}
-function getColumnGridGroups(model) {
-    var facetGridConfig = model.config().facet.grid;
-    var columnGrid = {
-        name: model.name('column-grid'),
-        type: 'rule',
-        from: {
-            data: model.dataTable(),
-            transform: [{ type: 'facet', groupby: [model.field(channel_1.COLUMN)] }]
-        },
-        properties: {
-            update: {
-                x: {
-                    scale: model.scaleName(channel_1.COLUMN),
-                    field: model.field(channel_1.COLUMN)
-                },
-                y: { value: 0, offset: -facetGridConfig.offset },
-                y2: { field: { group: 'height' }, offset: facetGridConfig.offset },
-                stroke: { value: facetGridConfig.color },
-                strokeOpacity: { value: facetGridConfig.opacity },
-                strokeWidth: { value: 0.5 }
-            }
-        }
-    };
-    return [columnGrid, {
-            name: model.name('column-grid-end'),
-            type: 'rule',
-            properties: {
-                update: {
-                    x: { field: { group: 'width' } },
-                    y: { value: 0, offset: -facetGridConfig.offset },
-                    y2: { field: { group: 'height' }, offset: facetGridConfig.offset },
-                    stroke: { value: facetGridConfig.color },
-                    strokeOpacity: { value: facetGridConfig.opacity },
-                    strokeWidth: { value: 0.5 }
-                }
-            }
-        }];
-}
-
-},{"../axis":184,"../channel":186,"../config":221,"../data":222,"../encoding":223,"../fielddef":224,"../scale":227,"../type":232,"../util":233,"./axis":187,"./common":188,"./data/data":193,"./layout":206,"./model":216,"./scale":217}],205:[function(require,module,exports){
-"use strict";
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
-var util_1 = require('../util');
-var config_1 = require('../config');
-var data_1 = require('./data/data');
-var layout_1 = require('./layout');
-var model_1 = require('./model');
-var common_1 = require('./common');
-var vega_schema_1 = require('../vega.schema');
-var LayerModel = (function (_super) {
-    __extends(LayerModel, _super);
-    function LayerModel(spec, parent, parentGivenName) {
-        var _this = this;
-        _super.call(this, spec, parent, parentGivenName);
-        this._config = this._initConfig(spec.config, parent);
-        this._children = spec.layers.map(function (layer, i) {
-            return common_1.buildModel(layer, _this, _this.name('layer_' + i));
-        });
-    }
-    LayerModel.prototype._initConfig = function (specConfig, parent) {
-        return util_1.mergeDeep(util_1.duplicate(config_1.defaultConfig), specConfig, parent ? parent.config() : {});
-    };
-    LayerModel.prototype.has = function (channel) {
-        return false;
-    };
-    LayerModel.prototype.children = function () {
-        return this._children;
-    };
-    LayerModel.prototype.isOrdinalScale = function (channel) {
-        return this._children[0].isOrdinalScale(channel);
-    };
-    LayerModel.prototype.dataTable = function () {
-        return this._children[0].dataTable();
-    };
-    LayerModel.prototype.fieldDef = function (channel) {
-        return null;
-    };
-    LayerModel.prototype.stack = function () {
-        return null;
-    };
-    LayerModel.prototype.parseData = function () {
-        this._children.forEach(function (child) {
-            child.parseData();
-        });
-        this.component.data = data_1.parseLayerData(this);
-    };
-    LayerModel.prototype.parseSelectionData = function () {
-    };
-    LayerModel.prototype.parseLayoutData = function () {
-        this._children.forEach(function (child, i) {
-            child.parseLayoutData();
-        });
-        this.component.layout = layout_1.parseLayerLayout(this);
-    };
-    LayerModel.prototype.parseScale = function () {
-        var model = this;
-        var scaleComponent = this.component.scale = {};
-        this._children.forEach(function (child) {
-            child.parseScale();
-            if (true) {
-                util_1.keys(child.component.scale).forEach(function (channel) {
-                    var childScales = child.component.scale[channel];
-                    if (!childScales) {
-                        return;
-                    }
-                    var modelScales = scaleComponent[channel];
-                    if (modelScales && modelScales.main) {
-                        var modelDomain = modelScales.main.domain;
-                        var childDomain = childScales.main.domain;
-                        if (util_1.isArray(modelDomain)) {
-                            if (util_1.isArray(childScales.main.domain)) {
-                                modelScales.main.domain = modelDomain.concat(childDomain);
-                            }
-                            else {
-                                model.addWarning('custom domain scale cannot be unioned with default field-based domain');
-                            }
-                        }
-                        else {
-                            var unionedFields = vega_schema_1.isUnionedDomain(modelDomain) ? modelDomain.fields : [modelDomain];
-                            if (util_1.isArray(childDomain)) {
-                                model.addWarning('custom domain scale cannot be unioned with default field-based domain');
-                            }
-                            var fields = vega_schema_1.isDataRefDomain(childDomain) ? unionedFields.concat([childDomain]) :
-                                vega_schema_1.isUnionedDomain(childDomain) ? unionedFields.concat(childDomain.fields) :
-                                    unionedFields;
-                            fields = util_1.unique(fields, util_1.hash);
-                            if (fields.length > 1) {
-                                modelScales.main.domain = { fields: fields };
-                            }
-                            else {
-                                modelScales.main.domain = fields[0];
-                            }
-                        }
-                        modelScales.colorLegend = modelScales.colorLegend ? modelScales.colorLegend : childScales.colorLegend;
-                        modelScales.binColorLegend = modelScales.binColorLegend ? modelScales.binColorLegend : childScales.binColorLegend;
-                    }
-                    else {
-                        scaleComponent[channel] = childScales;
-                    }
-                    util_1.vals(childScales).forEach(function (scale) {
-                        var scaleNameWithoutPrefix = scale.name.substr(child.name('').length);
-                        var newName = model.scaleName(scaleNameWithoutPrefix);
-                        child.renameScale(scale.name, newName);
-                        scale.name = newName;
-                    });
-                    delete childScales[channel];
-                });
-            }
-        });
-    };
-    LayerModel.prototype.parseMark = function () {
-        this._children.forEach(function (child) {
-            child.parseMark();
-        });
-    };
-    LayerModel.prototype.parseAxis = function () {
-        var axisComponent = this.component.axis = {};
-        this._children.forEach(function (child) {
-            child.parseAxis();
-            if (true) {
-                util_1.keys(child.component.axis).forEach(function (channel) {
-                    if (!axisComponent[channel]) {
-                        axisComponent[channel] = child.component.axis[channel];
-                    }
-                });
-            }
-        });
-    };
-    LayerModel.prototype.parseAxisGroup = function () {
-        return null;
-    };
-    LayerModel.prototype.parseGridGroup = function () {
-        return null;
-    };
-    LayerModel.prototype.parseLegend = function () {
-        var legendComponent = this.component.legend = {};
-        this._children.forEach(function (child) {
-            child.parseLegend();
-            if (true) {
-                util_1.keys(child.component.legend).forEach(function (channel) {
-                    if (!legendComponent[channel]) {
-                        legendComponent[channel] = child.component.legend[channel];
-                    }
-                });
-            }
-        });
-    };
-    LayerModel.prototype.assembleParentGroupProperties = function () {
-        return null;
-    };
-    LayerModel.prototype.assembleData = function (data) {
-        data_1.assembleData(this, data);
-        this._children.forEach(function (child) {
-            child.assembleData(data);
-        });
-        return data;
-    };
-    LayerModel.prototype.assembleLayout = function (layoutData) {
-        this._children.forEach(function (child) {
-            child.assembleLayout(layoutData);
-        });
-        return layout_1.assembleLayout(this, layoutData);
-    };
-    LayerModel.prototype.assembleMarks = function () {
-        return util_1.flatten(this._children.map(function (child) {
-            return child.assembleMarks();
-        }));
-    };
-    LayerModel.prototype.channels = function () {
-        return [];
-    };
-    LayerModel.prototype.mapping = function () {
-        return null;
-    };
-    LayerModel.prototype.isLayer = function () {
-        return true;
-    };
-    LayerModel.prototype.compatibleSource = function (child) {
-        var sourceUrl = this.data().url;
-        var childData = child.component.data;
-        var compatible = !childData.source || (sourceUrl && sourceUrl === childData.source.url);
-        return compatible;
-    };
-    return LayerModel;
-}(model_1.Model));
-exports.LayerModel = LayerModel;
-
-},{"../config":221,"../util":233,"../vega.schema":235,"./common":188,"./data/data":193,"./layout":206,"./model":216}],206:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../channel');
-var data_1 = require('../data');
-var scale_1 = require('../scale');
-var util_1 = require('../util');
-var mark_1 = require('../mark');
-var time_1 = require('./time');
-function assembleLayout(model, layoutData) {
-    var layoutComponent = model.component.layout;
-    if (!layoutComponent.width && !layoutComponent.height) {
-        return layoutData;
-    }
-    if (true) {
-        var distinctFields = util_1.keys(util_1.extend(layoutComponent.width.distinct, layoutComponent.height.distinct));
-        var formula = layoutComponent.width.formula.concat(layoutComponent.height.formula)
-            .map(function (formula) {
-            return util_1.extend({ type: 'formula' }, formula);
-        });
-        return [
-            distinctFields.length > 0 ? {
-                name: model.dataName(data_1.LAYOUT),
-                source: model.dataTable(),
-                transform: [{
-                        type: 'aggregate',
-                        summarize: distinctFields.map(function (field) {
-                            return { field: field, ops: ['distinct'] };
-                        })
-                    }].concat(formula)
-            } : {
-                name: model.dataName(data_1.LAYOUT),
-                values: [{}],
-                transform: formula
-            }
-        ];
-    }
-}
-exports.assembleLayout = assembleLayout;
-function parseUnitLayout(model) {
-    return {
-        width: parseUnitSizeLayout(model, channel_1.X),
-        height: parseUnitSizeLayout(model, channel_1.Y)
-    };
-}
-exports.parseUnitLayout = parseUnitLayout;
-function parseUnitSizeLayout(model, channel) {
-    var cellConfig = model.config().cell;
-    var nonOrdinalSize = channel === channel_1.X ? cellConfig.width : cellConfig.height;
-    return {
-        distinct: getDistinct(model, channel),
-        formula: [{
-                field: model.channelSizeName(channel),
-                expr: unitSizeExpr(model, channel, nonOrdinalSize)
-            }]
-    };
-}
-function unitSizeExpr(model, channel, nonOrdinalSize) {
-    if (model.has(channel)) {
-        if (model.isOrdinalScale(channel)) {
-            var scale = model.scale(channel);
-            return '(' + cardinalityFormula(model, channel) +
-                ' + ' + scale.padding +
-                ') * ' + scale.bandSize;
-        }
-        else {
-            return nonOrdinalSize + '';
-        }
-    }
-    else {
-        if (model.mark() === mark_1.TEXT && channel === channel_1.X) {
-            return model.config().scale.textBandWidth + '';
-        }
-        return model.config().scale.bandSize + '';
-    }
-}
-function parseFacetLayout(model) {
-    return {
-        width: parseFacetSizeLayout(model, channel_1.COLUMN),
-        height: parseFacetSizeLayout(model, channel_1.ROW)
-    };
-}
-exports.parseFacetLayout = parseFacetLayout;
-function parseFacetSizeLayout(model, channel) {
-    var childLayoutComponent = model.child().component.layout;
-    var sizeType = channel === channel_1.ROW ? 'height' : 'width';
-    var childSizeComponent = childLayoutComponent[sizeType];
-    if (true) {
-        var distinct = util_1.extend(getDistinct(model, channel), childSizeComponent.distinct);
-        var formula = childSizeComponent.formula.concat([{
-                field: model.channelSizeName(channel),
-                expr: facetSizeFormula(model, channel, model.child().channelSizeName(channel))
-            }]);
-        delete childLayoutComponent[sizeType];
-        return {
-            distinct: distinct,
-            formula: formula
-        };
-    }
-}
-function facetSizeFormula(model, channel, innerSize) {
-    var scale = model.scale(channel);
-    if (model.has(channel)) {
-        return '(datum.' + innerSize + ' + ' + scale.padding + ')' + ' * ' + cardinalityFormula(model, channel);
-    }
-    else {
-        return 'datum.' + innerSize + ' + ' + model.config().facet.scale.padding;
-    }
-}
-function parseLayerLayout(model) {
-    return {
-        width: parseLayerSizeLayout(model, channel_1.X),
-        height: parseLayerSizeLayout(model, channel_1.Y)
-    };
-}
-exports.parseLayerLayout = parseLayerLayout;
-function parseLayerSizeLayout(model, channel) {
-    if (true) {
-        var childLayoutComponent = model.children()[0].component.layout;
-        var sizeType_1 = channel === channel_1.Y ? 'height' : 'width';
-        var childSizeComponent = childLayoutComponent[sizeType_1];
-        var distinct = childSizeComponent.distinct;
-        var formula = [{
-                field: model.channelSizeName(channel),
-                expr: childSizeComponent.formula[0].expr
-            }];
-        model.children().forEach(function (child) {
-            delete child.component.layout[sizeType_1];
-        });
-        return {
-            distinct: distinct,
-            formula: formula
-        };
-    }
-}
-function getDistinct(model, channel) {
-    if (model.has(channel) && model.isOrdinalScale(channel)) {
-        var scale = model.scale(channel);
-        if (scale.type === scale_1.ScaleType.ORDINAL && !(scale.domain instanceof Array)) {
-            var distinctField = model.field(channel);
-            var distinct = {};
-            distinct[distinctField] = true;
-            return distinct;
-        }
-    }
-    return {};
-}
-function cardinalityFormula(model, channel) {
-    var scale = model.scale(channel);
-    if (scale.domain instanceof Array) {
-        return scale.domain.length;
-    }
-    var timeUnit = model.fieldDef(channel).timeUnit;
-    var timeUnitDomain = timeUnit ? time_1.rawDomain(timeUnit, channel) : null;
-    return timeUnitDomain !== null ? timeUnitDomain.length :
-        model.field(channel, { datum: true, prefn: 'distinct_' });
-}
-
-},{"../channel":186,"../data":222,"../mark":226,"../scale":227,"../util":233,"./time":219}],207:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../channel');
-var fielddef_1 = require('../fielddef');
-var mark_1 = require('../mark');
-var type_1 = require('../type');
-var util_1 = require('../util');
-var common_1 = require('./common');
-var scale_1 = require('./scale');
-function parseLegendComponent(model) {
-    return [channel_1.COLOR, channel_1.SIZE, channel_1.SHAPE].reduce(function (legendComponent, channel) {
-        if (model.legend(channel)) {
-            legendComponent[channel] = parseLegend(model, channel);
-        }
-        return legendComponent;
-    }, {});
-}
-exports.parseLegendComponent = parseLegendComponent;
-function getLegendDefWithScale(model, channel) {
-    switch (channel) {
-        case channel_1.COLOR:
-            var fieldDef = model.fieldDef(channel_1.COLOR);
-            var scale = model.scaleName(useColorLegendScale(fieldDef) ?
-                scale_1.COLOR_LEGEND :
-                channel_1.COLOR);
-            return model.config().mark.filled ? { fill: scale } : { stroke: scale };
-        case channel_1.SIZE:
-            return { size: model.scaleName(channel_1.SIZE) };
-        case channel_1.SHAPE:
-            return { shape: model.scaleName(channel_1.SHAPE) };
-    }
-    return null;
-}
-function parseLegend(model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    var legend = model.legend(channel);
-    var def = getLegendDefWithScale(model, channel);
-    def.title = title(legend, fieldDef);
-    def.offset = offset(legend, fieldDef);
-    util_1.extend(def, formatMixins(legend, model, channel));
-    ['orient', 'values'].forEach(function (property) {
-        var value = legend[property];
-        if (value !== undefined) {
-            def[property] = value;
-        }
-    });
-    var props = (typeof legend !== 'boolean' && legend.properties) || {};
-    ['title', 'symbols', 'legend', 'labels'].forEach(function (group) {
-        var value = properties[group] ?
-            properties[group](fieldDef, props[group], model, channel) :
-            props[group];
-        if (value !== undefined && util_1.keys(value).length > 0) {
-            def.properties = def.properties || {};
-            def.properties[group] = value;
-        }
-    });
-    return def;
-}
-exports.parseLegend = parseLegend;
-function offset(legend, fieldDef) {
-    if (legend.offset !== undefined) {
-        return legend.offset;
-    }
-    return 0;
-}
-exports.offset = offset;
-function orient(legend, fieldDef) {
-    var orient = legend.orient;
-    if (orient) {
-        return orient;
-    }
-    return 'vertical';
-}
-exports.orient = orient;
-function title(legend, fieldDef) {
-    if (typeof legend !== 'boolean' && legend.title) {
-        return legend.title;
-    }
-    return fielddef_1.title(fieldDef);
-}
-exports.title = title;
-function formatMixins(legend, model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    if (fieldDef.bin) {
-        return {};
-    }
-    return common_1.formatMixins(model, channel, typeof legend !== 'boolean' ? legend.format : undefined);
-}
-exports.formatMixins = formatMixins;
-function useColorLegendScale(fieldDef) {
-    return fieldDef.type === type_1.ORDINAL || fieldDef.bin || fieldDef.timeUnit;
-}
-exports.useColorLegendScale = useColorLegendScale;
-var properties;
-(function (properties) {
-    function symbols(fieldDef, symbolsSpec, model, channel) {
-        var symbols = {};
-        var mark = model.mark();
-        var legend = model.legend(channel);
-        switch (mark) {
-            case mark_1.BAR:
-            case mark_1.TICK:
-            case mark_1.TEXT:
-                symbols.shape = { value: 'square' };
-                break;
-            case mark_1.CIRCLE:
-            case mark_1.SQUARE:
-                symbols.shape = { value: mark };
-                break;
-            case mark_1.POINT:
-            case mark_1.LINE:
-            case mark_1.AREA:
-                break;
-        }
-        var filled = model.config().mark.filled;
-        var config = channel === channel_1.COLOR ?
-            util_1.without(common_1.FILL_STROKE_CONFIG, [filled ? 'fill' : 'stroke', 'strokeDash', 'strokeDashOffset']) :
-            util_1.without(common_1.FILL_STROKE_CONFIG, ['strokeDash', 'strokeDashOffset']);
-        config = util_1.without(config, ['strokeDash', 'strokeDashOffset']);
-        common_1.applyMarkConfig(symbols, model, config);
-        if (filled) {
-            symbols.strokeWidth = { value: 0 };
-        }
-        var value;
-        if (model.has(channel_1.COLOR) && channel === channel_1.COLOR) {
-            if (useColorLegendScale(fieldDef)) {
-                value = { scale: model.scaleName(channel_1.COLOR), field: 'data' };
-            }
-        }
-        else if (model.fieldDef(channel_1.COLOR).value) {
-            value = { value: model.fieldDef(channel_1.COLOR).value };
-        }
-        if (value !== undefined) {
-            if (filled) {
-                symbols.fill = value;
-            }
-            else {
-                symbols.stroke = value;
-            }
-        }
-        else if (channel !== channel_1.COLOR) {
-            symbols[filled ? 'fill' : 'stroke'] = symbols[filled ? 'fill' : 'stroke'] ||
-                { value: model.config().mark.color };
-        }
-        if (legend.symbolColor !== undefined) {
-            symbols.fill = { value: legend.symbolColor };
-        }
-        if (legend.symbolShape !== undefined) {
-            symbols.shape = { value: legend.symbolShape };
-        }
-        if (legend.symbolSize !== undefined) {
-            symbols.size = { value: legend.symbolSize };
-        }
-        if (legend.symbolStrokeWidth !== undefined) {
-            symbols.strokeWidth = { value: legend.symbolStrokeWidth };
-        }
-        symbols = util_1.extend(symbols, symbolsSpec || {});
-        return util_1.keys(symbols).length > 0 ? symbols : undefined;
-    }
-    properties.symbols = symbols;
-    function labels(fieldDef, labelsSpec, model, channel) {
-        var legend = model.legend(channel);
-        var labels = {};
-        if (channel === channel_1.COLOR) {
-            if (fieldDef.type === type_1.ORDINAL) {
-                labelsSpec = util_1.extend({
-                    text: {
-                        scale: model.scaleName(scale_1.COLOR_LEGEND),
-                        field: 'data'
-                    }
-                }, labelsSpec || {});
-            }
-            else if (fieldDef.bin) {
-                labelsSpec = util_1.extend({
-                    text: {
-                        scale: model.scaleName(scale_1.COLOR_LEGEND_LABEL),
-                        field: 'data'
-                    }
-                }, labelsSpec || {});
-            }
-            else if (fieldDef.timeUnit) {
-                labelsSpec = util_1.extend({
-                    text: {
-                        template: '{{ datum.data | time:\'' + common_1.timeFormat(model, channel) + '\'}}'
-                    }
-                }, labelsSpec || {});
-            }
-        }
-        if (legend.labelAlign !== undefined) {
-            labels.align = { value: legend.labelAlign };
-        }
-        if (legend.labelColor !== undefined) {
-            labels.stroke = { value: legend.labelColor };
-        }
-        if (legend.labelFont !== undefined) {
-            labels.font = { value: legend.labelFont };
-        }
-        if (legend.labelFontSize !== undefined) {
-            labels.fontSize = { value: legend.labelFontSize };
-        }
-        if (legend.labelBaseline !== undefined) {
-            labels.baseline = { value: legend.labelBaseline };
-        }
-        labels = util_1.extend(labels, labelsSpec || {});
-        return util_1.keys(labels).length > 0 ? labels : undefined;
-    }
-    properties.labels = labels;
-    function title(fieldDef, titleSpec, model, channel) {
-        var legend = model.legend(channel);
-        var titles = {};
-        if (legend.titleColor !== undefined) {
-            titles.stroke = { value: legend.titleColor };
-        }
-        if (legend.titleFont !== undefined) {
-            titles.font = { value: legend.titleFont };
-        }
-        if (legend.titleFontSize !== undefined) {
-            titles.fontSize = { value: legend.titleFontSize };
-        }
-        if (legend.titleFontWeight !== undefined) {
-            titles.fontWeight = { value: legend.titleFontWeight };
-        }
-        titles = util_1.extend(titles, titleSpec || {});
-        return util_1.keys(titles).length > 0 ? titles : undefined;
-    }
-    properties.title = title;
-})(properties = exports.properties || (exports.properties = {}));
-
-},{"../channel":186,"../fielddef":224,"../mark":226,"../type":232,"../util":233,"./common":188,"./scale":217}],208:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var fielddef_1 = require('../../fielddef');
-var common_1 = require('../common');
-var area;
-(function (area) {
-    function markType() {
-        return 'area';
-    }
-    area.markType = markType;
-    function properties(model) {
-        var p = {};
-        var orient = model.config().mark.orient;
-        if (orient !== undefined) {
-            p.orient = { value: orient };
-        }
-        var stack = model.stack();
-        var xFieldDef = model.encoding().x;
-        if (stack && channel_1.X === stack.fieldChannel) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { suffix: '_start' })
-            };
-        }
-        else if (fielddef_1.isMeasure(xFieldDef)) {
-            p.x = { scale: model.scaleName(channel_1.X), field: model.field(channel_1.X) };
-        }
-        else if (fielddef_1.isDimension(xFieldDef)) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
-        }
-        if (orient === 'horizontal') {
-            if (stack && channel_1.X === stack.fieldChannel) {
-                p.x2 = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X, { suffix: '_end' })
-                };
-            }
-            else {
-                p.x2 = {
-                    scale: model.scaleName(channel_1.X),
-                    value: 0
-                };
-            }
-        }
-        var yFieldDef = model.encoding().y;
-        if (stack && channel_1.Y === stack.fieldChannel) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { suffix: '_start' })
-            };
-        }
-        else if (fielddef_1.isMeasure(yFieldDef)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y)
-            };
-        }
-        else if (fielddef_1.isDimension(yFieldDef)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        if (orient !== 'horizontal') {
-            if (stack && channel_1.Y === stack.fieldChannel) {
-                p.y2 = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y, { suffix: '_end' })
-                };
-            }
-            else {
-                p.y2 = {
-                    scale: model.scaleName(channel_1.Y),
-                    value: 0
-                };
-            }
-        }
-        common_1.applyColorAndOpacity(p, model);
-        common_1.applyMarkConfig(p, model, ['interpolate', 'tension']);
-        return p;
-    }
-    area.properties = properties;
-    function labels(model) {
-        return undefined;
-    }
-    area.labels = labels;
-})(area = exports.area || (exports.area = {}));
-
-},{"../../channel":186,"../../fielddef":224,"../common":188}],209:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var fielddef_1 = require('../../fielddef');
-var common_1 = require('../common');
-var bar;
-(function (bar) {
-    function markType() {
-        return 'rect';
-    }
-    bar.markType = markType;
-    function properties(model) {
-        var p = {};
-        var orient = model.config().mark.orient;
-        var stack = model.stack();
-        var xFieldDef = model.encoding().x;
-        if (stack && channel_1.X === stack.fieldChannel) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { suffix: '_start' })
-            };
-            p.x2 = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { suffix: '_end' })
-            };
-        }
-        else if (fielddef_1.isMeasure(xFieldDef)) {
-            if (orient === 'horizontal') {
-                p.x = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X)
-                };
-                p.x2 = {
-                    scale: model.scaleName(channel_1.X),
-                    value: 0
-                };
-            }
-            else {
-                p.xc = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X)
-                };
-                p.width = { value: sizeValue(model, channel_1.X) };
-            }
-        }
-        else if (model.fieldDef(channel_1.X).bin) {
-            if (model.has(channel_1.SIZE) && orient !== 'horizontal') {
-                p.xc = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X, { binSuffix: '_mid' })
-                };
-                p.width = {
-                    scale: model.scaleName(channel_1.SIZE),
-                    field: model.field(channel_1.SIZE)
-                };
-            }
-            else {
-                p.x = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X, { binSuffix: '_start' }),
-                    offset: 1
-                };
-                p.x2 = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X, { binSuffix: '_end' })
-                };
-            }
-        }
-        else {
-            if (model.has(channel_1.X)) {
-                p.xc = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X)
-                };
-            }
-            else {
-                p.x = { value: 0, offset: 2 };
-            }
-            p.width = model.has(channel_1.SIZE) && orient !== 'horizontal' ? {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            } : {
-                value: sizeValue(model, (channel_1.X))
-            };
-        }
-        var yFieldDef = model.encoding().y;
-        if (stack && channel_1.Y === stack.fieldChannel) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { suffix: '_start' })
-            };
-            p.y2 = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { suffix: '_end' })
-            };
-        }
-        else if (fielddef_1.isMeasure(yFieldDef)) {
-            if (orient !== 'horizontal') {
-                p.y = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y)
-                };
-                p.y2 = {
-                    scale: model.scaleName(channel_1.Y),
-                    value: 0
-                };
-            }
-            else {
-                p.yc = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y)
-                };
-                p.height = { value: sizeValue(model, channel_1.Y) };
-            }
-        }
-        else if (model.fieldDef(channel_1.Y).bin) {
-            if (model.has(channel_1.SIZE) && orient === 'horizontal') {
-                p.yc = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y, { binSuffix: '_mid' })
-                };
-                p.height = {
-                    scale: model.scaleName(channel_1.SIZE),
-                    field: model.field(channel_1.SIZE)
-                };
-            }
-            else {
-                p.y = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y, { binSuffix: '_start' })
-                };
-                p.y2 = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y, { binSuffix: '_end' }),
-                    offset: 1
-                };
-            }
-        }
-        else {
-            if (model.has(channel_1.Y)) {
-                p.yc = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y)
-                };
-            }
-            else {
-                p.y2 = {
-                    field: { group: 'height' },
-                    offset: -1
-                };
-            }
-            p.height = model.has(channel_1.SIZE) && orient === 'horizontal' ? {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            } : {
-                value: sizeValue(model, channel_1.Y)
-            };
-        }
-        common_1.applyColorAndOpacity(p, model);
-        return p;
-    }
-    bar.properties = properties;
-    function sizeValue(model, channel) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
-        }
-        var markConfig = model.config().mark;
-        if (markConfig.barSize) {
-            return markConfig.barSize;
-        }
-        return model.isOrdinalScale(channel) ?
-            model.scale(channel).bandSize - 1 :
-            !model.has(channel) ?
-                model.config().scale.bandSize - 1 :
-                markConfig.barThinSize;
-    }
-    function labels(model) {
-        return undefined;
-    }
-    bar.labels = labels;
-})(bar = exports.bar || (exports.bar = {}));
-
-},{"../../channel":186,"../../fielddef":224,"../common":188}],210:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var common_1 = require('../common');
-var line;
-(function (line) {
-    function markType() {
-        return 'line';
-    }
-    line.markType = markType;
-    function properties(model) {
-        var p = {};
-        if (model.has(channel_1.X)) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.x = { value: 0 };
-        }
-        if (model.has(channel_1.Y)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.y = { field: { group: 'height' } };
-        }
-        common_1.applyColorAndOpacity(p, model);
-        common_1.applyMarkConfig(p, model, ['interpolate', 'tension']);
-        var size = sizeValue(model);
-        if (size) {
-            p.strokeWidth = { value: size };
-        }
-        return p;
-    }
-    line.properties = properties;
-    function sizeValue(model) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
-        }
-        return model.config().mark.lineSize;
-    }
-    function labels(model) {
-        return undefined;
-    }
-    line.labels = labels;
-})(line = exports.line || (exports.line = {}));
-
-},{"../../channel":186,"../common":188}],211:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var mark_1 = require('../../mark');
-var stack_1 = require('../stack');
-var util_1 = require('../../util');
-var area_1 = require('./area');
-var bar_1 = require('./bar');
-var line_1 = require('./line');
-var point_1 = require('./point');
-var text_1 = require('./text');
-var tick_1 = require('./tick');
-var rule_1 = require('./rule');
-var common_1 = require('../common');
-var markCompiler = {
-    area: area_1.area,
-    bar: bar_1.bar,
-    line: line_1.line,
-    point: point_1.point,
-    text: text_1.text,
-    tick: tick_1.tick,
-    rule: rule_1.rule,
-    circle: point_1.circle,
-    square: point_1.square
-};
-function parseMark(model) {
-    if (util_1.contains([mark_1.LINE, mark_1.AREA], model.mark())) {
-        return parsePathMark(model);
-    }
-    else {
-        return parseNonPathMark(model);
-    }
-}
-exports.parseMark = parseMark;
-function parsePathMark(model) {
-    var mark = model.mark();
-    var isFaceted = model.parent() && model.parent().isFacet();
-    var dataFrom = { data: model.dataTable() };
-    var details = detailFields(model);
-    var pathMarks = [
-        {
-            name: model.name('marks'),
-            type: markCompiler[mark].markType(),
-            from: util_1.extend(isFaceted || details.length > 0 ? {} : dataFrom, { transform: [{ type: 'sort', by: sortPathBy(model) }] }),
-            properties: { update: markCompiler[mark].properties(model) }
-        }
-    ];
-    if (details.length > 0) {
-        var facetTransform = { type: 'facet', groupby: details };
-        var transform = mark === mark_1.AREA && model.stack() ?
-            [stack_1.imputeTransform(model), stack_1.stackTransform(model), facetTransform] :
-            [].concat(facetTransform, model.has(channel_1.ORDER) ? [{ type: 'sort', by: sortBy(model) }] : []);
-        return [{
-                name: model.name('pathgroup'),
-                type: 'group',
-                from: util_1.extend(isFaceted ? {} : dataFrom, { transform: transform }),
-                properties: {
-                    update: {
-                        width: { field: { group: 'width' } },
-                        height: { field: { group: 'height' } }
-                    }
-                },
-                marks: pathMarks
-            }];
-    }
-    else {
-        return pathMarks;
-    }
-}
-function parseNonPathMark(model) {
-    var mark = model.mark();
-    var isFaceted = model.parent() && model.parent().isFacet();
-    var dataFrom = { data: model.dataTable() };
-    var marks = [];
-    if (mark === mark_1.TEXT &&
-        model.has(channel_1.COLOR) &&
-        model.config().mark.applyColorToBackground && !model.has(channel_1.X) && !model.has(channel_1.Y)) {
-        marks.push(util_1.extend({
-            name: model.name('background'),
-            type: 'rect'
-        }, isFaceted ? {} : { from: dataFrom }, { properties: { update: text_1.text.background(model) } }));
-    }
-    marks.push(util_1.extend({
-        name: model.name('marks'),
-        type: markCompiler[mark].markType()
-    }, (!isFaceted || model.stack() || model.has(channel_1.ORDER)) ? {
-        from: util_1.extend(isFaceted ? {} : dataFrom, model.stack() ?
-            { transform: [stack_1.stackTransform(model)] } :
-            model.has(channel_1.ORDER) ?
-                { transform: [{ type: 'sort', by: sortBy(model) }] } :
-                {})
-    } : {}, { properties: { update: markCompiler[mark].properties(model) } }));
-    if (model.has(channel_1.LABEL) && markCompiler[mark].labels) {
-        var labelProperties = markCompiler[mark].labels(model);
-        if (labelProperties !== undefined) {
-            marks.push(util_1.extend({
-                name: model.name('label'),
-                type: 'text'
-            }, isFaceted ? {} : { from: dataFrom }, { properties: { update: labelProperties } }));
-        }
-    }
-    return marks;
-}
-function sortBy(model) {
-    if (model.has(channel_1.ORDER)) {
-        var channelDef = model.encoding().order;
-        if (channelDef instanceof Array) {
-            return channelDef.map(common_1.sortField);
-        }
-        else {
-            return common_1.sortField(channelDef);
-        }
-    }
-    return null;
-}
-function sortPathBy(model) {
-    if (model.mark() === mark_1.LINE && model.has(channel_1.PATH)) {
-        var channelDef = model.encoding().path;
-        if (channelDef instanceof Array) {
-            return channelDef.map(common_1.sortField);
-        }
-        else {
-            return common_1.sortField(channelDef);
-        }
-    }
-    else {
-        return '-' + model.field(model.config().mark.orient === 'horizontal' ? channel_1.Y : channel_1.X);
-    }
-}
-function detailFields(model) {
-    return [channel_1.COLOR, channel_1.DETAIL, channel_1.OPACITY, channel_1.SHAPE].reduce(function (details, channel) {
-        if (model.has(channel) && !model.fieldDef(channel).aggregate) {
-            details.push(model.field(channel));
-        }
-        return details;
-    }, []);
-}
-
-},{"../../channel":186,"../../mark":226,"../../util":233,"../common":188,"../stack":218,"./area":208,"./bar":209,"./line":210,"./point":212,"./rule":213,"./text":214,"./tick":215}],212:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var common_1 = require('../common');
-var point;
-(function (point) {
-    function markType() {
-        return 'symbol';
-    }
-    point.markType = markType;
-    function properties(model, fixedShape) {
-        var p = {};
-        if (model.has(channel_1.X)) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.x = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.has(channel_1.Y)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.y = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.has(channel_1.SIZE)) {
-            p.size = {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            };
-        }
-        else {
-            p.size = { value: sizeValue(model) };
-        }
-        if (fixedShape) {
-            p.shape = { value: fixedShape };
-        }
-        else if (model.has(channel_1.SHAPE)) {
-            p.shape = {
-                scale: model.scaleName(channel_1.SHAPE),
-                field: model.field(channel_1.SHAPE)
-            };
-        }
-        else if (model.fieldDef(channel_1.SHAPE).value) {
-            p.shape = { value: model.fieldDef(channel_1.SHAPE).value };
-        }
-        else if (model.config().mark.shape) {
-            p.shape = { value: model.config().mark.shape };
-        }
-        common_1.applyColorAndOpacity(p, model);
-        return p;
-    }
-    point.properties = properties;
-    function sizeValue(model) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
-        }
-        return model.config().mark.size;
-    }
-    function labels(model) {
-    }
-    point.labels = labels;
-})(point = exports.point || (exports.point = {}));
-var circle;
-(function (circle) {
-    function markType() {
-        return 'symbol';
-    }
-    circle.markType = markType;
-    function properties(model) {
-        return point.properties(model, 'circle');
-    }
-    circle.properties = properties;
-    function labels(model) {
-        return undefined;
-    }
-    circle.labels = labels;
-})(circle = exports.circle || (exports.circle = {}));
-var square;
-(function (square) {
-    function markType() {
-        return 'symbol';
-    }
-    square.markType = markType;
-    function properties(model) {
-        return point.properties(model, 'square');
-    }
-    square.properties = properties;
-    function labels(model) {
-        return undefined;
-    }
-    square.labels = labels;
-})(square = exports.square || (exports.square = {}));
-
-},{"../../channel":186,"../common":188}],213:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var common_1 = require('../common');
-var rule;
-(function (rule) {
-    function markType() {
-        return 'rule';
-    }
-    rule.markType = markType;
-    function properties(model) {
-        var p = {};
-        if (model.has(channel_1.X)) {
-            p.x = position(model, channel_1.X);
-            p.y = { value: 0 };
-            p.y2 = {
-                field: { group: 'height' }
-            };
-        }
-        if (model.has(channel_1.Y)) {
-            p.y = position(model, channel_1.Y);
-            p.x = { value: 0 };
-            p.x2 = {
-                field: { group: 'width' }
-            };
-        }
-        common_1.applyColorAndOpacity(p, model);
-        if (model.has(channel_1.SIZE)) {
-            p.strokeWidth = {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            };
-        }
-        else {
-            p.strokeWidth = { value: sizeValue(model) };
-        }
-        return p;
-    }
-    rule.properties = properties;
-    function position(model, channel) {
-        return {
-            scale: model.scaleName(channel),
-            field: model.field(channel, { binSuffix: '_mid' })
-        };
-    }
-    function sizeValue(model) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
-        }
-        return model.config().mark.ruleSize;
-    }
-    function labels(model) {
-        return undefined;
-    }
-    rule.labels = labels;
-})(rule = exports.rule || (exports.rule = {}));
-
-},{"../../channel":186,"../common":188}],214:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var common_1 = require('../common');
-var util_1 = require('../../util');
-var type_1 = require('../../type');
-var text;
-(function (text) {
-    function markType() {
-        return 'text';
-    }
-    text.markType = markType;
-    function background(model) {
-        return {
-            x: { value: 0 },
-            y: { value: 0 },
-            width: { field: { group: 'width' } },
-            height: { field: { group: 'height' } },
-            fill: {
-                scale: model.scaleName(channel_1.COLOR),
-                field: model.field(channel_1.COLOR, model.fieldDef(channel_1.COLOR).type === type_1.ORDINAL ? { prefn: 'rank_' } : {})
-            }
-        };
-    }
-    text.background = background;
-    function properties(model) {
-        var p = {};
-        common_1.applyMarkConfig(p, model, ['angle', 'align', 'baseline', 'dx', 'dy', 'font', 'fontWeight',
-            'fontStyle', 'radius', 'theta', 'text']);
-        var fieldDef = model.fieldDef(channel_1.TEXT);
-        if (model.has(channel_1.X)) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            if (model.has(channel_1.TEXT) && model.fieldDef(channel_1.TEXT).type === type_1.QUANTITATIVE) {
-                p.x = { field: { group: 'width' }, offset: -5 };
-            }
-            else {
-                p.x = { value: model.config().scale.textBandWidth / 2 };
-            }
-        }
-        if (model.has(channel_1.Y)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.y = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.has(channel_1.SIZE)) {
-            p.fontSize = {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            };
-        }
-        else {
-            p.fontSize = { value: sizeValue(model) };
-        }
-        if (model.config().mark.applyColorToBackground && !model.has(channel_1.X) && !model.has(channel_1.Y)) {
-            p.fill = { value: 'black' };
-            var opacity = model.config().mark.opacity;
-            if (opacity) {
-                p.opacity = { value: opacity };
-            }
-            ;
-        }
-        else {
-            common_1.applyColorAndOpacity(p, model);
-        }
-        if (model.has(channel_1.TEXT)) {
-            if (util_1.contains([type_1.QUANTITATIVE, type_1.TEMPORAL], model.fieldDef(channel_1.TEXT).type)) {
-                var format = model.config().mark.format;
-                util_1.extend(p, common_1.formatMixins(model, channel_1.TEXT, format));
-            }
-            else {
-                p.text = { field: model.field(channel_1.TEXT) };
-            }
-        }
-        else if (fieldDef.value) {
-            p.text = { value: fieldDef.value };
-        }
-        return p;
-    }
-    text.properties = properties;
-    function sizeValue(model) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
-        }
-        return model.config().mark.fontSize;
-    }
-})(text = exports.text || (exports.text = {}));
-
-},{"../../channel":186,"../../type":232,"../../util":233,"../common":188}],215:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../../channel');
-var common_1 = require('../common');
-var tick;
-(function (tick) {
-    function markType() {
-        return 'rect';
-    }
-    tick.markType = markType;
-    function properties(model) {
-        var p = {};
-        if (model.has(channel_1.X)) {
-            p.xc = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.xc = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.has(channel_1.Y)) {
-            p.yc = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.yc = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.config().mark.orient === 'horizontal') {
-            p.width = model.has(channel_1.SIZE) ? {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            } : {
-                value: sizeValue(model, channel_1.X)
-            };
-            p.height = { value: model.config().mark.tickThickness };
-        }
-        else {
-            p.width = { value: model.config().mark.tickThickness };
-            p.height = model.has(channel_1.SIZE) ? {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            } : {
-                value: sizeValue(model, channel_1.Y)
-            };
-        }
-        common_1.applyColorAndOpacity(p, model);
-        return p;
-    }
-    tick.properties = properties;
-    function sizeValue(model, channel) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
-        }
-        var scaleConfig = model.config().scale;
-        var markConfig = model.config().mark;
-        if (markConfig.tickSize) {
-            return markConfig.tickSize;
-        }
-        var bandSize = model.has(channel) ?
-            model.scale(channel).bandSize :
-            scaleConfig.bandSize;
-        return bandSize / 1.5;
-    }
-    function labels(model) {
-        return undefined;
-    }
-    tick.labels = labels;
-})(tick = exports.tick || (exports.tick = {}));
-
-},{"../../channel":186,"../common":188}],216:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../channel');
-var encoding_1 = require('../encoding');
-var fielddef_1 = require('../fielddef');
-var scale_1 = require('../scale');
-var util_1 = require('../util');
-var NameMap = (function () {
-    function NameMap() {
-        this._nameMap = {};
-    }
-    NameMap.prototype.rename = function (oldName, newName) {
-        this._nameMap[oldName] = newName;
-    };
-    NameMap.prototype.get = function (name) {
-        while (this._nameMap[name]) {
-            name = this._nameMap[name];
-        }
-        return name;
-    };
-    return NameMap;
-}());
-var Model = (function () {
-    function Model(spec, parent, parentGivenName) {
-        this._warnings = [];
-        this._parent = parent;
-        this._name = spec.name || parentGivenName;
-        this._dataNameMap = parent ? parent._dataNameMap : new NameMap();
-        this._scaleNameMap = parent ? parent._scaleNameMap : new NameMap();
-        this._sizeNameMap = parent ? parent._sizeNameMap : new NameMap();
-        this._data = spec.data;
-        this._description = spec.description;
-        this._transform = spec.transform;
-        this.component = { data: null, layout: null, mark: null, scale: null, axis: null, axisGroup: null, gridGroup: null, legend: null };
-    }
-    Model.prototype.parse = function () {
-        this.parseData();
-        this.parseSelectionData();
-        this.parseLayoutData();
-        this.parseScale();
-        this.parseAxis();
-        this.parseLegend();
-        this.parseAxisGroup();
-        this.parseGridGroup();
-        this.parseMark();
-    };
-    Model.prototype.assembleScales = function () {
-        return util_1.flatten(util_1.vals(this.component.scale).map(function (scales) {
-            var arr = [scales.main];
-            if (scales.colorLegend) {
-                arr.push(scales.colorLegend);
-            }
-            if (scales.binColorLegend) {
-                arr.push(scales.binColorLegend);
-            }
-            return arr;
-        }));
-    };
-    Model.prototype.assembleAxes = function () {
-        return util_1.vals(this.component.axis);
-    };
-    Model.prototype.assembleLegends = function () {
-        return util_1.vals(this.component.legend);
-    };
-    Model.prototype.assembleGroup = function () {
-        var group = {};
-        group.marks = this.assembleMarks();
-        var scales = this.assembleScales();
-        if (scales.length > 0) {
-            group.scales = scales;
-        }
-        var axes = this.assembleAxes();
-        if (axes.length > 0) {
-            group.axes = axes;
-        }
-        var legends = this.assembleLegends();
-        if (legends.length > 0) {
-            group.legends = legends;
-        }
-        return group;
-    };
-    Model.prototype.reduce = function (f, init, t) {
-        return encoding_1.channelMappingReduce(this.channels(), this.mapping(), f, init, t);
-    };
-    Model.prototype.forEach = function (f, t) {
-        encoding_1.channelMappingForEach(this.channels(), this.mapping(), f, t);
-    };
-    Model.prototype.parent = function () {
-        return this._parent;
-    };
-    Model.prototype.name = function (text, delimiter) {
-        if (delimiter === void 0) { delimiter = '_'; }
-        return (this._name ? this._name + delimiter : '') + text;
-    };
-    Model.prototype.description = function () {
-        return this._description;
-    };
-    Model.prototype.data = function () {
-        return this._data;
-    };
-    Model.prototype.renameData = function (oldName, newName) {
-        this._dataNameMap.rename(oldName, newName);
-    };
-    Model.prototype.dataName = function (dataSourceType) {
-        return this._dataNameMap.get(this.name(String(dataSourceType)));
-    };
-    Model.prototype.renameSize = function (oldName, newName) {
-        this._sizeNameMap.rename(oldName, newName);
-    };
-    Model.prototype.channelSizeName = function (channel) {
-        return this.sizeName(channel === channel_1.X || channel === channel_1.COLUMN ? 'width' : 'height');
-    };
-    Model.prototype.sizeName = function (size) {
-        return this._sizeNameMap.get(this.name(size, '_'));
-    };
-    Model.prototype.transform = function () {
-        return this._transform || {};
-    };
-    Model.prototype.field = function (channel, opt) {
-        if (opt === void 0) { opt = {}; }
-        var fieldDef = this.fieldDef(channel);
-        if (fieldDef.bin) {
-            opt = util_1.extend({
-                binSuffix: this.scale(channel).type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
-            }, opt);
-        }
-        return fielddef_1.field(fieldDef, opt);
-    };
-    Model.prototype.scale = function (channel) {
-        return this._scale[channel];
-    };
-    Model.prototype.isOrdinalScale = function (channel) {
-        var scale = this.scale(channel);
-        return scale && scale.type === scale_1.ScaleType.ORDINAL;
-    };
-    Model.prototype.renameScale = function (oldName, newName) {
-        this._scaleNameMap.rename(oldName, newName);
-    };
-    Model.prototype.scaleName = function (channel) {
-        return this._scaleNameMap.get(this.name(channel + ''));
-    };
-    Model.prototype.sort = function (channel) {
-        return (this.mapping()[channel] || {}).sort;
-    };
-    Model.prototype.axis = function (channel) {
-        return this._axis[channel];
-    };
-    Model.prototype.legend = function (channel) {
-        return this._legend[channel];
-    };
-    Model.prototype.config = function () {
-        return this._config;
-    };
-    Model.prototype.addWarning = function (message) {
-        util_1.warning(message);
-        this._warnings.push(message);
-    };
-    Model.prototype.warnings = function () {
-        return this._warnings;
-    };
-    Model.prototype.isUnit = function () {
-        return false;
-    };
-    Model.prototype.isFacet = function () {
-        return false;
-    };
-    Model.prototype.isLayer = function () {
-        return false;
-    };
-    return Model;
-}());
-exports.Model = Model;
-
-},{"../channel":186,"../encoding":223,"../fielddef":224,"../scale":227,"../util":233}],217:[function(require,module,exports){
-"use strict";
-var aggregate_1 = require('../aggregate');
-var channel_1 = require('../channel');
-var config_1 = require('../config');
-var data_1 = require('../data');
-var fielddef_1 = require('../fielddef');
-var mark_1 = require('../mark');
-var scale_1 = require('../scale');
-var timeunit_1 = require('../timeunit');
-var type_1 = require('../type');
-var util_1 = require('../util');
-var time_1 = require('./time');
-exports.COLOR_LEGEND = 'color_legend';
-exports.COLOR_LEGEND_LABEL = 'color_legend_label';
-function parseScaleComponent(model) {
-    return model.channels().reduce(function (scale, channel) {
-        if (model.scale(channel)) {
-            var fieldDef = model.fieldDef(channel);
-            var scales = {
-                main: parseMainScale(model, fieldDef, channel)
-            };
-            if (channel === channel_1.COLOR && model.legend(channel_1.COLOR) && (fieldDef.type === type_1.ORDINAL || fieldDef.bin || fieldDef.timeUnit)) {
-                scales.colorLegend = parseColorLegendScale(model, fieldDef);
-                if (fieldDef.bin) {
-                    scales.binColorLegend = parseBinColorLegendLabel(model, fieldDef);
-                }
-            }
-            scale[channel] = scales;
-        }
-        return scale;
-    }, {});
-}
-exports.parseScaleComponent = parseScaleComponent;
-function parseMainScale(model, fieldDef, channel) {
-    var scale = model.scale(channel);
-    var sort = model.sort(channel);
-    var scaleDef = {
-        name: model.scaleName(channel),
-        type: scale.type,
-    };
-    scaleDef.domain = domain(scale, model, channel);
-    util_1.extend(scaleDef, rangeMixins(scale, model, channel));
-    if (sort && (typeof sort === 'string' ? sort : sort.order) === 'descending') {
-        scaleDef.reverse = true;
-    }
-    [
-        'round',
-        'clamp', 'nice',
-        'exponent', 'zero',
-        'padding', 'points'
-    ].forEach(function (property) {
-        var value = exports[property](scale, channel, fieldDef, model);
-        if (value !== undefined) {
-            scaleDef[property] = value;
-        }
-    });
-    return scaleDef;
-}
-function parseColorLegendScale(model, fieldDef) {
-    return {
-        name: model.scaleName(exports.COLOR_LEGEND),
-        type: scale_1.ScaleType.ORDINAL,
-        domain: {
-            data: model.dataTable(),
-            field: model.field(channel_1.COLOR, (fieldDef.bin || fieldDef.timeUnit) ? {} : { prefn: 'rank_' }),
-            sort: true
-        },
-        range: { data: model.dataTable(), field: model.field(channel_1.COLOR), sort: true }
-    };
-}
-function parseBinColorLegendLabel(model, fieldDef) {
-    return {
-        name: model.scaleName(exports.COLOR_LEGEND_LABEL),
-        type: scale_1.ScaleType.ORDINAL,
-        domain: {
-            data: model.dataTable(),
-            field: model.field(channel_1.COLOR),
-            sort: true
-        },
-        range: {
-            data: model.dataTable(),
-            field: fielddef_1.field(fieldDef, { binSuffix: '_range' }),
-            sort: {
-                field: model.field(channel_1.COLOR, { binSuffix: '_start' }),
-                op: 'min'
-            }
-        }
-    };
-}
-function scaleType(scale, fieldDef, channel, mark) {
-    if (!channel_1.hasScale(channel)) {
-        return null;
-    }
-    if (util_1.contains([channel_1.ROW, channel_1.COLUMN, channel_1.SHAPE], channel)) {
-        return scale_1.ScaleType.ORDINAL;
-    }
-    if (scale.type !== undefined) {
-        return scale.type;
-    }
-    switch (fieldDef.type) {
-        case type_1.NOMINAL:
-            return scale_1.ScaleType.ORDINAL;
-        case type_1.ORDINAL:
-            if (channel === channel_1.COLOR) {
-                return scale_1.ScaleType.LINEAR;
-            }
-            return scale_1.ScaleType.ORDINAL;
-        case type_1.TEMPORAL:
-            if (channel === channel_1.COLOR) {
-                return scale_1.ScaleType.TIME;
-            }
-            if (fieldDef.timeUnit) {
-                switch (fieldDef.timeUnit) {
-                    case timeunit_1.TimeUnit.HOURS:
-                    case timeunit_1.TimeUnit.DAY:
-                    case timeunit_1.TimeUnit.MONTH:
-                        return scale_1.ScaleType.ORDINAL;
-                    default:
-                        return scale_1.ScaleType.TIME;
-                }
-            }
-            return scale_1.ScaleType.TIME;
-        case type_1.QUANTITATIVE:
-            if (fieldDef.bin) {
-                return util_1.contains([channel_1.X, channel_1.Y, channel_1.COLOR], channel) ? scale_1.ScaleType.LINEAR : scale_1.ScaleType.ORDINAL;
-            }
-            return scale_1.ScaleType.LINEAR;
-    }
-    return null;
-}
-exports.scaleType = scaleType;
-function domain(scale, model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    if (scale.domain) {
-        return scale.domain;
-    }
-    if (fieldDef.type === type_1.TEMPORAL) {
-        if (time_1.rawDomain(fieldDef.timeUnit, channel)) {
-            return {
-                data: fieldDef.timeUnit,
-                field: 'date'
-            };
-        }
-        return {
-            data: model.dataTable(),
-            field: model.field(channel),
-            sort: {
-                field: model.field(channel),
-                op: 'min'
-            }
-        };
-    }
-    var stack = model.stack();
-    if (stack && channel === stack.fieldChannel) {
-        if (stack.offset === config_1.StackOffset.NORMALIZE) {
-            return [0, 1];
-        }
-        return {
-            data: model.dataName(data_1.STACKED_SCALE),
-            field: model.field(channel, { prefn: 'sum_' })
-        };
-    }
-    var useRawDomain = _useRawDomain(scale, model, channel), sort = domainSort(model, channel, scale.type);
-    if (useRawDomain) {
-        return {
-            data: data_1.SOURCE,
-            field: model.field(channel, { noAggregate: true })
-        };
-    }
-    else if (fieldDef.bin) {
-        if (scale.type === scale_1.ScaleType.ORDINAL) {
-            return {
-                data: model.dataTable(),
-                field: model.field(channel, { binSuffix: '_range' }),
-                sort: {
-                    field: model.field(channel, { binSuffix: '_start' }),
-                    op: 'min'
-                }
-            };
-        }
-        else if (channel === channel_1.COLOR) {
-            return {
-                data: model.dataTable(),
-                field: model.field(channel, { binSuffix: '_start' })
-            };
-        }
-        else {
-            return {
-                data: model.dataTable(),
-                field: [
-                    model.field(channel, { binSuffix: '_start' }),
-                    model.field(channel, { binSuffix: '_end' })
-                ]
-            };
-        }
-    }
-    else if (sort) {
-        return {
-            data: sort.op ? data_1.SOURCE : model.dataTable(),
-            field: (fieldDef.type === type_1.ORDINAL && channel === channel_1.COLOR) ? model.field(channel, { prefn: 'rank_' }) : model.field(channel),
-            sort: sort
-        };
-    }
-    else {
-        return {
-            data: model.dataTable(),
-            field: (fieldDef.type === type_1.ORDINAL && channel === channel_1.COLOR) ? model.field(channel, { prefn: 'rank_' }) : model.field(channel),
-        };
-    }
-}
-exports.domain = domain;
-function domainSort(model, channel, scaleType) {
-    if (scaleType !== scale_1.ScaleType.ORDINAL) {
-        return undefined;
-    }
-    var sort = model.sort(channel);
-    if (util_1.contains(['ascending', 'descending', undefined], sort)) {
-        return true;
-    }
-    if (typeof sort !== 'string') {
-        return {
-            op: sort.op,
-            field: sort.field
-        };
-    }
-    return undefined;
-}
-exports.domainSort = domainSort;
-function _useRawDomain(scale, model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    return scale.useRawDomain &&
-        fieldDef.aggregate &&
-        aggregate_1.SHARED_DOMAIN_OPS.indexOf(fieldDef.aggregate) >= 0 &&
-        ((fieldDef.type === type_1.QUANTITATIVE && !fieldDef.bin) ||
-            (fieldDef.type === type_1.TEMPORAL && util_1.contains([scale_1.ScaleType.TIME, scale_1.ScaleType.UTC], scale.type)));
-}
-function rangeMixins(scale, model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    var scaleConfig = model.config().scale;
-    if (scale.type === scale_1.ScaleType.ORDINAL && scale.bandSize && util_1.contains([channel_1.X, channel_1.Y], channel)) {
-        return { bandSize: scale.bandSize };
-    }
-    if (scale.range && !util_1.contains([channel_1.X, channel_1.Y, channel_1.ROW, channel_1.COLUMN], channel)) {
-        return { range: scale.range };
-    }
-    switch (channel) {
-        case channel_1.ROW:
-            return { range: 'height' };
-        case channel_1.COLUMN:
-            return { range: 'width' };
-    }
-    var unitModel = model;
-    switch (channel) {
-        case channel_1.X:
-            return {
-                rangeMin: 0,
-                rangeMax: unitModel.config().cell.width
-            };
-        case channel_1.Y:
-            return {
-                rangeMin: unitModel.config().cell.height,
-                rangeMax: 0
-            };
-        case channel_1.SIZE:
-            if (unitModel.mark() === mark_1.BAR) {
-                if (scaleConfig.barSizeRange !== undefined) {
-                    return { range: scaleConfig.barSizeRange };
-                }
-                var dimension = model.config().mark.orient === 'horizontal' ? channel_1.Y : channel_1.X;
-                return { range: [model.config().mark.barThinSize, model.scale(dimension).bandSize] };
-            }
-            else if (unitModel.mark() === mark_1.TEXT) {
-                return { range: scaleConfig.fontSizeRange };
-            }
-            else if (unitModel.mark() === mark_1.RULE) {
-                return { range: scaleConfig.ruleSizeRange };
-            }
-            else if (unitModel.mark() === mark_1.TICK) {
-                return { range: scaleConfig.tickSizeRange };
-            }
-            if (scaleConfig.pointSizeRange !== undefined) {
-                return { range: scaleConfig.pointSizeRange };
-            }
-            var bandSize = pointBandSize(unitModel);
-            return { range: [9, (bandSize - 2) * (bandSize - 2)] };
-        case channel_1.SHAPE:
-            return { range: scaleConfig.shapeRange };
-        case channel_1.COLOR:
-            if (fieldDef.type === type_1.NOMINAL) {
-                return { range: scaleConfig.nominalColorRange };
-            }
-            return { range: scaleConfig.sequentialColorRange };
-        case channel_1.OPACITY:
-            return { range: scaleConfig.opacity };
-    }
-    return {};
-}
-exports.rangeMixins = rangeMixins;
-function pointBandSize(model) {
-    var scaleConfig = model.config().scale;
-    var hasX = model.has(channel_1.X);
-    var hasY = model.has(channel_1.Y);
-    var xIsMeasure = fielddef_1.isMeasure(model.encoding().x);
-    var yIsMeasure = fielddef_1.isMeasure(model.encoding().y);
-    if (hasX && hasY) {
-        return xIsMeasure !== yIsMeasure ?
-            model.scale(xIsMeasure ? channel_1.Y : channel_1.X).bandSize :
-            Math.min(model.scale(channel_1.X).bandSize || scaleConfig.bandSize, model.scale(channel_1.Y).bandSize || scaleConfig.bandSize);
-    }
-    else if (hasY) {
-        return yIsMeasure ? model.config().scale.bandSize : model.scale(channel_1.Y).bandSize;
-    }
-    else if (hasX) {
-        return xIsMeasure ? model.config().scale.bandSize : model.scale(channel_1.X).bandSize;
-    }
-    return model.config().scale.bandSize;
-}
-function clamp(scale) {
-    if (util_1.contains([scale_1.ScaleType.LINEAR, scale_1.ScaleType.POW, scale_1.ScaleType.SQRT,
-        scale_1.ScaleType.LOG, scale_1.ScaleType.TIME, scale_1.ScaleType.UTC], scale.type)) {
-        return scale.clamp;
-    }
-    return undefined;
-}
-exports.clamp = clamp;
-function exponent(scale) {
-    if (scale.type === scale_1.ScaleType.POW) {
-        return scale.exponent;
-    }
-    return undefined;
-}
-exports.exponent = exponent;
-function nice(scale, channel, fieldDef) {
-    if (util_1.contains([scale_1.ScaleType.LINEAR, scale_1.ScaleType.POW, scale_1.ScaleType.SQRT, scale_1.ScaleType.LOG,
-        scale_1.ScaleType.TIME, scale_1.ScaleType.UTC, scale_1.ScaleType.QUANTIZE], scale.type)) {
-        if (scale.nice !== undefined) {
-            return scale.nice;
-        }
-        if (util_1.contains([scale_1.ScaleType.TIME, scale_1.ScaleType.UTC], scale.type)) {
-            return time_1.smallestUnit(fieldDef.timeUnit);
-        }
-        return util_1.contains([channel_1.X, channel_1.Y], channel);
-    }
-    return undefined;
-}
-exports.nice = nice;
-function padding(scale, channel) {
-    if (scale.type === scale_1.ScaleType.ORDINAL && util_1.contains([channel_1.X, channel_1.Y], channel)) {
-        return scale.padding;
-    }
-    return undefined;
-}
-exports.padding = padding;
-function points(scale, channel, __, model) {
-    if (scale.type === scale_1.ScaleType.ORDINAL && util_1.contains([channel_1.X, channel_1.Y], channel)) {
-        return true;
-    }
-    return undefined;
-}
-exports.points = points;
-function round(scale, channel) {
-    if (util_1.contains([channel_1.X, channel_1.Y, channel_1.ROW, channel_1.COLUMN, channel_1.SIZE], channel) && scale.round !== undefined) {
-        return scale.round;
-    }
-    return undefined;
-}
-exports.round = round;
-function zero(scale, channel, fieldDef) {
-    if (!util_1.contains([scale_1.ScaleType.TIME, scale_1.ScaleType.UTC, scale_1.ScaleType.ORDINAL], scale.type)) {
-        if (scale.zero !== undefined) {
-            return scale.zero;
-        }
-        return !fieldDef.bin && util_1.contains([channel_1.X, channel_1.Y], channel);
-    }
-    return undefined;
-}
-exports.zero = zero;
-
-},{"../aggregate":183,"../channel":186,"../config":221,"../data":222,"../fielddef":224,"../mark":226,"../scale":227,"../timeunit":231,"../type":232,"../util":233,"./time":219}],218:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../channel');
-var scale_1 = require('../scale');
-var config_1 = require('../config');
-var mark_1 = require('../mark');
-var fielddef_1 = require('../fielddef');
-var encoding_1 = require('../encoding');
-var util_1 = require('../util');
-var common_1 = require('./common');
-function compileStackProperties(mark, encoding, scale, config) {
-    var stackFields = getStackFields(mark, encoding, scale);
-    if (stackFields.length > 0 &&
-        util_1.contains([mark_1.BAR, mark_1.AREA], mark) &&
-        config.mark.stacked !== config_1.StackOffset.NONE &&
-        encoding_1.isAggregate(encoding)) {
-        var isXMeasure = encoding_1.has(encoding, channel_1.X) && fielddef_1.isMeasure(encoding.x), isYMeasure = encoding_1.has(encoding, channel_1.Y) && fielddef_1.isMeasure(encoding.y);
-        if (isXMeasure && !isYMeasure) {
-            return {
-                groupbyChannel: channel_1.Y,
-                fieldChannel: channel_1.X,
-                stackFields: stackFields,
-                offset: config.mark.stacked
-            };
-        }
-        else if (isYMeasure && !isXMeasure) {
-            return {
-                groupbyChannel: channel_1.X,
-                fieldChannel: channel_1.Y,
-                stackFields: stackFields,
-                offset: config.mark.stacked
-            };
-        }
-    }
-    return null;
-}
-exports.compileStackProperties = compileStackProperties;
-function getStackFields(mark, encoding, scaleMap) {
-    return [channel_1.COLOR, channel_1.DETAIL, channel_1.OPACITY, channel_1.SIZE].reduce(function (fields, channel) {
-        var channelEncoding = encoding[channel];
-        if (encoding_1.has(encoding, channel)) {
-            if (util_1.isArray(channelEncoding)) {
-                channelEncoding.forEach(function (fieldDef) {
-                    fields.push(fielddef_1.field(fieldDef));
-                });
-            }
-            else {
-                var fieldDef = channelEncoding;
-                var scale = scaleMap[channel];
-                fields.push(fielddef_1.field(fieldDef, {
-                    binSuffix: scale && scale.type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
-                }));
-            }
-        }
-        return fields;
-    }, []);
-}
-function imputeTransform(model) {
-    var stack = model.stack();
-    return {
-        type: 'impute',
-        field: model.field(stack.fieldChannel),
-        groupby: stack.stackFields,
-        orderby: [model.field(stack.groupbyChannel)],
-        method: 'value',
-        value: 0
-    };
-}
-exports.imputeTransform = imputeTransform;
-function stackTransform(model) {
-    var stack = model.stack();
-    var encoding = model.encoding();
-    var sortby = model.has(channel_1.ORDER) ?
-        (util_1.isArray(encoding[channel_1.ORDER]) ? encoding[channel_1.ORDER] : [encoding[channel_1.ORDER]]).map(common_1.sortField) :
-        stack.stackFields.map(function (field) {
-            return '-' + field;
-        });
-    var valName = model.field(stack.fieldChannel);
-    var transform = {
-        type: 'stack',
-        groupby: [model.field(stack.groupbyChannel)],
-        field: model.field(stack.fieldChannel),
-        sortby: sortby,
-        output: {
-            start: valName + '_start',
-            end: valName + '_end'
-        }
-    };
-    if (stack.offset) {
-        transform.offset = stack.offset;
-    }
-    return transform;
-}
-exports.stackTransform = stackTransform;
-
-},{"../channel":186,"../config":221,"../encoding":223,"../fielddef":224,"../mark":226,"../scale":227,"../util":233,"./common":188}],219:[function(require,module,exports){
-"use strict";
-var util_1 = require('../util');
-var channel_1 = require('../channel');
-var timeunit_1 = require('../timeunit');
-function smallestUnit(timeUnit) {
-    if (!timeUnit) {
-        return undefined;
-    }
-    if (timeUnit.indexOf('second') > -1) {
-        return 'second';
-    }
-    if (timeUnit.indexOf('minute') > -1) {
-        return 'minute';
-    }
-    if (timeUnit.indexOf('hour') > -1) {
-        return 'hour';
-    }
-    if (timeUnit.indexOf('day') > -1 || timeUnit.indexOf('date') > -1) {
-        return 'day';
-    }
-    if (timeUnit.indexOf('month') > -1) {
-        return 'month';
-    }
-    if (timeUnit.indexOf('year') > -1) {
-        return 'year';
-    }
-    return undefined;
-}
-exports.smallestUnit = smallestUnit;
-function parseExpression(timeUnit, fieldRef, onlyRef) {
-    if (onlyRef === void 0) { onlyRef = false; }
-    var out = 'datetime(';
-    var timeString = timeUnit.toString();
-    function get(fun, addComma) {
-        if (addComma === void 0) { addComma = true; }
-        if (onlyRef) {
-            return fieldRef + (addComma ? ', ' : '');
-        }
-        else {
-            return fun + '(' + fieldRef + ')' + (addComma ? ', ' : '');
-        }
-    }
-    if (timeString.indexOf('year') > -1) {
-        out += get('year');
-    }
-    else {
-        out += '2006, ';
-    }
-    if (timeString.indexOf('month') > -1) {
-        out += get('month');
-    }
-    else {
-        out += '0, ';
-    }
-    if (timeString.indexOf('day') > -1) {
-        out += get('day', false) + '+1, ';
-    }
-    else if (timeString.indexOf('date') > -1) {
-        out += get('date');
-    }
-    else {
-        out += '1, ';
-    }
-    if (timeString.indexOf('hours') > -1) {
-        out += get('hours');
-    }
-    else {
-        out += '0, ';
-    }
-    if (timeString.indexOf('minutes') > -1) {
-        out += get('minutes');
-    }
-    else {
-        out += '0, ';
-    }
-    if (timeString.indexOf('seconds') > -1) {
-        out += get('seconds');
-    }
-    else {
-        out += '0, ';
-    }
-    if (timeString.indexOf('milliseconds') > -1) {
-        out += get('milliseconds', false);
-    }
-    else {
-        out += '0';
-    }
-    return out + ')';
-}
-exports.parseExpression = parseExpression;
-function rawDomain(timeUnit, channel) {
-    if (util_1.contains([channel_1.ROW, channel_1.COLUMN, channel_1.SHAPE, channel_1.COLOR], channel)) {
-        return null;
-    }
-    switch (timeUnit) {
-        case timeunit_1.TimeUnit.SECONDS:
-            return util_1.range(0, 60);
-        case timeunit_1.TimeUnit.MINUTES:
-            return util_1.range(0, 60);
-        case timeunit_1.TimeUnit.HOURS:
-            return util_1.range(0, 24);
-        case timeunit_1.TimeUnit.DAY:
-            return util_1.range(0, 7);
-        case timeunit_1.TimeUnit.DATE:
-            return util_1.range(1, 32);
-        case timeunit_1.TimeUnit.MONTH:
-            return util_1.range(0, 12);
-    }
-    return null;
-}
-exports.rawDomain = rawDomain;
-
-},{"../channel":186,"../timeunit":231,"../util":233}],220:[function(require,module,exports){
-"use strict";
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
-var aggregate_1 = require('../aggregate');
-var channel_1 = require('../channel');
-var config_1 = require('../config');
-var data_1 = require('../data');
-var vlEncoding = require('../encoding');
-var fielddef_1 = require('../fielddef');
-var mark_1 = require('../mark');
-var scale_1 = require('../scale');
-var type_1 = require('../type');
-var util_1 = require('../util');
-var axis_1 = require('./axis');
-var common_1 = require('./common');
-var config_2 = require('./config');
-var data_2 = require('./data/data');
-var legend_1 = require('./legend');
-var layout_1 = require('./layout');
-var model_1 = require('./model');
-var mark_2 = require('./mark/mark');
-var scale_2 = require('./scale');
-var stack_1 = require('./stack');
-var UnitModel = (function (_super) {
-    __extends(UnitModel, _super);
-    function UnitModel(spec, parent, parentGivenName) {
-        _super.call(this, spec, parent, parentGivenName);
-        var mark = this._mark = spec.mark;
-        var encoding = this._encoding = this._initEncoding(mark, spec.encoding || {});
-        var config = this._config = this._initConfig(spec.config, parent, mark, encoding);
-        var scale = this._scale = this._initScale(mark, encoding, config);
-        this._axis = this._initAxis(encoding, config);
-        this._legend = this._initLegend(encoding, config);
-        this._stack = stack_1.compileStackProperties(mark, encoding, scale, config);
-    }
-    UnitModel.prototype._initEncoding = function (mark, encoding) {
-        encoding = util_1.duplicate(encoding);
-        vlEncoding.forEach(encoding, function (fieldDef, channel) {
-            if (!channel_1.supportMark(channel, mark)) {
-                console.warn(channel, 'dropped as it is incompatible with', mark);
-                delete fieldDef.field;
-                return;
-            }
-            if (fieldDef.type) {
-                fieldDef.type = type_1.getFullName(fieldDef.type);
-            }
-            if ((channel === channel_1.PATH || channel === channel_1.ORDER) && !fieldDef.aggregate && fieldDef.type === type_1.QUANTITATIVE) {
-                fieldDef.aggregate = aggregate_1.AggregateOp.MIN;
-            }
-        });
-        return encoding;
-    };
-    UnitModel.prototype._initConfig = function (specConfig, parent, mark, encoding) {
-        var config = util_1.mergeDeep(util_1.duplicate(config_1.defaultConfig), parent ? parent.config() : {}, specConfig);
-        config.mark = config_2.initMarkConfig(mark, encoding, config);
-        return config;
-    };
-    UnitModel.prototype._initScale = function (mark, encoding, config) {
-        return channel_1.UNIT_SCALE_CHANNELS.reduce(function (_scale, channel) {
-            if (vlEncoding.has(encoding, channel)) {
-                var scaleSpec = encoding[channel].scale || {};
-                var channelDef = encoding[channel];
-                var _scaleType = scale_2.scaleType(scaleSpec, channelDef, channel, mark);
-                _scale[channel] = util_1.extend({
-                    type: _scaleType,
-                    round: config.scale.round,
-                    padding: config.scale.padding,
-                    useRawDomain: config.scale.useRawDomain,
-                    bandSize: channel === channel_1.X && _scaleType === scale_1.ScaleType.ORDINAL && mark === mark_1.TEXT ?
-                        config.scale.textBandWidth : config.scale.bandSize
-                }, scaleSpec);
-            }
-            return _scale;
-        }, {});
-    };
-    UnitModel.prototype._initAxis = function (encoding, config) {
-        return [channel_1.X, channel_1.Y].reduce(function (_axis, channel) {
-            if (vlEncoding.has(encoding, channel)) {
-                var axisSpec = encoding[channel].axis;
-                if (axisSpec !== false) {
-                    _axis[channel] = util_1.extend({}, config.axis, axisSpec === true ? {} : axisSpec || {});
-                }
-            }
-            return _axis;
-        }, {});
-    };
-    UnitModel.prototype._initLegend = function (encoding, config) {
-        return channel_1.NONSPATIAL_SCALE_CHANNELS.reduce(function (_legend, channel) {
-            if (vlEncoding.has(encoding, channel)) {
-                var legendSpec = encoding[channel].legend;
-                if (legendSpec !== false) {
-                    _legend[channel] = util_1.extend({}, config.legend, legendSpec === true ? {} : legendSpec || {});
-                }
-            }
-            return _legend;
-        }, {});
-    };
-    UnitModel.prototype.parseData = function () {
-        this.component.data = data_2.parseUnitData(this);
-    };
-    UnitModel.prototype.parseSelectionData = function () {
-    };
-    UnitModel.prototype.parseLayoutData = function () {
-        this.component.layout = layout_1.parseUnitLayout(this);
-    };
-    UnitModel.prototype.parseScale = function () {
-        this.component.scale = scale_2.parseScaleComponent(this);
-    };
-    UnitModel.prototype.parseMark = function () {
-        this.component.mark = mark_2.parseMark(this);
-    };
-    UnitModel.prototype.parseAxis = function () {
-        this.component.axis = axis_1.parseAxisComponent(this, [channel_1.X, channel_1.Y]);
-    };
-    UnitModel.prototype.parseAxisGroup = function () {
-        return null;
-    };
-    UnitModel.prototype.parseGridGroup = function () {
-        return null;
-    };
-    UnitModel.prototype.parseLegend = function () {
-        this.component.legend = legend_1.parseLegendComponent(this);
-    };
-    UnitModel.prototype.assembleData = function (data) {
-        return data_2.assembleData(this, data);
-    };
-    UnitModel.prototype.assembleLayout = function (layoutData) {
-        return layout_1.assembleLayout(this, layoutData);
-    };
-    UnitModel.prototype.assembleMarks = function () {
-        return this.component.mark;
-    };
-    UnitModel.prototype.assembleParentGroupProperties = function (cellConfig) {
-        return common_1.applyConfig({}, cellConfig, common_1.FILL_STROKE_CONFIG.concat(['clip']));
-    };
-    UnitModel.prototype.channels = function () {
-        return channel_1.UNIT_CHANNELS;
-    };
-    UnitModel.prototype.mapping = function () {
-        return this.encoding();
-    };
-    UnitModel.prototype.stack = function () {
-        return this._stack;
-    };
-    UnitModel.prototype.toSpec = function (excludeConfig, excludeData) {
-        var encoding = util_1.duplicate(this._encoding);
-        var spec;
-        spec = {
-            mark: this._mark,
-            encoding: encoding
-        };
-        if (!excludeConfig) {
-            spec.config = util_1.duplicate(this._config);
-        }
-        if (!excludeData) {
-            spec.data = util_1.duplicate(this._data);
-        }
-        return spec;
-    };
-    UnitModel.prototype.mark = function () {
-        return this._mark;
-    };
-    UnitModel.prototype.has = function (channel) {
-        return vlEncoding.has(this._encoding, channel);
-    };
-    UnitModel.prototype.encoding = function () {
-        return this._encoding;
-    };
-    UnitModel.prototype.fieldDef = function (channel) {
-        return this._encoding[channel] || {};
-    };
-    UnitModel.prototype.field = function (channel, opt) {
-        if (opt === void 0) { opt = {}; }
-        var fieldDef = this.fieldDef(channel);
-        if (fieldDef.bin) {
-            opt = util_1.extend({
-                binSuffix: this.scale(channel).type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
-            }, opt);
-        }
-        return fielddef_1.field(fieldDef, opt);
-    };
-    UnitModel.prototype.dataTable = function () {
-        return this.dataName(vlEncoding.isAggregate(this._encoding) ? data_1.SUMMARY : data_1.SOURCE);
-    };
-    UnitModel.prototype.isUnit = function () {
-        return true;
-    };
-    return UnitModel;
-}(model_1.Model));
-exports.UnitModel = UnitModel;
-
-},{"../aggregate":183,"../channel":186,"../config":221,"../data":222,"../encoding":223,"../fielddef":224,"../mark":226,"../scale":227,"../type":232,"../util":233,"./axis":187,"./common":188,"./config":190,"./data/data":193,"./layout":206,"./legend":207,"./mark/mark":211,"./model":216,"./scale":217,"./stack":218}],221:[function(require,module,exports){
-"use strict";
-var scale_1 = require('./scale');
-var axis_1 = require('./axis');
-var legend_1 = require('./legend');
-exports.defaultCellConfig = {
-    width: 200,
-    height: 200
-};
-exports.defaultFacetCellConfig = {
-    stroke: '#ccc',
-    strokeWidth: 1
-};
-var defaultFacetGridConfig = {
-    color: '#000000',
-    opacity: 0.4,
-    offset: 0
-};
-exports.defaultFacetConfig = {
-    scale: scale_1.defaultFacetScaleConfig,
-    axis: axis_1.defaultFacetAxisConfig,
-    grid: defaultFacetGridConfig,
-    cell: exports.defaultFacetCellConfig
-};
-(function (FontWeight) {
-    FontWeight[FontWeight["NORMAL"] = 'normal'] = "NORMAL";
-    FontWeight[FontWeight["BOLD"] = 'bold'] = "BOLD";
-})(exports.FontWeight || (exports.FontWeight = {}));
-var FontWeight = exports.FontWeight;
-(function (Shape) {
-    Shape[Shape["CIRCLE"] = 'circle'] = "CIRCLE";
-    Shape[Shape["SQUARE"] = 'square'] = "SQUARE";
-    Shape[Shape["CROSS"] = 'cross'] = "CROSS";
-    Shape[Shape["DIAMOND"] = 'diamond'] = "DIAMOND";
-    Shape[Shape["TRIANGLEUP"] = 'triangle-up'] = "TRIANGLEUP";
-    Shape[Shape["TRIANGLEDOWN"] = 'triangle-down'] = "TRIANGLEDOWN";
-})(exports.Shape || (exports.Shape = {}));
-var Shape = exports.Shape;
-(function (HorizontalAlign) {
-    HorizontalAlign[HorizontalAlign["LEFT"] = 'left'] = "LEFT";
-    HorizontalAlign[HorizontalAlign["RIGHT"] = 'right'] = "RIGHT";
-    HorizontalAlign[HorizontalAlign["CENTER"] = 'center'] = "CENTER";
-})(exports.HorizontalAlign || (exports.HorizontalAlign = {}));
-var HorizontalAlign = exports.HorizontalAlign;
-(function (VerticalAlign) {
-    VerticalAlign[VerticalAlign["TOP"] = 'top'] = "TOP";
-    VerticalAlign[VerticalAlign["MIDDLE"] = 'middle'] = "MIDDLE";
-    VerticalAlign[VerticalAlign["BOTTOM"] = 'bottom'] = "BOTTOM";
-})(exports.VerticalAlign || (exports.VerticalAlign = {}));
-var VerticalAlign = exports.VerticalAlign;
-(function (FontStyle) {
-    FontStyle[FontStyle["NORMAL"] = 'normal'] = "NORMAL";
-    FontStyle[FontStyle["ITALIC"] = 'italic'] = "ITALIC";
-})(exports.FontStyle || (exports.FontStyle = {}));
-var FontStyle = exports.FontStyle;
-(function (StackOffset) {
-    StackOffset[StackOffset["ZERO"] = 'zero'] = "ZERO";
-    StackOffset[StackOffset["CENTER"] = 'center'] = "CENTER";
-    StackOffset[StackOffset["NORMALIZE"] = 'normalize'] = "NORMALIZE";
-    StackOffset[StackOffset["NONE"] = 'none'] = "NONE";
-})(exports.StackOffset || (exports.StackOffset = {}));
-var StackOffset = exports.StackOffset;
-(function (Interpolate) {
-    Interpolate[Interpolate["LINEAR"] = 'linear'] = "LINEAR";
-    Interpolate[Interpolate["LINEAR_CLOSED"] = 'linear-closed'] = "LINEAR_CLOSED";
-    Interpolate[Interpolate["STEP"] = 'step'] = "STEP";
-    Interpolate[Interpolate["STEP_BEFORE"] = 'step-before'] = "STEP_BEFORE";
-    Interpolate[Interpolate["STEP_AFTER"] = 'step-after'] = "STEP_AFTER";
-    Interpolate[Interpolate["BASIS"] = 'basis'] = "BASIS";
-    Interpolate[Interpolate["BASIS_OPEN"] = 'basis-open'] = "BASIS_OPEN";
-    Interpolate[Interpolate["BASIS_CLOSED"] = 'basis-closed'] = "BASIS_CLOSED";
-    Interpolate[Interpolate["CARDINAL"] = 'cardinal'] = "CARDINAL";
-    Interpolate[Interpolate["CARDINAL_OPEN"] = 'cardinal-open'] = "CARDINAL_OPEN";
-    Interpolate[Interpolate["CARDINAL_CLOSED"] = 'cardinal-closed'] = "CARDINAL_CLOSED";
-    Interpolate[Interpolate["BUNDLE"] = 'bundle'] = "BUNDLE";
-    Interpolate[Interpolate["MONOTONE"] = 'monotone'] = "MONOTONE";
-})(exports.Interpolate || (exports.Interpolate = {}));
-var Interpolate = exports.Interpolate;
-exports.defaultMarkConfig = {
-    color: '#4682b4',
-    strokeWidth: 2,
-    size: 30,
-    barThinSize: 2,
-    ruleSize: 1,
-    tickThickness: 1,
-    fontSize: 10,
-    baseline: VerticalAlign.MIDDLE,
-    text: 'Abc',
-    shortTimeLabels: false,
-    applyColorToBackground: false
-};
-exports.defaultConfig = {
-    numberFormat: 's',
-    timeFormat: '%Y-%m-%d',
-    cell: exports.defaultCellConfig,
-    mark: exports.defaultMarkConfig,
-    scale: scale_1.defaultScaleConfig,
-    axis: axis_1.defaultAxisConfig,
-    legend: legend_1.defaultLegendConfig,
-    facet: exports.defaultFacetConfig,
-};
-
-},{"./axis":184,"./legend":225,"./scale":227}],222:[function(require,module,exports){
-"use strict";
-var type_1 = require('./type');
-(function (DataFormat) {
-    DataFormat[DataFormat["JSON"] = 'json'] = "JSON";
-    DataFormat[DataFormat["CSV"] = 'csv'] = "CSV";
-    DataFormat[DataFormat["TSV"] = 'tsv'] = "TSV";
-})(exports.DataFormat || (exports.DataFormat = {}));
-var DataFormat = exports.DataFormat;
-(function (DataTable) {
-    DataTable[DataTable["SOURCE"] = 'source'] = "SOURCE";
-    DataTable[DataTable["SUMMARY"] = 'summary'] = "SUMMARY";
-    DataTable[DataTable["STACKED_SCALE"] = 'stacked_scale'] = "STACKED_SCALE";
-    DataTable[DataTable["LAYOUT"] = 'layout'] = "LAYOUT";
-})(exports.DataTable || (exports.DataTable = {}));
-var DataTable = exports.DataTable;
-exports.SUMMARY = DataTable.SUMMARY;
-exports.SOURCE = DataTable.SOURCE;
-exports.STACKED_SCALE = DataTable.STACKED_SCALE;
-exports.LAYOUT = DataTable.LAYOUT;
-exports.types = {
-    'boolean': type_1.Type.NOMINAL,
-    'number': type_1.Type.QUANTITATIVE,
-    'integer': type_1.Type.QUANTITATIVE,
-    'date': type_1.Type.TEMPORAL,
-    'string': type_1.Type.NOMINAL
-};
-
-},{"./type":232}],223:[function(require,module,exports){
-"use strict";
-var channel_1 = require('./channel');
-var util_1 = require('./util');
-function countRetinal(encoding) {
-    var count = 0;
-    if (encoding.color) {
-        count++;
-    }
-    if (encoding.opacity) {
-        count++;
-    }
-    if (encoding.size) {
-        count++;
-    }
-    if (encoding.shape) {
-        count++;
-    }
-    return count;
-}
-exports.countRetinal = countRetinal;
-function channels(encoding) {
-    return channel_1.CHANNELS.filter(function (channel) {
-        return has(encoding, channel);
-    });
-}
-exports.channels = channels;
-function has(encoding, channel) {
-    var channelEncoding = encoding && encoding[channel];
-    return channelEncoding && (channelEncoding.field !== undefined ||
-        (util_1.isArray(channelEncoding) && channelEncoding.length > 0));
-}
-exports.has = has;
-function isAggregate(encoding) {
-    return util_1.any(channel_1.CHANNELS, function (channel) {
-        if (has(encoding, channel) && encoding[channel].aggregate) {
-            return true;
-        }
-        return false;
-    });
-}
-exports.isAggregate = isAggregate;
-function fieldDefs(encoding) {
-    var arr = [];
-    channel_1.CHANNELS.forEach(function (channel) {
-        if (has(encoding, channel)) {
-            if (util_1.isArray(encoding[channel])) {
-                encoding[channel].forEach(function (fieldDef) {
-                    arr.push(fieldDef);
-                });
-            }
-            else {
-                arr.push(encoding[channel]);
-            }
-        }
-    });
-    return arr;
-}
-exports.fieldDefs = fieldDefs;
-;
-function forEach(encoding, f, thisArg) {
-    channelMappingForEach(channel_1.CHANNELS, encoding, f, thisArg);
-}
-exports.forEach = forEach;
-function channelMappingForEach(channels, mapping, f, thisArg) {
-    var i = 0;
-    channels.forEach(function (channel) {
-        if (has(mapping, channel)) {
-            if (util_1.isArray(mapping[channel])) {
-                mapping[channel].forEach(function (fieldDef) {
-                    f.call(thisArg, fieldDef, channel, i++);
-                });
-            }
-            else {
-                f.call(thisArg, mapping[channel], channel, i++);
-            }
-        }
-    });
-}
-exports.channelMappingForEach = channelMappingForEach;
-function map(encoding, f, thisArg) {
-    return channelMappingMap(channel_1.CHANNELS, encoding, f, thisArg);
-}
-exports.map = map;
-function channelMappingMap(channels, mapping, f, thisArg) {
-    var arr = [];
-    channels.forEach(function (channel) {
-        if (has(mapping, channel)) {
-            if (util_1.isArray(mapping[channel])) {
-                mapping[channel].forEach(function (fieldDef) {
-                    arr.push(f.call(thisArg, fieldDef, channel));
-                });
-            }
-            else {
-                arr.push(f.call(thisArg, mapping[channel], channel));
-            }
-        }
-    });
-    return arr;
-}
-exports.channelMappingMap = channelMappingMap;
-function reduce(encoding, f, init, thisArg) {
-    return channelMappingReduce(channel_1.CHANNELS, encoding, f, init, thisArg);
-}
-exports.reduce = reduce;
-function channelMappingReduce(channels, mapping, f, init, thisArg) {
-    var r = init;
-    channel_1.CHANNELS.forEach(function (channel) {
-        if (has(mapping, channel)) {
-            if (util_1.isArray(mapping[channel])) {
-                mapping[channel].forEach(function (fieldDef) {
-                    r = f.call(thisArg, r, fieldDef, channel);
-                });
-            }
-            else {
-                r = f.call(thisArg, r, mapping[channel], channel);
-            }
-        }
-    });
-    return r;
-}
-exports.channelMappingReduce = channelMappingReduce;
-
-},{"./channel":186,"./util":233}],224:[function(require,module,exports){
-"use strict";
-var aggregate_1 = require('./aggregate');
-var timeunit_1 = require('./timeunit');
-var type_1 = require('./type');
-var util_1 = require('./util');
-exports.aggregate = {
-    type: 'string',
-    enum: aggregate_1.AGGREGATE_OPS,
-    supportedEnums: {
-        quantitative: aggregate_1.AGGREGATE_OPS,
-        ordinal: ['median', 'min', 'max'],
-        nominal: [],
-        temporal: ['mean', 'median', 'min', 'max'],
-        '': ['count']
-    },
-    supportedTypes: util_1.toMap([type_1.QUANTITATIVE, type_1.NOMINAL, type_1.ORDINAL, type_1.TEMPORAL, ''])
-};
-function field(fieldDef, opt) {
-    if (opt === void 0) { opt = {}; }
-    var prefix = (opt.datum ? 'datum.' : '') + (opt.prefn || '');
-    var suffix = opt.suffix || '';
-    var field = fieldDef.field;
-    if (isCount(fieldDef)) {
-        return prefix + 'count' + suffix;
-    }
-    else if (opt.fn) {
-        return prefix + opt.fn + '_' + field + suffix;
-    }
-    else if (!opt.nofn && fieldDef.bin) {
-        return prefix + 'bin_' + field + (opt.binSuffix || suffix || '_start');
-    }
-    else if (!opt.nofn && !opt.noAggregate && fieldDef.aggregate) {
-        return prefix + fieldDef.aggregate + '_' + field + suffix;
-    }
-    else if (!opt.nofn && fieldDef.timeUnit) {
-        return prefix + fieldDef.timeUnit + '_' + field + suffix;
-    }
-    else {
-        return prefix + field;
-    }
-}
-exports.field = field;
-function _isFieldDimension(fieldDef) {
-    return util_1.contains([type_1.NOMINAL, type_1.ORDINAL], fieldDef.type) || !!fieldDef.bin ||
-        (fieldDef.type === type_1.TEMPORAL && !!fieldDef.timeUnit);
-}
-function isDimension(fieldDef) {
-    return fieldDef && fieldDef.field && _isFieldDimension(fieldDef);
-}
-exports.isDimension = isDimension;
-function isMeasure(fieldDef) {
-    return fieldDef && fieldDef.field && !_isFieldDimension(fieldDef);
-}
-exports.isMeasure = isMeasure;
-exports.COUNT_TITLE = 'Number of Records';
-function count() {
-    return { field: '*', aggregate: aggregate_1.AggregateOp.COUNT, type: type_1.QUANTITATIVE, title: exports.COUNT_TITLE };
-}
-exports.count = count;
-function isCount(fieldDef) {
-    return fieldDef.aggregate === aggregate_1.AggregateOp.COUNT;
-}
-exports.isCount = isCount;
-function cardinality(fieldDef, stats, filterNull) {
-    if (filterNull === void 0) { filterNull = {}; }
-    var stat = stats[fieldDef.field], type = fieldDef.type;
-    if (fieldDef.bin) {
-        var bin_1 = fieldDef.bin;
-        var maxbins = (typeof bin_1 === 'boolean') ? undefined : bin_1.maxbins;
-        if (maxbins === undefined) {
-            maxbins = 10;
-        }
-        var bins = util_1.getbins(stat, maxbins);
-        return (bins.stop - bins.start) / bins.step;
-    }
-    if (type === type_1.TEMPORAL) {
-        var timeUnit = fieldDef.timeUnit;
-        switch (timeUnit) {
-            case timeunit_1.TimeUnit.SECONDS: return 60;
-            case timeunit_1.TimeUnit.MINUTES: return 60;
-            case timeunit_1.TimeUnit.HOURS: return 24;
-            case timeunit_1.TimeUnit.DAY: return 7;
-            case timeunit_1.TimeUnit.DATE: return 31;
-            case timeunit_1.TimeUnit.MONTH: return 12;
-            case timeunit_1.TimeUnit.YEAR:
-                var yearstat = stats['year_' + fieldDef.field];
-                if (!yearstat) {
-                    return null;
-                }
-                return yearstat.distinct -
-                    (stat.missing > 0 && filterNull[type] ? 1 : 0);
-        }
-    }
-    if (fieldDef.aggregate) {
-        return 1;
-    }
-    return stat.distinct -
-        (stat.missing > 0 && filterNull[type] ? 1 : 0);
-}
-exports.cardinality = cardinality;
-function title(fieldDef) {
-    if (fieldDef.title != null) {
-        return fieldDef.title;
-    }
-    if (isCount(fieldDef)) {
-        return exports.COUNT_TITLE;
-    }
-    var fn = fieldDef.aggregate || fieldDef.timeUnit || (fieldDef.bin && 'bin');
-    if (fn) {
-        return fn.toString().toUpperCase() + '(' + fieldDef.field + ')';
-    }
-    else {
-        return fieldDef.field;
-    }
-}
-exports.title = title;
-
-},{"./aggregate":183,"./timeunit":231,"./type":232,"./util":233}],225:[function(require,module,exports){
-"use strict";
-exports.defaultLegendConfig = {
-    orient: undefined,
-    shortTimeLabels: false
-};
-
-},{}],226:[function(require,module,exports){
-"use strict";
-(function (Mark) {
-    Mark[Mark["AREA"] = 'area'] = "AREA";
-    Mark[Mark["BAR"] = 'bar'] = "BAR";
-    Mark[Mark["LINE"] = 'line'] = "LINE";
-    Mark[Mark["POINT"] = 'point'] = "POINT";
-    Mark[Mark["TEXT"] = 'text'] = "TEXT";
-    Mark[Mark["TICK"] = 'tick'] = "TICK";
-    Mark[Mark["RULE"] = 'rule'] = "RULE";
-    Mark[Mark["CIRCLE"] = 'circle'] = "CIRCLE";
-    Mark[Mark["SQUARE"] = 'square'] = "SQUARE";
-})(exports.Mark || (exports.Mark = {}));
-var Mark = exports.Mark;
-exports.AREA = Mark.AREA;
-exports.BAR = Mark.BAR;
-exports.LINE = Mark.LINE;
-exports.POINT = Mark.POINT;
-exports.TEXT = Mark.TEXT;
-exports.TICK = Mark.TICK;
-exports.RULE = Mark.RULE;
-exports.CIRCLE = Mark.CIRCLE;
-exports.SQUARE = Mark.SQUARE;
-
-},{}],227:[function(require,module,exports){
-"use strict";
-(function (ScaleType) {
-    ScaleType[ScaleType["LINEAR"] = 'linear'] = "LINEAR";
-    ScaleType[ScaleType["LOG"] = 'log'] = "LOG";
-    ScaleType[ScaleType["POW"] = 'pow'] = "POW";
-    ScaleType[ScaleType["SQRT"] = 'sqrt'] = "SQRT";
-    ScaleType[ScaleType["QUANTILE"] = 'quantile'] = "QUANTILE";
-    ScaleType[ScaleType["QUANTIZE"] = 'quantize'] = "QUANTIZE";
-    ScaleType[ScaleType["ORDINAL"] = 'ordinal'] = "ORDINAL";
-    ScaleType[ScaleType["TIME"] = 'time'] = "TIME";
-    ScaleType[ScaleType["UTC"] = 'utc'] = "UTC";
-})(exports.ScaleType || (exports.ScaleType = {}));
-var ScaleType = exports.ScaleType;
-(function (NiceTime) {
-    NiceTime[NiceTime["SECOND"] = 'second'] = "SECOND";
-    NiceTime[NiceTime["MINUTE"] = 'minute'] = "MINUTE";
-    NiceTime[NiceTime["HOUR"] = 'hour'] = "HOUR";
-    NiceTime[NiceTime["DAY"] = 'day'] = "DAY";
-    NiceTime[NiceTime["WEEK"] = 'week'] = "WEEK";
-    NiceTime[NiceTime["MONTH"] = 'month'] = "MONTH";
-    NiceTime[NiceTime["YEAR"] = 'year'] = "YEAR";
-})(exports.NiceTime || (exports.NiceTime = {}));
-var NiceTime = exports.NiceTime;
-exports.defaultScaleConfig = {
-    round: true,
-    textBandWidth: 90,
-    bandSize: 21,
-    padding: 1,
-    useRawDomain: false,
-    opacity: [0.3, 0.8],
-    nominalColorRange: 'category10',
-    sequentialColorRange: ['#AFC6A3', '#09622A'],
-    shapeRange: 'shapes',
-    fontSizeRange: [8, 40],
-    ruleSizeRange: [1, 5],
-    tickSizeRange: [1, 20]
-};
-exports.defaultFacetScaleConfig = {
-    round: true,
-    padding: 16
-};
-
-},{}],228:[function(require,module,exports){
-"use strict";
-var aggregate_1 = require('./aggregate');
-var timeunit_1 = require('./timeunit');
-var type_1 = require('./type');
-var vlEncoding = require('./encoding');
-var mark_1 = require('./mark');
-exports.DELIM = '|';
-exports.ASSIGN = '=';
-exports.TYPE = ',';
-exports.FUNC = '_';
-function shorten(spec) {
-    return 'mark' + exports.ASSIGN + spec.mark +
-        exports.DELIM + shortenEncoding(spec.encoding);
-}
-exports.shorten = shorten;
-function parse(shorthand, data, config) {
-    var split = shorthand.split(exports.DELIM), mark = split.shift().split(exports.ASSIGN)[1].trim(), encoding = parseEncoding(split.join(exports.DELIM));
-    var spec = {
-        mark: mark_1.Mark[mark],
-        encoding: encoding
-    };
-    if (data !== undefined) {
-        spec.data = data;
-    }
-    if (config !== undefined) {
-        spec.config = config;
-    }
-    return spec;
-}
-exports.parse = parse;
-function shortenEncoding(encoding) {
-    return vlEncoding.map(encoding, function (fieldDef, channel) {
-        return channel + exports.ASSIGN + shortenFieldDef(fieldDef);
-    }).join(exports.DELIM);
-}
-exports.shortenEncoding = shortenEncoding;
-function parseEncoding(encodingShorthand) {
-    return encodingShorthand.split(exports.DELIM).reduce(function (m, e) {
-        var split = e.split(exports.ASSIGN), enctype = split[0].trim(), fieldDefShorthand = split[1];
-        m[enctype] = parseFieldDef(fieldDefShorthand);
-        return m;
-    }, {});
-}
-exports.parseEncoding = parseEncoding;
-function shortenFieldDef(fieldDef) {
-    return (fieldDef.aggregate ? fieldDef.aggregate + exports.FUNC : '') +
-        (fieldDef.timeUnit ? fieldDef.timeUnit + exports.FUNC : '') +
-        (fieldDef.bin ? 'bin' + exports.FUNC : '') +
-        (fieldDef.field || '') + exports.TYPE + type_1.SHORT_TYPE[fieldDef.type];
-}
-exports.shortenFieldDef = shortenFieldDef;
-function shortenFieldDefs(fieldDefs, delim) {
-    if (delim === void 0) { delim = exports.DELIM; }
-    return fieldDefs.map(shortenFieldDef).join(delim);
-}
-exports.shortenFieldDefs = shortenFieldDefs;
-function parseFieldDef(fieldDefShorthand) {
-    var split = fieldDefShorthand.split(exports.TYPE);
-    var fieldDef = {
-        field: split[0].trim(),
-        type: type_1.TYPE_FROM_SHORT_TYPE[split[1].trim()]
-    };
-    for (var i = 0; i < aggregate_1.AGGREGATE_OPS.length; i++) {
-        var a = aggregate_1.AGGREGATE_OPS[i];
-        if (fieldDef.field.indexOf(a + '_') === 0) {
-            fieldDef.field = fieldDef.field.substr(a.toString().length + 1);
-            if (a === aggregate_1.AggregateOp.COUNT && fieldDef.field.length === 0) {
-                fieldDef.field = '*';
-            }
-            fieldDef.aggregate = a;
-            break;
-        }
-    }
-    for (var i = 0; i < timeunit_1.TIMEUNITS.length; i++) {
-        var tu = timeunit_1.TIMEUNITS[i];
-        if (fieldDef.field && fieldDef.field.indexOf(tu + '_') === 0) {
-            fieldDef.field = fieldDef.field.substr(fieldDef.field.length + 1);
-            fieldDef.timeUnit = tu;
-            break;
-        }
-    }
-    if (fieldDef.field && fieldDef.field.indexOf('bin_') === 0) {
-        fieldDef.field = fieldDef.field.substr(4);
-        fieldDef.bin = true;
-    }
-    return fieldDef;
-}
-exports.parseFieldDef = parseFieldDef;
-
-},{"./aggregate":183,"./encoding":223,"./mark":226,"./timeunit":231,"./type":232}],229:[function(require,module,exports){
-"use strict";
-(function (SortOrder) {
-    SortOrder[SortOrder["ASCENDING"] = 'ascending'] = "ASCENDING";
-    SortOrder[SortOrder["DESCENDING"] = 'descending'] = "DESCENDING";
-    SortOrder[SortOrder["NONE"] = 'none'] = "NONE";
-})(exports.SortOrder || (exports.SortOrder = {}));
-var SortOrder = exports.SortOrder;
-
-},{}],230:[function(require,module,exports){
-"use strict";
-var encoding_1 = require('./encoding');
-var channel_1 = require('./channel');
-var vlEncoding = require('./encoding');
-var mark_1 = require('./mark');
-var util_1 = require('./util');
-function isFacetSpec(spec) {
-    return spec['facet'] !== undefined;
-}
-exports.isFacetSpec = isFacetSpec;
-function isExtendedUnitSpec(spec) {
-    if (isSomeUnitSpec(spec)) {
-        var hasRow = encoding_1.has(spec.encoding, channel_1.ROW);
-        var hasColumn = encoding_1.has(spec.encoding, channel_1.COLUMN);
-        return hasRow || hasColumn;
-    }
-    return false;
-}
-exports.isExtendedUnitSpec = isExtendedUnitSpec;
-function isUnitSpec(spec) {
-    if (isSomeUnitSpec(spec)) {
-        return !isExtendedUnitSpec(spec);
-    }
-    return false;
-}
-exports.isUnitSpec = isUnitSpec;
-function isSomeUnitSpec(spec) {
-    return spec['mark'] !== undefined;
-}
-exports.isSomeUnitSpec = isSomeUnitSpec;
-function isLayerSpec(spec) {
-    return spec['layers'] !== undefined;
-}
-exports.isLayerSpec = isLayerSpec;
-function normalize(spec) {
-    if (isExtendedUnitSpec(spec)) {
-        var hasRow = encoding_1.has(spec.encoding, channel_1.ROW);
-        var hasColumn = encoding_1.has(spec.encoding, channel_1.COLUMN);
-        var encoding = util_1.duplicate(spec.encoding);
-        delete encoding.column;
-        delete encoding.row;
-        return util_1.extend(spec.name ? { name: spec.name } : {}, spec.description ? { description: spec.description } : {}, { data: spec.data }, spec.transform ? { transform: spec.transform } : {}, {
-            facet: util_1.extend(hasRow ? { row: spec.encoding.row } : {}, hasColumn ? { column: spec.encoding.column } : {}),
-            spec: {
-                mark: spec.mark,
-                encoding: encoding
-            }
-        }, spec.config ? { config: spec.config } : {});
-    }
-    return spec;
-}
-exports.normalize = normalize;
-function alwaysNoOcclusion(spec) {
-    return vlEncoding.isAggregate(spec.encoding);
-}
-exports.alwaysNoOcclusion = alwaysNoOcclusion;
-function fieldDefs(spec) {
-    return vlEncoding.fieldDefs(spec.encoding);
-}
-exports.fieldDefs = fieldDefs;
-;
-function getCleanSpec(spec) {
-    return spec;
-}
-exports.getCleanSpec = getCleanSpec;
-function isStack(spec) {
-    return (vlEncoding.has(spec.encoding, channel_1.COLOR) || vlEncoding.has(spec.encoding, channel_1.SHAPE)) &&
-        (spec.mark === mark_1.BAR || spec.mark === mark_1.AREA) &&
-        (!spec.config || !spec.config.mark.stacked !== false) &&
-        vlEncoding.isAggregate(spec.encoding);
-}
-exports.isStack = isStack;
-function transpose(spec) {
-    var oldenc = spec.encoding;
-    var encoding = util_1.duplicate(spec.encoding);
-    encoding.x = oldenc.y;
-    encoding.y = oldenc.x;
-    encoding.row = oldenc.column;
-    encoding.column = oldenc.row;
-    spec.encoding = encoding;
-    return spec;
-}
-exports.transpose = transpose;
-
-},{"./channel":186,"./encoding":223,"./mark":226,"./util":233}],231:[function(require,module,exports){
-"use strict";
-(function (TimeUnit) {
-    TimeUnit[TimeUnit["YEAR"] = 'year'] = "YEAR";
-    TimeUnit[TimeUnit["MONTH"] = 'month'] = "MONTH";
-    TimeUnit[TimeUnit["DAY"] = 'day'] = "DAY";
-    TimeUnit[TimeUnit["DATE"] = 'date'] = "DATE";
-    TimeUnit[TimeUnit["HOURS"] = 'hours'] = "HOURS";
-    TimeUnit[TimeUnit["MINUTES"] = 'minutes'] = "MINUTES";
-    TimeUnit[TimeUnit["SECONDS"] = 'seconds'] = "SECONDS";
-    TimeUnit[TimeUnit["MILLISECONDS"] = 'milliseconds'] = "MILLISECONDS";
-    TimeUnit[TimeUnit["YEARMONTH"] = 'yearmonth'] = "YEARMONTH";
-    TimeUnit[TimeUnit["YEARMONTHDAY"] = 'yearmonthday'] = "YEARMONTHDAY";
-    TimeUnit[TimeUnit["YEARMONTHDATE"] = 'yearmonthdate'] = "YEARMONTHDATE";
-    TimeUnit[TimeUnit["YEARDAY"] = 'yearday'] = "YEARDAY";
-    TimeUnit[TimeUnit["YEARDATE"] = 'yeardate'] = "YEARDATE";
-    TimeUnit[TimeUnit["YEARMONTHDAYHOURS"] = 'yearmonthdayhours'] = "YEARMONTHDAYHOURS";
-    TimeUnit[TimeUnit["YEARMONTHDAYHOURSMINUTES"] = 'yearmonthdayhoursminutes'] = "YEARMONTHDAYHOURSMINUTES";
-    TimeUnit[TimeUnit["YEARMONTHDAYHOURSMINUTESSECONDS"] = 'yearmonthdayhoursminutesseconds'] = "YEARMONTHDAYHOURSMINUTESSECONDS";
-    TimeUnit[TimeUnit["HOURSMINUTES"] = 'hoursminutes'] = "HOURSMINUTES";
-    TimeUnit[TimeUnit["HOURSMINUTESSECONDS"] = 'hoursminutesseconds'] = "HOURSMINUTESSECONDS";
-    TimeUnit[TimeUnit["MINUTESSECONDS"] = 'minutesseconds'] = "MINUTESSECONDS";
-    TimeUnit[TimeUnit["SECONDSMILLISECONDS"] = 'secondsmilliseconds'] = "SECONDSMILLISECONDS";
-})(exports.TimeUnit || (exports.TimeUnit = {}));
-var TimeUnit = exports.TimeUnit;
-exports.TIMEUNITS = [
-    TimeUnit.YEAR,
-    TimeUnit.MONTH,
-    TimeUnit.DAY,
-    TimeUnit.DATE,
-    TimeUnit.HOURS,
-    TimeUnit.MINUTES,
-    TimeUnit.SECONDS,
-    TimeUnit.MILLISECONDS,
-    TimeUnit.YEARMONTH,
-    TimeUnit.YEARMONTHDAY,
-    TimeUnit.YEARMONTHDATE,
-    TimeUnit.YEARDAY,
-    TimeUnit.YEARDATE,
-    TimeUnit.YEARMONTHDAYHOURS,
-    TimeUnit.YEARMONTHDAYHOURSMINUTES,
-    TimeUnit.YEARMONTHDAYHOURSMINUTESSECONDS,
-    TimeUnit.HOURSMINUTES,
-    TimeUnit.HOURSMINUTESSECONDS,
-    TimeUnit.MINUTESSECONDS,
-    TimeUnit.SECONDSMILLISECONDS,
-];
-function format(timeUnit, abbreviated) {
-    if (abbreviated === void 0) { abbreviated = false; }
-    if (!timeUnit) {
-        return undefined;
-    }
-    var timeString = timeUnit.toString();
-    var dateComponents = [];
-    if (timeString.indexOf('year') > -1) {
-        dateComponents.push(abbreviated ? '%y' : '%Y');
-    }
-    if (timeString.indexOf('month') > -1) {
-        dateComponents.push(abbreviated ? '%b' : '%B');
-    }
-    if (timeString.indexOf('day') > -1) {
-        dateComponents.push(abbreviated ? '%a' : '%A');
-    }
-    else if (timeString.indexOf('date') > -1) {
-        dateComponents.push('%d');
-    }
-    var timeComponents = [];
-    if (timeString.indexOf('hours') > -1) {
-        timeComponents.push('%H');
-    }
-    if (timeString.indexOf('minutes') > -1) {
-        timeComponents.push('%M');
-    }
-    if (timeString.indexOf('seconds') > -1) {
-        timeComponents.push('%S');
-    }
-    if (timeString.indexOf('milliseconds') > -1) {
-        timeComponents.push('%L');
-    }
-    var out = [];
-    if (dateComponents.length > 0) {
-        out.push(dateComponents.join('-'));
-    }
-    if (timeComponents.length > 0) {
-        out.push(timeComponents.join(':'));
-    }
-    return out.length > 0 ? out.join(' ') : undefined;
-}
-exports.format = format;
-
-},{}],232:[function(require,module,exports){
-"use strict";
-(function (Type) {
-    Type[Type["QUANTITATIVE"] = 'quantitative'] = "QUANTITATIVE";
-    Type[Type["ORDINAL"] = 'ordinal'] = "ORDINAL";
-    Type[Type["TEMPORAL"] = 'temporal'] = "TEMPORAL";
-    Type[Type["NOMINAL"] = 'nominal'] = "NOMINAL";
-})(exports.Type || (exports.Type = {}));
-var Type = exports.Type;
-exports.QUANTITATIVE = Type.QUANTITATIVE;
-exports.ORDINAL = Type.ORDINAL;
-exports.TEMPORAL = Type.TEMPORAL;
-exports.NOMINAL = Type.NOMINAL;
-exports.SHORT_TYPE = {
-    quantitative: 'Q',
-    temporal: 'T',
-    nominal: 'N',
-    ordinal: 'O'
-};
-exports.TYPE_FROM_SHORT_TYPE = {
-    Q: exports.QUANTITATIVE,
-    T: exports.TEMPORAL,
-    O: exports.ORDINAL,
-    N: exports.NOMINAL
-};
-function getFullName(type) {
-    var typeString = type;
-    return exports.TYPE_FROM_SHORT_TYPE[typeString.toUpperCase()] ||
-        typeString.toLowerCase();
-}
-exports.getFullName = getFullName;
-
-},{}],233:[function(require,module,exports){
-"use strict";
-var stringify = require('json-stable-stringify');
-var util_1 = require('datalib/src/util');
-exports.keys = util_1.keys;
-exports.extend = util_1.extend;
-exports.duplicate = util_1.duplicate;
-exports.isArray = util_1.isArray;
-exports.vals = util_1.vals;
-exports.truncate = util_1.truncate;
-exports.toMap = util_1.toMap;
-exports.isObject = util_1.isObject;
-exports.isString = util_1.isString;
-exports.isNumber = util_1.isNumber;
-exports.isBoolean = util_1.isBoolean;
-var generate_1 = require('datalib/src/generate');
-exports.range = generate_1.range;
-var encoding_1 = require('./encoding');
-exports.has = encoding_1.has;
-var channel_1 = require('./channel');
-exports.Channel = channel_1.Channel;
-var util_2 = require('datalib/src/util');
-function hash(a) {
-    if (util_2.isString(a) || util_2.isNumber(a) || util_2.isBoolean(a)) {
-        return String(a);
-    }
-    return stringify(a);
-}
-exports.hash = hash;
-function contains(array, item) {
-    return array.indexOf(item) > -1;
-}
-exports.contains = contains;
-function without(array, excludedItems) {
-    return array.filter(function (item) {
-        return !contains(excludedItems, item);
-    });
-}
-exports.without = without;
-function union(array, other) {
-    return array.concat(without(other, array));
-}
-exports.union = union;
-function forEach(obj, f, thisArg) {
-    if (obj.forEach) {
-        obj.forEach.call(thisArg, f);
-    }
-    else {
-        for (var k in obj) {
-            if (obj.hasOwnProperty(k)) {
-                f.call(thisArg, obj[k], k, obj);
-            }
-        }
-    }
-}
-exports.forEach = forEach;
-function reduce(obj, f, init, thisArg) {
-    if (obj.reduce) {
-        return obj.reduce.call(thisArg, f, init);
-    }
-    else {
-        for (var k in obj) {
-            if (obj.hasOwnProperty(k)) {
-                init = f.call(thisArg, init, obj[k], k, obj);
-            }
-        }
-        return init;
-    }
-}
-exports.reduce = reduce;
-function map(obj, f, thisArg) {
-    if (obj.map) {
-        return obj.map.call(thisArg, f);
-    }
-    else {
-        var output = [];
-        for (var k in obj) {
-            if (obj.hasOwnProperty(k)) {
-                output.push(f.call(thisArg, obj[k], k, obj));
-            }
-        }
-        return output;
-    }
-}
-exports.map = map;
-function any(arr, f) {
-    var i = 0;
-    for (var k = 0; k < arr.length; k++) {
-        if (f(arr[k], k, i++)) {
-            return true;
-        }
-    }
-    return false;
-}
-exports.any = any;
-function all(arr, f) {
-    var i = 0;
-    for (var k = 0; k < arr.length; k++) {
-        if (!f(arr[k], k, i++)) {
-            return false;
-        }
-    }
-    return true;
-}
-exports.all = all;
-function flatten(arrays) {
-    return [].concat.apply([], arrays);
-}
-exports.flatten = flatten;
-function mergeDeep(dest) {
-    var src = [];
-    for (var _i = 1; _i < arguments.length; _i++) {
-        src[_i - 1] = arguments[_i];
-    }
-    for (var i = 0; i < src.length; i++) {
-        dest = deepMerge_(dest, src[i]);
-    }
-    return dest;
-}
-exports.mergeDeep = mergeDeep;
-;
-function deepMerge_(dest, src) {
-    if (typeof src !== 'object' || src === null) {
-        return dest;
-    }
-    for (var p in src) {
-        if (!src.hasOwnProperty(p)) {
-            continue;
-        }
-        if (src[p] === undefined) {
-            continue;
-        }
-        if (typeof src[p] !== 'object' || src[p] === null) {
-            dest[p] = src[p];
-        }
-        else if (typeof dest[p] !== 'object' || dest[p] === null) {
-            dest[p] = mergeDeep(src[p].constructor === Array ? [] : {}, src[p]);
-        }
-        else {
-            mergeDeep(dest[p], src[p]);
-        }
-    }
-    return dest;
-}
-var dlBin = require('datalib/src/bins/bins');
-function getbins(stats, maxbins) {
-    return dlBin({
-        min: stats.min,
-        max: stats.max,
-        maxbins: maxbins
-    });
-}
-exports.getbins = getbins;
-function unique(values, f) {
-    var results = [];
-    var u = {}, v, i, n;
-    for (i = 0, n = values.length; i < n; ++i) {
-        v = f ? f(values[i]) : values[i];
-        if (v in u) {
-            continue;
-        }
-        u[v] = 1;
-        results.push(values[i]);
-    }
-    return results;
-}
-exports.unique = unique;
-;
-function warning(message) {
-    console.warn('[VL Warning]', message);
-}
-exports.warning = warning;
-function error(message) {
-    console.error('[VL Error]', message);
-}
-exports.error = error;
-function differ(dict, other) {
-    for (var key in dict) {
-        if (dict.hasOwnProperty(key)) {
-            if (other[key] && dict[key] && other[key] !== dict[key]) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-exports.differ = differ;
-
-},{"./channel":186,"./encoding":223,"datalib/src/bins/bins":175,"datalib/src/generate":176,"datalib/src/util":178,"json-stable-stringify":179}],234:[function(require,module,exports){
-"use strict";
-var util_1 = require('./util');
-var mark_1 = require('./mark');
-exports.DEFAULT_REQUIRED_CHANNEL_MAP = {
-    text: ['text'],
-    line: ['x', 'y'],
-    area: ['x', 'y']
-};
-exports.DEFAULT_SUPPORTED_CHANNEL_TYPE = {
-    bar: util_1.toMap(['row', 'column', 'x', 'y', 'size', 'color', 'detail']),
-    line: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'detail']),
-    area: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'detail']),
-    tick: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'detail']),
-    circle: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'size', 'detail']),
-    square: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'size', 'detail']),
-    point: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'size', 'detail', 'shape']),
-    text: util_1.toMap(['row', 'column', 'size', 'color', 'text'])
-};
-function getEncodingMappingError(spec, requiredChannelMap, supportedChannelMap) {
-    if (requiredChannelMap === void 0) { requiredChannelMap = exports.DEFAULT_REQUIRED_CHANNEL_MAP; }
-    if (supportedChannelMap === void 0) { supportedChannelMap = exports.DEFAULT_SUPPORTED_CHANNEL_TYPE; }
-    var mark = spec.mark;
-    var encoding = spec.encoding;
-    var requiredChannels = requiredChannelMap[mark];
-    var supportedChannels = supportedChannelMap[mark];
-    for (var i in requiredChannels) {
-        if (!(requiredChannels[i] in encoding)) {
-            return 'Missing encoding channel \"' + requiredChannels[i] +
-                '\" for mark \"' + mark + '\"';
-        }
-    }
-    for (var channel in encoding) {
-        if (!supportedChannels[channel]) {
-            return 'Encoding channel \"' + channel +
-                '\" is not supported by mark type \"' + mark + '\"';
-        }
-    }
-    if (mark === mark_1.BAR && !encoding.x && !encoding.y) {
-        return 'Missing both x and y for bar';
-    }
-    return null;
-}
-exports.getEncodingMappingError = getEncodingMappingError;
-
-},{"./mark":226,"./util":233}],235:[function(require,module,exports){
-"use strict";
-var util_1 = require('./util');
-function isUnionedDomain(domain) {
-    if (!util_1.isArray(domain)) {
-        return 'fields' in domain;
-    }
-    return false;
-}
-exports.isUnionedDomain = isUnionedDomain;
-function isDataRefDomain(domain) {
-    if (!util_1.isArray(domain)) {
-        return 'data' in domain;
-    }
-    return false;
-}
-exports.isDataRefDomain = isDataRefDomain;
-
-},{"./util":233}],236:[function(require,module,exports){
-"use strict";
-var vlBin = require('./bin');
-var vlChannel = require('./channel');
-var vlConfig = require('./config');
-var vlData = require('./data');
-var vlEncoding = require('./encoding');
-var vlFieldDef = require('./fielddef');
-var vlCompile = require('./compile/compile');
-var vlShorthand = require('./shorthand');
-var vlSpec = require('./spec');
-var vlTimeUnit = require('./timeunit');
-var vlType = require('./type');
-var vlValidate = require('./validate');
-var vlUtil = require('./util');
-exports.bin = vlBin;
-exports.channel = vlChannel;
-exports.compile = vlCompile.compile;
-exports.config = vlConfig;
-exports.data = vlData;
-exports.encoding = vlEncoding;
-exports.fieldDef = vlFieldDef;
-exports.shorthand = vlShorthand;
-exports.spec = vlSpec;
-exports.timeUnit = vlTimeUnit;
-exports.type = vlType;
-exports.util = vlUtil;
-exports.validate = vlValidate;
-exports.version = '1.0.10';
-
-},{"./bin":185,"./channel":186,"./compile/compile":189,"./config":221,"./data":222,"./encoding":223,"./fielddef":224,"./shorthand":228,"./spec":230,"./timeunit":231,"./type":232,"./util":233,"./validate":234}],237:[function(require,module,exports){
-module.exports = {
-  version: '2.5.2',
-  dataflow: require('vega-dataflow'),
-  parse: require('./src/parse/'),
-  scene: {
-    Bounder: require('./src/scene/Bounder'),
-    Builder: require('./src/scene/Builder'),
-    Encoder: require('./src/scene/Encoder'),
-    GroupBuilder: require('./src/scene/GroupBuilder'),
-    visit: require('./src/scene/visit')
-  },
-  transforms: require('./src/transforms'),
-  Transform: require('./src/transforms/Transform'),
-  BatchTransform: require('./src/transforms/BatchTransform'),
-  Parameter: require('./src/transforms/Parameter'),
-  schema: require('./src/core/schema'),
-  config: require('./src/core/config'),
-  util: require('./src/util'),
-  logging: require('vega-logging'),
-  debug: require('vega-logging').debug
-};
-},{"./src/core/config":326,"./src/core/schema":327,"./src/parse/":332,"./src/scene/Bounder":344,"./src/scene/Builder":345,"./src/scene/Encoder":346,"./src/scene/GroupBuilder":347,"./src/scene/visit":352,"./src/transforms":380,"./src/transforms/BatchTransform":354,"./src/transforms/Parameter":370,"./src/transforms/Transform":375,"./src/util":383,"vega-dataflow":276,"vega-logging":283}],238:[function(require,module,exports){
-(function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
-  typeof define === 'function' && define.amd ? define(['exports'], factory) :
-  (factory((global.d3_dsv = {})));
-}(this, function (exports) { 'use strict';
-
-  function dsv(delimiter) {
-    return new Dsv(delimiter);
-  }
-
-  function objectConverter(columns) {
-    return new Function("d", "return {" + columns.map(function(name, i) {
-      return JSON.stringify(name) + ": d[" + i + "]";
-    }).join(",") + "}");
-  }
-
-  function customConverter(columns, f) {
-    var object = objectConverter(columns);
-    return function(row, i) {
-      return f(object(row), i, columns);
-    };
-  }
-
-  // Compute unique columns in order of discovery.
-  function inferColumns(rows) {
-    var columnSet = Object.create(null),
-        columns = [];
-
-    rows.forEach(function(row) {
-      for (var column in row) {
-        if (!(column in columnSet)) {
-          columns.push(columnSet[column] = column);
-        }
-      }
-    });
-
-    return columns;
-  }
-
-  function Dsv(delimiter) {
-    var reFormat = new RegExp("[\"" + delimiter + "\n]"),
-        delimiterCode = delimiter.charCodeAt(0);
-
-    this.parse = function(text, f) {
-      var convert, columns, rows = this.parseRows(text, function(row, i) {
-        if (convert) return convert(row, i - 1);
-        columns = row, convert = f ? customConverter(row, f) : objectConverter(row);
-      });
-      rows.columns = columns;
-      return rows;
-    };
-
-    this.parseRows = function(text, f) {
-      var EOL = {}, // sentinel value for end-of-line
-          EOF = {}, // sentinel value for end-of-file
-          rows = [], // output rows
-          N = text.length,
-          I = 0, // current character index
-          n = 0, // the current line number
-          t, // the current token
-          eol; // is the current token followed by EOL?
-
-      function token() {
-        if (I >= N) return EOF; // special case: end of file
-        if (eol) return eol = false, EOL; // special case: end of line
-
-        // special case: quotes
-        var j = I, c;
-        if (text.charCodeAt(j) === 34) {
-          var i = j;
-          while (i++ < N) {
-            if (text.charCodeAt(i) === 34) {
-              if (text.charCodeAt(i + 1) !== 34) break;
-              ++i;
-            }
-          }
-          I = i + 2;
-          c = text.charCodeAt(i + 1);
-          if (c === 13) {
-            eol = true;
-            if (text.charCodeAt(i + 2) === 10) ++I;
-          } else if (c === 10) {
-            eol = true;
-          }
-          return text.slice(j + 1, i).replace(/""/g, "\"");
-        }
-
-        // common case: find next delimiter or newline
-        while (I < N) {
-          var k = 1;
-          c = text.charCodeAt(I++);
-          if (c === 10) eol = true; // \n
-          else if (c === 13) { eol = true; if (text.charCodeAt(I) === 10) ++I, ++k; } // \r|\r\n
-          else if (c !== delimiterCode) continue;
-          return text.slice(j, I - k);
-        }
-
-        // special case: last token before EOF
-        return text.slice(j);
-      }
-
-      while ((t = token()) !== EOF) {
-        var a = [];
-        while (t !== EOL && t !== EOF) {
-          a.push(t);
-          t = token();
-        }
-        if (f && (a = f(a, n++)) == null) continue;
-        rows.push(a);
-      }
-
-      return rows;
-    }
-
-    this.format = function(rows, columns) {
-      if (columns == null) columns = inferColumns(rows);
-      return [columns.map(formatValue).join(delimiter)].concat(rows.map(function(row) {
-        return columns.map(function(column) {
-          return formatValue(row[column]);
-        }).join(delimiter);
-      })).join("\n");
-    };
-
-    this.formatRows = function(rows) {
-      return rows.map(formatRow).join("\n");
-    };
-
-    function formatRow(row) {
-      return row.map(formatValue).join(delimiter);
-    }
-
-    function formatValue(text) {
-      return reFormat.test(text) ? "\"" + text.replace(/\"/g, "\"\"") + "\"" : text;
-    }
-  }
-
-  dsv.prototype = Dsv.prototype;
-
-  var csv = dsv(",");
-  var tsv = dsv("\t");
-
-  var version = "0.1.14";
-
-  exports.version = version;
-  exports.dsv = dsv;
-  exports.csv = csv;
-  exports.tsv = tsv;
-
-}));
-},{}],239:[function(require,module,exports){
-(function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
-  typeof define === 'function' && define.amd ? define('d3-format', ['exports'], factory) :
-  factory((global.d3_format = {}));
-}(this, function (exports) { 'use strict';
-
-  // Computes the decimal coefficient and exponent of the specified number x with
-  // significant digits p, where x is positive and p is in [1, 21] or undefined.
-  // For example, formatDecimal(1.23) returns ["123", 0].
-  function formatDecimal(x, p) {
-    if ((i = (x = p ? x.toExponential(p - 1) : x.toExponential()).indexOf("e")) < 0) return null; // NaN, ±Infinity
-    var i, coefficient = x.slice(0, i);
-
-    // The string returned by toExponential either has the form \d\.\d+e[-+]\d+
-    // (e.g., 1.2e+3) or the form \de[-+]\d+ (e.g., 1e+3).
-    return [
-      coefficient.length > 1 ? coefficient[0] + coefficient.slice(2) : coefficient,
-      +x.slice(i + 1)
-    ];
-  };
-
-  function exponent(x) {
-    return x = formatDecimal(Math.abs(x)), x ? x[1] : NaN;
-  };
-
-  function formatGroup(grouping, thousands) {
-    return function(value, width) {
-      var i = value.length,
-          t = [],
-          j = 0,
-          g = grouping[0],
-          length = 0;
-
-      while (i > 0 && g > 0) {
-        if (length + g + 1 > width) g = Math.max(1, width - length);
-        t.push(value.substring(i -= g, i + g));
-        if ((length += g + 1) > width) break;
-        g = grouping[j = (j + 1) % grouping.length];
-      }
-
-      return t.reverse().join(thousands);
-    };
-  };
-
-  var prefixExponent;
-
-  function formatPrefixAuto(x, p) {
-    var d = formatDecimal(x, p);
-    if (!d) return x + "";
-    var coefficient = d[0],
-        exponent = d[1],
-        i = exponent - (prefixExponent = Math.max(-8, Math.min(8, Math.floor(exponent / 3))) * 3) + 1,
-        n = coefficient.length;
-    return i === n ? coefficient
-        : i > n ? coefficient + new Array(i - n + 1).join("0")
-        : i > 0 ? coefficient.slice(0, i) + "." + coefficient.slice(i)
-        : "0." + new Array(1 - i).join("0") + formatDecimal(x, Math.max(0, p + i - 1))[0]; // less than 1y!
-  };
-
-  function formatRounded(x, p) {
-    var d = formatDecimal(x, p);
-    if (!d) return x + "";
-    var coefficient = d[0],
-        exponent = d[1];
-    return exponent < 0 ? "0." + new Array(-exponent).join("0") + coefficient
-        : coefficient.length > exponent + 1 ? coefficient.slice(0, exponent + 1) + "." + coefficient.slice(exponent + 1)
-        : coefficient + new Array(exponent - coefficient.length + 2).join("0");
-  };
-
-  function formatDefault(x, p) {
-    x = x.toPrecision(p);
-
-    out: for (var n = x.length, i = 1, i0 = -1, i1; i < n; ++i) {
-      switch (x[i]) {
-        case ".": i0 = i1 = i; break;
-        case "0": if (i0 === 0) i0 = i; i1 = i; break;
-        case "e": break out;
-        default: if (i0 > 0) i0 = 0; break;
-      }
-    }
-
-    return i0 > 0 ? x.slice(0, i0) + x.slice(i1 + 1) : x;
-  };
-
-  var formatTypes = {
-    "": formatDefault,
-    "%": function(x, p) { return (x * 100).toFixed(p); },
-    "b": function(x) { return Math.round(x).toString(2); },
-    "c": function(x) { return x + ""; },
-    "d": function(x) { return Math.round(x).toString(10); },
-    "e": function(x, p) { return x.toExponential(p); },
-    "f": function(x, p) { return x.toFixed(p); },
-    "g": function(x, p) { return x.toPrecision(p); },
-    "o": function(x) { return Math.round(x).toString(8); },
-    "p": function(x, p) { return formatRounded(x * 100, p); },
-    "r": formatRounded,
-    "s": formatPrefixAuto,
-    "X": function(x) { return Math.round(x).toString(16).toUpperCase(); },
-    "x": function(x) { return Math.round(x).toString(16); }
-  };
-
-  // [[fill]align][sign][symbol][0][width][,][.precision][type]
-  var re = /^(?:(.)?([<>=^]))?([+\-\( ])?([$#])?(0)?(\d+)?(,)?(\.\d+)?([a-z%])?$/i;
-
-  function formatSpecifier(specifier) {
-    return new FormatSpecifier(specifier);
-  };
-
-  function FormatSpecifier(specifier) {
-    if (!(match = re.exec(specifier))) throw new Error("invalid format: " + specifier);
-
-    var match,
-        fill = match[1] || " ",
-        align = match[2] || ">",
-        sign = match[3] || "-",
-        symbol = match[4] || "",
-        zero = !!match[5],
-        width = match[6] && +match[6],
-        comma = !!match[7],
-        precision = match[8] && +match[8].slice(1),
-        type = match[9] || "";
-
-    // The "n" type is an alias for ",g".
-    if (type === "n") comma = true, type = "g";
-
-    // Map invalid types to the default format.
-    else if (!formatTypes[type]) type = "";
-
-    // If zero fill is specified, padding goes after sign and before digits.
-    if (zero || (fill === "0" && align === "=")) zero = true, fill = "0", align = "=";
-
-    this.fill = fill;
-    this.align = align;
-    this.sign = sign;
-    this.symbol = symbol;
-    this.zero = zero;
-    this.width = width;
-    this.comma = comma;
-    this.precision = precision;
-    this.type = type;
-  }
-
-  FormatSpecifier.prototype.toString = function() {
-    return this.fill
-        + this.align
-        + this.sign
-        + this.symbol
-        + (this.zero ? "0" : "")
-        + (this.width == null ? "" : Math.max(1, this.width | 0))
-        + (this.comma ? "," : "")
-        + (this.precision == null ? "" : "." + Math.max(0, this.precision | 0))
-        + this.type;
-  };
-
-  var prefixes = ["y","z","a","f","p","n","µ","m","","k","M","G","T","P","E","Z","Y"];
-
-  function identity(x) {
-    return x;
-  }
-
-  function locale(locale) {
-    var group = locale.grouping && locale.thousands ? formatGroup(locale.grouping, locale.thousands) : identity,
-        currency = locale.currency,
-        decimal = locale.decimal;
-
-    function format(specifier) {
-      specifier = formatSpecifier(specifier);
-
-      var fill = specifier.fill,
-          align = specifier.align,
-          sign = specifier.sign,
-          symbol = specifier.symbol,
-          zero = specifier.zero,
-          width = specifier.width,
-          comma = specifier.comma,
-          precision = specifier.precision,
-          type = specifier.type;
-
-      // Compute the prefix and suffix.
-      // For SI-prefix, the suffix is lazily computed.
-      var prefix = symbol === "$" ? currency[0] : symbol === "#" && /[boxX]/.test(type) ? "0" + type.toLowerCase() : "",
-          suffix = symbol === "$" ? currency[1] : /[%p]/.test(type) ? "%" : "";
-
-      // What format function should we use?
-      // Is this an integer type?
-      // Can this type generate exponential notation?
-      var formatType = formatTypes[type],
-          maybeSuffix = !type || /[defgprs%]/.test(type);
-
-      // Set the default precision if not specified,
-      // or clamp the specified precision to the supported range.
-      // For significant precision, it must be in [1, 21].
-      // For fixed precision, it must be in [0, 20].
-      precision = precision == null ? (type ? 6 : 12)
-          : /[gprs]/.test(type) ? Math.max(1, Math.min(21, precision))
-          : Math.max(0, Math.min(20, precision));
-
-      return function(value) {
-        var valuePrefix = prefix,
-            valueSuffix = suffix;
-
-        if (type === "c") {
-          valueSuffix = formatType(value) + valueSuffix;
-          value = "";
-        } else {
-          value = +value;
-
-          // Convert negative to positive, and compute the prefix.
-          // Note that -0 is not less than 0, but 1 / -0 is!
-          var valueNegative = (value < 0 || 1 / value < 0) && (value *= -1, true);
-
-          // Perform the initial formatting.
-          value = formatType(value, precision);
-
-          // If the original value was negative, it may be rounded to zero during
-          // formatting; treat this as (positive) zero.
-          if (valueNegative) {
-            var i = -1, n = value.length, c;
-            valueNegative = false;
-            while (++i < n) {
-              if (c = value.charCodeAt(i), (48 < c && c < 58)
-                  || (type === "x" && 96 < c && c < 103)
-                  || (type === "X" && 64 < c && c < 71)) {
-                valueNegative = true;
-                break;
-              }
-            }
-          }
-
-          // Compute the prefix and suffix.
-          valuePrefix = (valueNegative ? (sign === "(" ? sign : "-") : sign === "-" || sign === "(" ? "" : sign) + valuePrefix;
-          valueSuffix = valueSuffix + (type === "s" ? prefixes[8 + prefixExponent / 3] : "") + (valueNegative && sign === "(" ? ")" : "");
-
-          // Break the formatted value into the integer “value” part that can be
-          // grouped, and fractional or exponential “suffix” part that is not.
-          if (maybeSuffix) {
-            var i = -1, n = value.length, c;
-            while (++i < n) {
-              if (c = value.charCodeAt(i), 48 > c || c > 57) {
-                valueSuffix = (c === 46 ? decimal + value.slice(i + 1) : value.slice(i)) + valueSuffix;
-                value = value.slice(0, i);
-                break;
-              }
-            }
-          }
-        }
-
-        // If the fill character is not "0", grouping is applied before padding.
-        if (comma && !zero) value = group(value, Infinity);
-
-        // Compute the padding.
-        var length = valuePrefix.length + value.length + valueSuffix.length,
-            padding = length < width ? new Array(width - length + 1).join(fill) : "";
-
-        // If the fill character is "0", grouping is applied after padding.
-        if (comma && zero) value = group(padding + value, padding.length ? width - valueSuffix.length : Infinity), padding = "";
-
-        // Reconstruct the final output based on the desired alignment.
-        switch (align) {
-          case "<": return valuePrefix + value + valueSuffix + padding;
-          case "=": return valuePrefix + padding + value + valueSuffix;
-          case "^": return padding.slice(0, length = padding.length >> 1) + valuePrefix + value + valueSuffix + padding.slice(length);
-        }
-        return padding + valuePrefix + value + valueSuffix;
-      };
-    }
-
-    function formatPrefix(specifier, value) {
-      var f = format((specifier = formatSpecifier(specifier), specifier.type = "f", specifier)),
-          e = Math.max(-8, Math.min(8, Math.floor(exponent(value) / 3))) * 3,
-          k = Math.pow(10, -e),
-          prefix = prefixes[8 + e / 3];
-      return function(value) {
-        return f(k * value) + prefix;
-      };
-    }
-
-    return {
-      format: format,
-      formatPrefix: formatPrefix
-    };
-  };
-
-  var defaultLocale = locale({
-    decimal: ".",
-    thousands: ",",
-    grouping: [3],
-    currency: ["$", ""]
-  });
-
-  var caES = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["", "\xa0€"]
-  });
-
-  var csCZ = locale({
-    decimal: ",",
-    thousands: "\xa0",
-    grouping: [3],
-    currency: ["", "\xa0Kč"],
-  });
-
-  var deCH = locale({
-    decimal: ",",
-    thousands: "'",
-    grouping: [3],
-    currency: ["", "\xa0CHF"]
-  });
-
-  var deDE = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["", "\xa0€"]
-  });
-
-  var enCA = locale({
-    decimal: ".",
-    thousands: ",",
-    grouping: [3],
-    currency: ["$", ""]
-  });
-
-  var enGB = locale({
-    decimal: ".",
-    thousands: ",",
-    grouping: [3],
-    currency: ["£", ""]
-  });
-
-  var esES = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["", "\xa0€"]
-  });
-
-  var fiFI = locale({
-    decimal: ",",
-    thousands: "\xa0",
-    grouping: [3],
-    currency: ["", "\xa0€"]
-  });
-
-  var frCA = locale({
-    decimal: ",",
-    thousands: "\xa0",
-    grouping: [3],
-    currency: ["", "$"]
-  });
-
-  var frFR = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["", "\xa0€"]
-  });
-
-  var heIL = locale({
-    decimal: ".",
-    thousands: ",",
-    grouping: [3],
-    currency: ["₪", ""]
-  });
-
-  var huHU = locale({
-    decimal: ",",
-    thousands: "\xa0",
-    grouping: [3],
-    currency: ["", "\xa0Ft"]
-  });
-
-  var itIT = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["€", ""]
-  });
-
-  var jaJP = locale({
-    decimal: ".",
-    thousands: ",",
-    grouping: [3],
-    currency: ["", "円"]
-  });
-
-  var koKR = locale({
-    decimal: ".",
-    thousands: ",",
-    grouping: [3],
-    currency: ["₩", ""]
-  });
-
-  var mkMK = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["", "\xa0ден."]
-  });
-
-  var nlNL = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["€\xa0", ""]
-  });
-
-  var plPL = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["", "zł"]
-  });
-
-  var ptBR = locale({
-    decimal: ",",
-    thousands: ".",
-    grouping: [3],
-    currency: ["R$", ""]
-  });
-
-  var ruRU = locale({
-    decimal: ",",
-    thousands: "\xa0",
-    grouping: [3],
-    currency: ["", "\xa0руб."]
-  });
-
-  var svSE = locale({
-    decimal: ",",
-    thousands: "\xa0",
-    grouping: [3],
-    currency: ["", "SEK"]
-  });
-
-  var zhCN = locale({
-    decimal: ".",
-    thousands: ",",
-    grouping: [3],
-    currency: ["¥", ""]
-  });
-
-  function precisionFixed(step) {
-    return Math.max(0, -exponent(Math.abs(step)));
-  };
-
-  function precisionPrefix(step, value) {
-    return Math.max(0, Math.max(-8, Math.min(8, Math.floor(exponent(value) / 3))) * 3 - exponent(Math.abs(step)));
-  };
-
-  function precisionRound(step, max) {
-    step = Math.abs(step), max = Math.abs(max) - step;
-    return Math.max(0, exponent(max) - exponent(step)) + 1;
-  };
-
-  var format = defaultLocale.format;
-  var formatPrefix = defaultLocale.formatPrefix;
-
-  var version = "0.4.2";
-
-  exports.version = version;
-  exports.format = format;
-  exports.formatPrefix = formatPrefix;
-  exports.locale = locale;
-  exports.localeCaEs = caES;
-  exports.localeCsCz = csCZ;
-  exports.localeDeCh = deCH;
-  exports.localeDeDe = deDE;
-  exports.localeEnCa = enCA;
-  exports.localeEnGb = enGB;
-  exports.localeEnUs = defaultLocale;
-  exports.localeEsEs = esES;
-  exports.localeFiFi = fiFI;
-  exports.localeFrCa = frCA;
-  exports.localeFrFr = frFR;
-  exports.localeHeIl = heIL;
-  exports.localeHuHu = huHU;
-  exports.localeItIt = itIT;
-  exports.localeJaJp = jaJP;
-  exports.localeKoKr = koKR;
-  exports.localeMkMk = mkMK;
-  exports.localeNlNl = nlNL;
-  exports.localePlPl = plPL;
-  exports.localePtBr = ptBR;
-  exports.localeRuRu = ruRU;
-  exports.localeSvSe = svSE;
-  exports.localeZhCn = zhCN;
-  exports.formatSpecifier = formatSpecifier;
-  exports.precisionFixed = precisionFixed;
-  exports.precisionPrefix = precisionPrefix;
-  exports.precisionRound = precisionRound;
-
-}));
-},{}],240:[function(require,module,exports){
-(function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('d3-time')) :
-  typeof define === 'function' && define.amd ? define('d3-time-format', ['exports', 'd3-time'], factory) :
-  factory((global.d3_time_format = {}),global.d3_time);
-}(this, function (exports,d3Time) { 'use strict';
-
-  function localDate(d) {
-    if (0 <= d.y && d.y < 100) {
-      var date = new Date(-1, d.m, d.d, d.H, d.M, d.S, d.L);
-      date.setFullYear(d.y);
-      return date;
-    }
-    return new Date(d.y, d.m, d.d, d.H, d.M, d.S, d.L);
-  }
-
-  function utcDate(d) {
-    if (0 <= d.y && d.y < 100) {
-      var date = new Date(Date.UTC(-1, d.m, d.d, d.H, d.M, d.S, d.L));
-      date.setUTCFullYear(d.y);
-      return date;
-    }
-    return new Date(Date.UTC(d.y, d.m, d.d, d.H, d.M, d.S, d.L));
-  }
-
-  function newYear(y) {
-    return {y: y, m: 0, d: 1, H: 0, M: 0, S: 0, L: 0};
-  }
-
-  function locale$1(locale) {
-    var locale_dateTime = locale.dateTime,
-        locale_date = locale.date,
-        locale_time = locale.time,
-        locale_periods = locale.periods,
-        locale_weekdays = locale.days,
-        locale_shortWeekdays = locale.shortDays,
-        locale_months = locale.months,
-        locale_shortMonths = locale.shortMonths;
-
-    var periodRe = formatRe(locale_periods),
-        periodLookup = formatLookup(locale_periods),
-        weekdayRe = formatRe(locale_weekdays),
-        weekdayLookup = formatLookup(locale_weekdays),
-        shortWeekdayRe = formatRe(locale_shortWeekdays),
-        shortWeekdayLookup = formatLookup(locale_shortWeekdays),
-        monthRe = formatRe(locale_months),
-        monthLookup = formatLookup(locale_months),
-        shortMonthRe = formatRe(locale_shortMonths),
-        shortMonthLookup = formatLookup(locale_shortMonths);
-
-    var formats = {
-      "a": formatShortWeekday,
-      "A": formatWeekday,
-      "b": formatShortMonth,
-      "B": formatMonth,
-      "c": null,
-      "d": formatDayOfMonth,
-      "e": formatDayOfMonth,
-      "H": formatHour24,
-      "I": formatHour12,
-      "j": formatDayOfYear,
-      "L": formatMilliseconds,
-      "m": formatMonthNumber,
-      "M": formatMinutes,
-      "p": formatPeriod,
-      "S": formatSeconds,
-      "U": formatWeekNumberSunday,
-      "w": formatWeekdayNumber,
-      "W": formatWeekNumberMonday,
-      "x": null,
-      "X": null,
-      "y": formatYear,
-      "Y": formatFullYear,
-      "Z": formatZone,
-      "%": formatLiteralPercent
-    };
-
-    var utcFormats = {
-      "a": formatUTCShortWeekday,
-      "A": formatUTCWeekday,
-      "b": formatUTCShortMonth,
-      "B": formatUTCMonth,
-      "c": null,
-      "d": formatUTCDayOfMonth,
-      "e": formatUTCDayOfMonth,
-      "H": formatUTCHour24,
-      "I": formatUTCHour12,
-      "j": formatUTCDayOfYear,
-      "L": formatUTCMilliseconds,
-      "m": formatUTCMonthNumber,
-      "M": formatUTCMinutes,
-      "p": formatUTCPeriod,
-      "S": formatUTCSeconds,
-      "U": formatUTCWeekNumberSunday,
-      "w": formatUTCWeekdayNumber,
-      "W": formatUTCWeekNumberMonday,
-      "x": null,
-      "X": null,
-      "y": formatUTCYear,
-      "Y": formatUTCFullYear,
-      "Z": formatUTCZone,
-      "%": formatLiteralPercent
-    };
-
-    var parses = {
-      "a": parseShortWeekday,
-      "A": parseWeekday,
-      "b": parseShortMonth,
-      "B": parseMonth,
-      "c": parseLocaleDateTime,
-      "d": parseDayOfMonth,
-      "e": parseDayOfMonth,
-      "H": parseHour24,
-      "I": parseHour24,
-      "j": parseDayOfYear,
-      "L": parseMilliseconds,
-      "m": parseMonthNumber,
-      "M": parseMinutes,
-      "p": parsePeriod,
-      "S": parseSeconds,
-      "U": parseWeekNumberSunday,
-      "w": parseWeekdayNumber,
-      "W": parseWeekNumberMonday,
-      "x": parseLocaleDate,
-      "X": parseLocaleTime,
-      "y": parseYear,
-      "Y": parseFullYear,
-      "Z": parseZone,
-      "%": parseLiteralPercent
-    };
-
-    // These recursive directive definitions must be deferred.
-    formats.x = newFormat(locale_date, formats);
-    formats.X = newFormat(locale_time, formats);
-    formats.c = newFormat(locale_dateTime, formats);
-    utcFormats.x = newFormat(locale_date, utcFormats);
-    utcFormats.X = newFormat(locale_time, utcFormats);
-    utcFormats.c = newFormat(locale_dateTime, utcFormats);
-
-    function newFormat(specifier, formats) {
-      return function(date) {
-        var string = [],
-            i = -1,
-            j = 0,
-            n = specifier.length,
-            c,
-            pad,
-            format;
-
-        if (!(date instanceof Date)) date = new Date(+date);
-
-        while (++i < n) {
-          if (specifier.charCodeAt(i) === 37) {
-            string.push(specifier.slice(j, i));
-            if ((pad = pads[c = specifier.charAt(++i)]) != null) c = specifier.charAt(++i);
-            else pad = c === "e" ? " " : "0";
-            if (format = formats[c]) c = format(date, pad);
-            string.push(c);
-            j = i + 1;
-          }
-        }
-
-        string.push(specifier.slice(j, i));
-        return string.join("");
-      };
-    }
-
-    function newParse(specifier, newDate) {
-      return function(string) {
-        var d = newYear(1900),
-            i = parseSpecifier(d, specifier, string += "", 0);
-        if (i != string.length) return null;
-
-        // The am-pm flag is 0 for AM, and 1 for PM.
-        if ("p" in d) d.H = d.H % 12 + d.p * 12;
-
-        // Convert day-of-week and week-of-year to day-of-year.
-        if ("W" in d || "U" in d) {
-          if (!("w" in d)) d.w = "W" in d ? 1 : 0;
-          var day = "Z" in d ? utcDate(newYear(d.y)).getUTCDay() : newDate(newYear(d.y)).getDay();
-          d.m = 0;
-          d.d = "W" in d ? (d.w + 6) % 7 + d.W * 7 - (day + 5) % 7 : d.w + d.U * 7 - (day + 6) % 7;
-        }
-
-        // If a time zone is specified, all fields are interpreted as UTC and then
-        // offset according to the specified time zone.
-        if ("Z" in d) {
-          d.H += d.Z / 100 | 0;
-          d.M += d.Z % 100;
-          return utcDate(d);
-        }
-
-        // Otherwise, all fields are in local time.
-        return newDate(d);
-      };
-    }
-
-    function parseSpecifier(d, specifier, string, j) {
-      var i = 0,
-          n = specifier.length,
-          m = string.length,
-          c,
-          parse;
-
-      while (i < n) {
-        if (j >= m) return -1;
-        c = specifier.charCodeAt(i++);
-        if (c === 37) {
-          c = specifier.charAt(i++);
-          parse = parses[c in pads ? specifier.charAt(i++) : c];
-          if (!parse || ((j = parse(d, string, j)) < 0)) return -1;
-        } else if (c != string.charCodeAt(j++)) {
-          return -1;
-        }
-      }
-
-      return j;
-    }
-
-    function parsePeriod(d, string, i) {
-      var n = periodRe.exec(string.slice(i));
-      return n ? (d.p = periodLookup[n[0].toLowerCase()], i + n[0].length) : -1;
-    }
-
-    function parseShortWeekday(d, string, i) {
-      var n = shortWeekdayRe.exec(string.slice(i));
-      return n ? (d.w = shortWeekdayLookup[n[0].toLowerCase()], i + n[0].length) : -1;
-    }
-
-    function parseWeekday(d, string, i) {
-      var n = weekdayRe.exec(string.slice(i));
-      return n ? (d.w = weekdayLookup[n[0].toLowerCase()], i + n[0].length) : -1;
-    }
-
-    function parseShortMonth(d, string, i) {
-      var n = shortMonthRe.exec(string.slice(i));
-      return n ? (d.m = shortMonthLookup[n[0].toLowerCase()], i + n[0].length) : -1;
-    }
-
-    function parseMonth(d, string, i) {
-      var n = monthRe.exec(string.slice(i));
-      return n ? (d.m = monthLookup[n[0].toLowerCase()], i + n[0].length) : -1;
-    }
-
-    function parseLocaleDateTime(d, string, i) {
-      return parseSpecifier(d, locale_dateTime, string, i);
-    }
-
-    function parseLocaleDate(d, string, i) {
-      return parseSpecifier(d, locale_date, string, i);
-    }
-
-    function parseLocaleTime(d, string, i) {
-      return parseSpecifier(d, locale_time, string, i);
-    }
-
-    function formatShortWeekday(d) {
-      return locale_shortWeekdays[d.getDay()];
-    }
-
-    function formatWeekday(d) {
-      return locale_weekdays[d.getDay()];
-    }
-
-    function formatShortMonth(d) {
-      return locale_shortMonths[d.getMonth()];
-    }
-
-    function formatMonth(d) {
-      return locale_months[d.getMonth()];
-    }
-
-    function formatPeriod(d) {
-      return locale_periods[+(d.getHours() >= 12)];
-    }
-
-    function formatUTCShortWeekday(d) {
-      return locale_shortWeekdays[d.getUTCDay()];
-    }
-
-    function formatUTCWeekday(d) {
-      return locale_weekdays[d.getUTCDay()];
-    }
-
-    function formatUTCShortMonth(d) {
-      return locale_shortMonths[d.getUTCMonth()];
-    }
-
-    function formatUTCMonth(d) {
-      return locale_months[d.getUTCMonth()];
-    }
-
-    function formatUTCPeriod(d) {
-      return locale_periods[+(d.getUTCHours() >= 12)];
-    }
-
-    return {
-      format: function(specifier) {
-        var f = newFormat(specifier += "", formats);
-        f.parse = newParse(specifier, localDate);
-        f.toString = function() { return specifier; };
-        return f;
-      },
-      utcFormat: function(specifier) {
-        var f = newFormat(specifier += "", utcFormats);
-        f.parse = newParse(specifier, utcDate);
-        f.toString = function() { return specifier; };
-        return f;
-      }
-    };
-  };
-
-  var pads = {"-": "", "_": " ", "0": "0"};
-  var numberRe = /^\s*\d+/;
-  var percentRe = /^%/;
-  var requoteRe = /[\\\^\$\*\+\?\|\[\]\(\)\.\{\}]/g;
-  function pad(value, fill, width) {
-    var sign = value < 0 ? "-" : "",
-        string = (sign ? -value : value) + "",
-        length = string.length;
-    return sign + (length < width ? new Array(width - length + 1).join(fill) + string : string);
-  }
-
-  function requote(s) {
-    return s.replace(requoteRe, "\\$&");
-  }
-
-  function formatRe(names) {
-    return new RegExp("^(?:" + names.map(requote).join("|") + ")", "i");
-  }
-
-  function formatLookup(names) {
-    var map = {}, i = -1, n = names.length;
-    while (++i < n) map[names[i].toLowerCase()] = i;
-    return map;
-  }
-
-  function parseWeekdayNumber(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 1));
-    return n ? (d.w = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseWeekNumberSunday(d, string, i) {
-    var n = numberRe.exec(string.slice(i));
-    return n ? (d.U = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseWeekNumberMonday(d, string, i) {
-    var n = numberRe.exec(string.slice(i));
-    return n ? (d.W = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseFullYear(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 4));
-    return n ? (d.y = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseYear(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 2));
-    return n ? (d.y = +n[0] + (+n[0] > 68 ? 1900 : 2000), i + n[0].length) : -1;
-  }
-
-  function parseZone(d, string, i) {
-    var n = /^(Z)|([+-]\d\d)(?:\:?(\d\d))?/.exec(string.slice(i, i + 6));
-    return n ? (d.Z = n[1] ? 0 : -(n[2] + (n[3] || "00")), i + n[0].length) : -1;
-  }
-
-  function parseMonthNumber(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 2));
-    return n ? (d.m = n[0] - 1, i + n[0].length) : -1;
-  }
-
-  function parseDayOfMonth(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 2));
-    return n ? (d.d = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseDayOfYear(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 3));
-    return n ? (d.m = 0, d.d = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseHour24(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 2));
-    return n ? (d.H = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseMinutes(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 2));
-    return n ? (d.M = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseSeconds(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 2));
-    return n ? (d.S = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseMilliseconds(d, string, i) {
-    var n = numberRe.exec(string.slice(i, i + 3));
-    return n ? (d.L = +n[0], i + n[0].length) : -1;
-  }
-
-  function parseLiteralPercent(d, string, i) {
-    var n = percentRe.exec(string.slice(i, i + 1));
-    return n ? i + n[0].length : -1;
-  }
-
-  function formatDayOfMonth(d, p) {
-    return pad(d.getDate(), p, 2);
-  }
-
-  function formatHour24(d, p) {
-    return pad(d.getHours(), p, 2);
-  }
-
-  function formatHour12(d, p) {
-    return pad(d.getHours() % 12 || 12, p, 2);
-  }
-
-  function formatDayOfYear(d, p) {
-    return pad(1 + d3Time.day.count(d3Time.year(d), d), p, 3);
-  }
-
-  function formatMilliseconds(d, p) {
-    return pad(d.getMilliseconds(), p, 3);
-  }
-
-  function formatMonthNumber(d, p) {
-    return pad(d.getMonth() + 1, p, 2);
-  }
-
-  function formatMinutes(d, p) {
-    return pad(d.getMinutes(), p, 2);
-  }
-
-  function formatSeconds(d, p) {
-    return pad(d.getSeconds(), p, 2);
-  }
-
-  function formatWeekNumberSunday(d, p) {
-    return pad(d3Time.sunday.count(d3Time.year(d), d), p, 2);
-  }
-
-  function formatWeekdayNumber(d) {
-    return d.getDay();
-  }
-
-  function formatWeekNumberMonday(d, p) {
-    return pad(d3Time.monday.count(d3Time.year(d), d), p, 2);
-  }
-
-  function formatYear(d, p) {
-    return pad(d.getFullYear() % 100, p, 2);
-  }
-
-  function formatFullYear(d, p) {
-    return pad(d.getFullYear() % 10000, p, 4);
-  }
-
-  function formatZone(d) {
-    var z = d.getTimezoneOffset();
-    return (z > 0 ? "-" : (z *= -1, "+"))
-        + pad(z / 60 | 0, "0", 2)
-        + pad(z % 60, "0", 2);
-  }
-
-  function formatUTCDayOfMonth(d, p) {
-    return pad(d.getUTCDate(), p, 2);
-  }
-
-  function formatUTCHour24(d, p) {
-    return pad(d.getUTCHours(), p, 2);
-  }
-
-  function formatUTCHour12(d, p) {
-    return pad(d.getUTCHours() % 12 || 12, p, 2);
-  }
-
-  function formatUTCDayOfYear(d, p) {
-    return pad(1 + d3Time.utcDay.count(d3Time.utcYear(d), d), p, 3);
-  }
-
-  function formatUTCMilliseconds(d, p) {
-    return pad(d.getUTCMilliseconds(), p, 3);
-  }
-
-  function formatUTCMonthNumber(d, p) {
-    return pad(d.getUTCMonth() + 1, p, 2);
-  }
-
-  function formatUTCMinutes(d, p) {
-    return pad(d.getUTCMinutes(), p, 2);
-  }
-
-  function formatUTCSeconds(d, p) {
-    return pad(d.getUTCSeconds(), p, 2);
-  }
-
-  function formatUTCWeekNumberSunday(d, p) {
-    return pad(d3Time.utcSunday.count(d3Time.utcYear(d), d), p, 2);
-  }
-
-  function formatUTCWeekdayNumber(d) {
-    return d.getUTCDay();
-  }
-
-  function formatUTCWeekNumberMonday(d, p) {
-    return pad(d3Time.utcMonday.count(d3Time.utcYear(d), d), p, 2);
-  }
-
-  function formatUTCYear(d, p) {
-    return pad(d.getUTCFullYear() % 100, p, 2);
-  }
-
-  function formatUTCFullYear(d, p) {
-    return pad(d.getUTCFullYear() % 10000, p, 4);
-  }
-
-  function formatUTCZone() {
-    return "+0000";
-  }
-
-  function formatLiteralPercent() {
-    return "%";
-  }
-
-  var locale = locale$1({
-    dateTime: "%a %b %e %X %Y",
-    date: "%m/%d/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-    shortDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-    shortMonths: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-  });
-
-  var caES = locale$1({
-    dateTime: "%A, %e de %B de %Y, %X",
-    date: "%d/%m/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["diumenge", "dilluns", "dimarts", "dimecres", "dijous", "divendres", "dissabte"],
-    shortDays: ["dg.", "dl.", "dt.", "dc.", "dj.", "dv.", "ds."],
-    months: ["gener", "febrer", "març", "abril", "maig", "juny", "juliol", "agost", "setembre", "octubre", "novembre", "desembre"],
-    shortMonths: ["gen.", "febr.", "març", "abr.", "maig", "juny", "jul.", "ag.", "set.", "oct.", "nov.", "des."]
-  });
-
-  var deCH = locale$1({
-    dateTime: "%A, der %e. %B %Y, %X",
-    date: "%d.%m.%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"], // unused
-    days: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
-    shortDays: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
-    months: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
-    shortMonths: ["Jan", "Feb", "Mrz", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
-  });
-
-  var deDE = locale$1({
-    dateTime: "%A, der %e. %B %Y, %X",
-    date: "%d.%m.%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"], // unused
-    days: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
-    shortDays: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
-    months: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
-    shortMonths: ["Jan", "Feb", "Mrz", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
-  });
-
-  var enCA = locale$1({
-    dateTime: "%a %b %e %X %Y",
-    date: "%Y-%m-%d",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-    shortDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-    shortMonths: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-  });
-
-  var enGB = locale$1({
-    dateTime: "%a %e %b %X %Y",
-    date: "%d/%m/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-    shortDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-    shortMonths: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-  });
-
-  var esES = locale$1({
-    dateTime: "%A, %e de %B de %Y, %X",
-    date: "%d/%m/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
-    shortDays: ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"],
-    months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
-    shortMonths: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
-  });
-
-  var fiFI = locale$1({
-    dateTime: "%A, %-d. %Bta %Y klo %X",
-    date: "%-d.%-m.%Y",
-    time: "%H:%M:%S",
-    periods: ["a.m.", "p.m."],
-    days: ["sunnuntai", "maanantai", "tiistai", "keskiviikko", "torstai", "perjantai", "lauantai"],
-    shortDays: ["Su", "Ma", "Ti", "Ke", "To", "Pe", "La"],
-    months: ["tammikuu", "helmikuu", "maaliskuu", "huhtikuu", "toukokuu", "kesäkuu", "heinäkuu", "elokuu", "syyskuu", "lokakuu", "marraskuu", "joulukuu"],
-    shortMonths: ["Tammi", "Helmi", "Maalis", "Huhti", "Touko", "Kesä", "Heinä", "Elo", "Syys", "Loka", "Marras", "Joulu"]
-  });
-
-  var frCA = locale$1({
-    dateTime: "%a %e %b %Y %X",
-    date: "%Y-%m-%d",
-    time: "%H:%M:%S",
-    periods: ["", ""],
-    days: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
-    shortDays: ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"],
-    months: ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
-    shortMonths: ["jan", "fév", "mar", "avr", "mai", "jui", "jul", "aoû", "sep", "oct", "nov", "déc"]
-  });
-
-  var frFR = locale$1({
-    dateTime: "%A, le %e %B %Y, %X",
-    date: "%d/%m/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"], // unused
-    days: ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
-    shortDays: ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."],
-    months: ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
-    shortMonths: ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
-  });
-
-  var heIL = locale$1({
-    dateTime: "%A, %e ב%B %Y %X",
-    date: "%d.%m.%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"],
-    shortDays: ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"],
-    months: ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"],
-    shortMonths: ["ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳"]
-  });
-
-  var huHU = locale$1({
-    dateTime: "%Y. %B %-e., %A %X",
-    date: "%Y. %m. %d.",
-    time: "%H:%M:%S",
-    periods: ["de.", "du."], // unused
-    days: ["vasárnap", "hétfő", "kedd", "szerda", "csütörtök", "péntek", "szombat"],
-    shortDays: ["V", "H", "K", "Sze", "Cs", "P", "Szo"],
-    months: ["január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"],
-    shortMonths: ["jan.", "feb.", "már.", "ápr.", "máj.", "jún.", "júl.", "aug.", "szept.", "okt.", "nov.", "dec."]
-  });
-
-  var itIT = locale$1({
-    dateTime: "%A %e %B %Y, %X",
-    date: "%d/%m/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"], // unused
-    days: ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"],
-    shortDays: ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"],
-    months: ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"],
-    shortMonths: ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
-  });
-
-  var jaJP = locale$1({
-    dateTime: "%Y %b %e %a %X",
-    date: "%Y/%m/%d",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
-    shortDays: ["日", "月", "火", "水", "木", "金", "土"],
-    months: ["睦月", "如月", "弥生", "卯月", "皐月", "水無月", "文月", "葉月", "長月", "神無月", "霜月", "師走"],
-    shortMonths: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
-  });
-
-  var koKR = locale$1({
-    dateTime: "%Y/%m/%d %a %X",
-    date: "%Y/%m/%d",
-    time: "%H:%M:%S",
-    periods: ["오전", "오후"],
-    days: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
-    shortDays: ["일", "월", "화", "수", "목", "금", "토"],
-    months: ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
-    shortMonths: ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
-  });
-
-  var mkMK = locale$1({
-    dateTime: "%A, %e %B %Y г. %X",
-    date: "%d.%m.%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["недела", "понеделник", "вторник", "среда", "четврток", "петок", "сабота"],
-    shortDays: ["нед", "пон", "вто", "сре", "чет", "пет", "саб"],
-    months: ["јануари", "февруари", "март", "април", "мај", "јуни", "јули", "август", "септември", "октомври", "ноември", "декември"],
-    shortMonths: ["јан", "фев", "мар", "апр", "мај", "јун", "јул", "авг", "сеп", "окт", "ное", "дек"]
-  });
-
-  var nlNL = locale$1({
-    dateTime: "%a %e %B %Y %T",
-    date: "%d-%m-%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"], // unused
-    days: ["zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"],
-    shortDays: ["zo", "ma", "di", "wo", "do", "vr", "za"],
-    months: ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"],
-    shortMonths: ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
-  });
-
-  var plPL = locale$1({
-    dateTime: "%A, %e %B %Y, %X",
-    date: "%d/%m/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"], // unused
-    days: ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"],
-    shortDays: ["Niedz.", "Pon.", "Wt.", "Śr.", "Czw.", "Pt.", "Sob."],
-    months: ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"],
-    shortMonths: ["Stycz.", "Luty", "Marz.", "Kwie.", "Maj", "Czerw.", "Lipc.", "Sierp.", "Wrz.", "Paźdz.", "Listop.", "Grudz."]/* In Polish language abbraviated months are not commonly used so there is a dispute about the proper abbraviations. */
-  });
-
-  var ptBR = locale$1({
-    dateTime: "%A, %e de %B de %Y. %X",
-    date: "%d/%m/%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"],
-    shortDays: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
-    months: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
-    shortMonths: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-  });
-
-  var ruRU = locale$1({
-    dateTime: "%A, %e %B %Y г. %X",
-    date: "%d.%m.%Y",
-    time: "%H:%M:%S",
-    periods: ["AM", "PM"],
-    days: ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"],
-    shortDays: ["вс", "пн", "вт", "ср", "чт", "пт", "сб"],
-    months: ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"],
-    shortMonths: ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
-  });
-
-  var svSE = locale$1({
-    dateTime: "%A den %d %B %Y %X",
-    date: "%Y-%m-%d",
-    time: "%H:%M:%S",
-    periods: ["fm", "em"],
-    days: ["Söndag", "Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag"],
-    shortDays: ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"],
-    months: ["Januari", "Februari", "Mars", "April", "Maj", "Juni", "Juli", "Augusti", "September", "Oktober", "November", "December"],
-    shortMonths: ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"]
-  });
-
-  var zhCN = locale$1({
-    dateTime: "%a %b %e %X %Y",
-    date: "%Y/%-m/%-d",
-    time: "%H:%M:%S",
-    periods: ["上午", "下午"],
-    days: ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"],
-    shortDays: ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"],
-    months: ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"],
-    shortMonths: ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
-  });
-
-  var isoSpecifier = "%Y-%m-%dT%H:%M:%S.%LZ";
-
-  function formatIsoNative(date) {
-    return date.toISOString();
-  }
-
-  formatIsoNative.parse = function(string) {
-    var date = new Date(string);
-    return isNaN(date) ? null : date;
-  };
-
-  formatIsoNative.toString = function() {
-    return isoSpecifier;
-  };
-
-  var formatIso = Date.prototype.toISOString && +new Date("2000-01-01T00:00:00.000Z")
-      ? formatIsoNative
-      : locale.utcFormat(isoSpecifier);
-
-  var format = locale.format;
-  var utcFormat = locale.utcFormat;
-
-  var version = "0.2.1";
-
-  exports.version = version;
-  exports.format = format;
-  exports.utcFormat = utcFormat;
-  exports.locale = locale$1;
-  exports.localeCaEs = caES;
-  exports.localeDeCh = deCH;
-  exports.localeDeDe = deDE;
-  exports.localeEnCa = enCA;
-  exports.localeEnGb = enGB;
-  exports.localeEnUs = locale;
-  exports.localeEsEs = esES;
-  exports.localeFiFi = fiFI;
-  exports.localeFrCa = frCA;
-  exports.localeFrFr = frFR;
-  exports.localeHeIl = heIL;
-  exports.localeHuHu = huHU;
-  exports.localeItIt = itIT;
-  exports.localeJaJp = jaJP;
-  exports.localeKoKr = koKR;
-  exports.localeMkMk = mkMK;
-  exports.localeNlNl = nlNL;
-  exports.localePlPl = plPL;
-  exports.localePtBr = ptBR;
-  exports.localeRuRu = ruRU;
-  exports.localeSvSe = svSE;
-  exports.localeZhCn = zhCN;
-  exports.isoFormat = formatIso;
-
-}));
-},{"d3-time":241}],241:[function(require,module,exports){
-arguments[4][174][0].apply(exports,arguments)
-},{"dup":174}],242:[function(require,module,exports){
-var util = require('./util'),
-    time = require('./time'),
-    utc = time.utc;
-
-var u = module.exports;
-
-u.$year   = util.$func('year', time.year.unit);
-u.$month  = util.$func('month', time.months.unit);
-u.$date   = util.$func('date', time.dates.unit);
-u.$day    = util.$func('day', time.weekdays.unit);
-u.$hour   = util.$func('hour', time.hours.unit);
-u.$minute = util.$func('minute', time.minutes.unit);
-u.$second = util.$func('second', time.seconds.unit);
-
-u.$utcYear   = util.$func('utcYear', utc.year.unit);
-u.$utcMonth  = util.$func('utcMonth', utc.months.unit);
-u.$utcDate   = util.$func('utcDate', utc.dates.unit);
-u.$utcDay    = util.$func('utcDay', utc.weekdays.unit);
-u.$utcHour   = util.$func('utcHour', utc.hours.unit);
-u.$utcMinute = util.$func('utcMinute', utc.minutes.unit);
-u.$utcSecond = util.$func('utcSecond', utc.seconds.unit);
-
-},{"./time":264,"./util":265}],243:[function(require,module,exports){
-var util = require('../util'),
-    Measures = require('./measures'),
-    Collector = require('./collector');
-
-function Aggregator() {
-  this._cells = {};
-  this._aggr = [];
-  this._stream = false;
-}
-
-var Flags = Aggregator.Flags = {
-  ADD_CELL: 1,
-  MOD_CELL: 2
-};
-
-var proto = Aggregator.prototype;
-
-// Parameters
-
-proto.stream = function(v) {
-  if (v == null) return this._stream;
-  this._stream = !!v;
-  this._aggr = [];
-  return this;
-};
-
-// key accessor to use for streaming removes
-proto.key = function(key) {
-  if (key == null) return this._key;
-  this._key = util.$(key);
-  return this;
-};
-
-// Input: array of objects of the form
-// {name: string, get: function}
-proto.groupby = function(dims) {
-  this._dims = util.array(dims).map(function(d, i) {
-    d = util.isString(d) ? {name: d, get: util.$(d)}
-      : util.isFunction(d) ? {name: util.name(d) || d.name || ('_' + i), get: d}
-      : (d.name && util.isFunction(d.get)) ? d : null;
-    if (d == null) throw 'Invalid groupby argument: ' + d;
-    return d;
-  });
-  return this.clear();
-};
-
-// Input: array of objects of the form
-// {name: string, ops: [string, ...]}
-proto.summarize = function(fields) {
-  fields = summarize_args(fields);
-  this._count = true;
-  var aggr = (this._aggr = []),
-      m, f, i, j, op, as, get;
-
-  for (i=0; i<fields.length; ++i) {
-    for (j=0, m=[], f=fields[i]; j<f.ops.length; ++j) {
-      op = f.ops[j];
-      if (op !== 'count') this._count = false;
-      as = (f.as && f.as[j]) || (op + (f.name==='*' ? '' : '_'+f.name));
-      m.push(Measures[op](as));
-    }
-    get = f.get && util.$(f.get) ||
-      (f.name === '*' ? util.identity : util.$(f.name));
-    aggr.push({
-      name: f.name,
-      measures: Measures.create(
-        m,
-        this._stream, // streaming remove flag
-        get,          // input tuple getter
-        this._assign) // output tuple setter
-    });
-  }
-  return this.clear();
-};
-
-// Convenience method to summarize by count
-proto.count = function() {
-  return this.summarize({'*':'count'});
-};
-
-// Override to perform custom tuple value assignment
-proto._assign = function(object, name, value) {
-  object[name] = value;
-};
-
-function summarize_args(fields) {
-  if (util.isArray(fields)) { return fields; }
-  if (fields == null) { return []; }
-  var a = [], name, ops;
-  for (name in fields) {
-    ops = util.array(fields[name]);
-    a.push({name: name, ops: ops});
-  }
-  return a;
-}
-
-// Cell Management
-
-proto.clear = function() {
-  return (this._cells = {}, this);
-};
-
-proto._cellkey = function(x) {
-  var d = this._dims,
-      n = d.length, i,
-      k = String(d[0].get(x));
-  for (i=1; i<n; ++i) {
-    k += '|' + d[i].get(x);
-  }
-  return k;
-};
-
-proto._cell = function(x) {
-  var key = this._dims.length ? this._cellkey(x) : '';
-  return this._cells[key] || (this._cells[key] = this._newcell(x, key));
-};
-
-proto._newcell = function(x, key) {
-  var cell = {
-    num:   0,
-    tuple: this._newtuple(x, key),
-    flag:  Flags.ADD_CELL,
-    aggs:  {}
-  };
-
-  var aggr = this._aggr, i;
-  for (i=0; i<aggr.length; ++i) {
-    cell.aggs[aggr[i].name] = new aggr[i].measures(cell, cell.tuple);
-  }
-  if (cell.collect) {
-    cell.data = new Collector(this._key);
-  }
-  return cell;
-};
-
-proto._newtuple = function(x) {
-  var dims = this._dims,
-      t = {}, i, n;
-  for (i=0, n=dims.length; i<n; ++i) {
-    t[dims[i].name] = dims[i].get(x);
-  }
-  return this._ingest(t);
-};
-
-// Override to perform custom tuple ingestion
-proto._ingest = util.identity;
-
-// Process Tuples
-
-proto._add = function(x) {
-  var cell = this._cell(x),
-      aggr = this._aggr, i;
-
-  cell.num += 1;
-  if (!this._count) { // skip if count-only
-    if (cell.collect) cell.data.add(x);
-    for (i=0; i<aggr.length; ++i) {
-      cell.aggs[aggr[i].name].add(x);
-    }
-  }
-  cell.flag |= Flags.MOD_CELL;
-  if (this._on_add) this._on_add(x, cell);
-};
-
-proto._rem = function(x) {
-  var cell = this._cell(x),
-      aggr = this._aggr, i;
-
-  cell.num -= 1;
-  if (!this._count) { // skip if count-only
-    if (cell.collect) cell.data.rem(x);
-    for (i=0; i<aggr.length; ++i) {
-      cell.aggs[aggr[i].name].rem(x);
-    }
-  }
-  cell.flag |= Flags.MOD_CELL;
-  if (this._on_rem) this._on_rem(x, cell);
-};
-
-proto._mod = function(curr, prev) {
-  var cell0 = this._cell(prev),
-      cell1 = this._cell(curr),
-      aggr = this._aggr, i;
-
-  if (cell0 !== cell1) {
-    cell0.num -= 1;
-    cell1.num += 1;
-    if (cell0.collect) cell0.data.rem(prev);
-    if (cell1.collect) cell1.data.add(curr);
-  } else if (cell0.collect && !util.isObject(curr)) {
-    cell0.data.rem(prev);
-    cell0.data.add(curr);
-  }
-
-  for (i=0; i<aggr.length; ++i) {
-    cell0.aggs[aggr[i].name].rem(prev);
-    cell1.aggs[aggr[i].name].add(curr);
-  }
-  cell0.flag |= Flags.MOD_CELL;
-  cell1.flag |= Flags.MOD_CELL;
-  if (this._on_mod) this._on_mod(curr, prev, cell0, cell1);
-};
-
-proto._markMod = function(x) {
-  var cell0 = this._cell(x);
-  cell0.flag |= Flags.MOD_CELL;
-};
-
-proto.result = function() {
-  var result = [],
-      aggr = this._aggr,
-      cell, i, k;
-
-  for (k in this._cells) {
-    cell = this._cells[k];
-    if (cell.num > 0) {
-      // consolidate collector values
-      if (cell.collect) {
-        cell.data.values();
-      }
-      // update tuple properties
-      for (i=0; i<aggr.length; ++i) {
-        cell.aggs[aggr[i].name].set();
-      }
-      // add output tuple
-      result.push(cell.tuple);
-    } else {
-      delete this._cells[k];
-    }
-    cell.flag = 0;
-  }
-
-  this._rems = false;
-  return result;
-};
-
-proto.changes = function(output) {
-  var changes = output || {add:[], rem:[], mod:[]},
-      aggr = this._aggr,
-      cell, flag, i, k;
-
-  for (k in this._cells) {
-    cell = this._cells[k];
-    flag = cell.flag;
-
-    // consolidate collector values
-    if (cell.collect) {
-      cell.data.values();
-    }
-
-    // update tuple properties
-    for (i=0; i<aggr.length; ++i) {
-      cell.aggs[aggr[i].name].set();
-    }
-
-    // organize output tuples
-    if (cell.num <= 0) {
-      changes.rem.push(cell.tuple); // if (flag === Flags.MOD_CELL) { ??
-      delete this._cells[k];
-      if (this._on_drop) this._on_drop(cell);
-    } else {
-      if (this._on_keep) this._on_keep(cell);
-      if (flag & Flags.ADD_CELL) {
-        changes.add.push(cell.tuple);
-      } else if (flag & Flags.MOD_CELL) {
-        changes.mod.push(cell.tuple);
-      }
-    }
-
-    cell.flag = 0;
-  }
-
-  this._rems = false;
-  return changes;
-};
-
-proto.execute = function(input) {
-  return this.clear().insert(input).result();
-};
-
-proto.insert = function(input) {
-  this._consolidate();
-  for (var i=0; i<input.length; ++i) {
-    this._add(input[i]);
-  }
-  return this;
-};
-
-proto.remove = function(input) {
-  if (!this._stream) {
-    throw 'Aggregator not configured for streaming removes.' +
-      ' Call stream(true) prior to calling summarize.';
-  }
-  for (var i=0; i<input.length; ++i) {
-    this._rem(input[i]);
-  }
-  this._rems = true;
-  return this;
-};
-
-// consolidate removals
-proto._consolidate = function() {
-  if (!this._rems) return;
-  for (var k in this._cells) {
-    if (this._cells[k].collect) {
-      this._cells[k].data.values();
-    }
-  }
-  this._rems = false;
-};
-
-module.exports = Aggregator;
-
-},{"../util":265,"./collector":244,"./measures":246}],244:[function(require,module,exports){
-var util = require('../util');
-var stats = require('../stats');
-
-var REM = '__dl_rem__';
-
-function Collector(key) {
-  this._add = [];
-  this._rem = [];
-  this._key = key || null;
-  this._last = null;
-}
-
-var proto = Collector.prototype;
-
-proto.add = function(v) {
-  this._add.push(v);
-};
-
-proto.rem = function(v) {
-  this._rem.push(v);
-};
-
-proto.values = function() {
-  this._get = null;
-  if (this._rem.length === 0) return this._add;
-
-  var a = this._add,
-      r = this._rem,
-      k = this._key,
-      x = Array(a.length - r.length),
-      i, j, n, m;
-
-  if (!util.isObject(r[0])) {
-    // processing raw values
-    m = stats.count.map(r);
-    for (i=0, j=0, n=a.length; i<n; ++i) {
-      if (m[a[i]] > 0) {
-        m[a[i]] -= 1;
-      } else {
-        x[j++] = a[i];
-      }
-    }
-  } else if (k) {
-    // has unique key field, so use that
-    m = util.toMap(r, k);
-    for (i=0, j=0, n=a.length; i<n; ++i) {
-      if (!m.hasOwnProperty(k(a[i]))) { x[j++] = a[i]; }
-    }
-  } else {
-    // no unique key, mark tuples directly
-    for (i=0, n=r.length; i<n; ++i) {
-      r[i][REM] = 1;
-    }
-    for (i=0, j=0, n=a.length; i<n; ++i) {
-      if (!a[i][REM]) { x[j++] = a[i]; }
-    }
-    for (i=0, n=r.length; i<n; ++i) {
-      delete r[i][REM];
-    }
-  }
-
-  this._rem = [];
-  return (this._add = x);
-};
-
-// memoizing statistics methods
-
-proto.extent = function(get) {
-  if (this._get !== get || !this._ext) {
-    var v = this.values(),
-        i = stats.extent.index(v, get);
-    this._ext = [v[i[0]], v[i[1]]];
-    this._get = get;
-  }
-  return this._ext;
-};
-
-proto.argmin = function(get) {
-  return this.extent(get)[0];
-};
-
-proto.argmax = function(get) {
-  return this.extent(get)[1];
-};
-
-proto.min = function(get) {
-  var m = this.extent(get)[0];
-  return m != null ? get(m) : +Infinity;
-};
-
-proto.max = function(get) {
-  var m = this.extent(get)[1];
-  return m != null ? get(m) : -Infinity;
-};
-
-proto.quartile = function(get) {
-  if (this._get !== get || !this._q) {
-    this._q = stats.quartile(this.values(), get);
-    this._get = get;
-  }
-  return this._q;
-};
-
-proto.q1 = function(get) {
-  return this.quartile(get)[0];
-};
-
-proto.q2 = function(get) {
-  return this.quartile(get)[1];
-};
-
-proto.q3 = function(get) {
-  return this.quartile(get)[2];
-};
-
-module.exports = Collector;
-
-},{"../stats":262,"../util":265}],245:[function(require,module,exports){
-var util = require('../util');
-var Aggregator = require('./aggregator');
-
-module.exports = function() {
-  // flatten arguments into a single array
-  var args = [].reduce.call(arguments, function(a, x) {
-    return a.concat(util.array(x));
-  }, []);
-  // create and return an aggregator
-  return new Aggregator()
-    .groupby(args)
-    .summarize({'*':'values'});
-};
-
-},{"../util":265,"./aggregator":243}],246:[function(require,module,exports){
-var util = require('../util');
-
-var types = {
-  'values': measure({
-    name: 'values',
-    init: 'cell.collect = true;',
-    set:  'cell.data.values()', idx: -1
-  }),
-  'count': measure({
-    name: 'count',
-    set:  'cell.num'
-  }),
-  'missing': measure({
-    name: 'missing',
-    set:  'this.missing'
-  }),
-  'valid': measure({
-    name: 'valid',
-    set:  'this.valid'
-  }),
-  'sum': measure({
-    name: 'sum',
-    init: 'this.sum = 0;',
-    add:  'this.sum += v;',
-    rem:  'this.sum -= v;',
-    set:  'this.sum'
-  }),
-  'mean': measure({
-    name: 'mean',
-    init: 'this.mean = 0;',
-    add:  'var d = v - this.mean; this.mean += d / this.valid;',
-    rem:  'var d = v - this.mean; this.mean -= this.valid ? d / this.valid : this.mean;',
-    set:  'this.mean'
-  }),
-  'average': measure({
-    name: 'average',
-    set:  'this.mean',
-    req:  ['mean'], idx: 1
-  }),
-  'variance': measure({
-    name: 'variance',
-    init: 'this.dev = 0;',
-    add:  'this.dev += d * (v - this.mean);',
-    rem:  'this.dev -= d * (v - this.mean);',
-    set:  'this.valid > 1 ? this.dev / (this.valid-1) : 0',
-    req:  ['mean'], idx: 1
-  }),
-  'variancep': measure({
-    name: 'variancep',
-    set:  'this.valid > 1 ? this.dev / this.valid : 0',
-    req:  ['variance'], idx: 2
-  }),
-  'stdev': measure({
-    name: 'stdev',
-    set:  'this.valid > 1 ? Math.sqrt(this.dev / (this.valid-1)) : 0',
-    req:  ['variance'], idx: 2
-  }),
-  'stdevp': measure({
-    name: 'stdevp',
-    set:  'this.valid > 1 ? Math.sqrt(this.dev / this.valid) : 0',
-    req:  ['variance'], idx: 2
-  }),
-  'stderr': measure({
-    name: 'stderr',
-    set:  'this.valid > 1 ? Math.sqrt(this.dev / (this.valid * (this.valid-1))) : 0',
-    req:  ['variance'], idx: 2
-  }),
-  'median': measure({
-    name: 'median',
-    set:  'cell.data.q2(this.get)',
-    req:  ['values'], idx: 3
-  }),
-  'q1': measure({
-    name: 'q1',
-    set:  'cell.data.q1(this.get)',
-    req:  ['values'], idx: 3
-  }),
-  'q3': measure({
-    name: 'q3',
-    set:  'cell.data.q3(this.get)',
-    req:  ['values'], idx: 3
-  }),
-  'distinct': measure({
-    name: 'distinct',
-    set:  'this.distinct(cell.data.values(), this.get)',
-    req:  ['values'], idx: 3
-  }),
-  'argmin': measure({
-    name: 'argmin',
-    add:  'if (v < this.min) this.argmin = t;',
-    rem:  'if (v <= this.min) this.argmin = null;',
-    set:  'this.argmin = this.argmin || cell.data.argmin(this.get)',
-    req:  ['min'], str: ['values'], idx: 3
-  }),
-  'argmax': measure({
-    name: 'argmax',
-    add:  'if (v > this.max) this.argmax = t;',
-    rem:  'if (v >= this.max) this.argmax = null;',
-    set:  'this.argmax = this.argmax || cell.data.argmax(this.get)',
-    req:  ['max'], str: ['values'], idx: 3
-  }),
-  'min': measure({
-    name: 'min',
-    init: 'this.min = +Infinity;',
-    add:  'if (v < this.min) this.min = v;',
-    rem:  'if (v <= this.min) this.min = NaN;',
-    set:  'this.min = (isNaN(this.min) ? cell.data.min(this.get) : this.min)',
-    str:  ['values'], idx: 4
-  }),
-  'max': measure({
-    name: 'max',
-    init: 'this.max = -Infinity;',
-    add:  'if (v > this.max) this.max = v;',
-    rem:  'if (v >= this.max) this.max = NaN;',
-    set:  'this.max = (isNaN(this.max) ? cell.data.max(this.get) : this.max)',
-    str:  ['values'], idx: 4
-  }),
-  'modeskew': measure({
-    name: 'modeskew',
-    set:  'this.dev===0 ? 0 : (this.mean - cell.data.q2(this.get)) / Math.sqrt(this.dev/(this.valid-1))',
-    req:  ['mean', 'variance', 'median'], idx: 5
-  })
-};
-
-function measure(base) {
-  return function(out) {
-    var m = util.extend({init:'', add:'', rem:'', idx:0}, base);
-    m.out = out || base.name;
-    return m;
-  };
-}
-
-function resolve(agg, stream) {
-  function collect(m, a) {
-    function helper(r) { if (!m[r]) collect(m, m[r] = types[r]()); }
-    if (a.req) a.req.forEach(helper);
-    if (stream && a.str) a.str.forEach(helper);
-    return m;
-  }
-  var map = agg.reduce(
-    collect,
-    agg.reduce(function(m, a) { return (m[a.name] = a, m); }, {})
-  );
-  return util.vals(map).sort(function(a, b) { return a.idx - b.idx; });
-}
-
-function create(agg, stream, accessor, mutator) {
-  var all = resolve(agg, stream),
-      ctr = 'this.cell = cell; this.tuple = t; this.valid = 0; this.missing = 0;',
-      add = 'if (v==null) this.missing++; if (!this.isValid(v)) return; ++this.valid;',
-      rem = 'if (v==null) this.missing--; if (!this.isValid(v)) return; --this.valid;',
-      set = 'var t = this.tuple; var cell = this.cell;';
-
-  all.forEach(function(a) {
-    if (a.idx < 0) {
-      ctr = a.init + ctr;
-      add = a.add + add;
-      rem = a.rem + rem;
-    } else {
-      ctr += a.init;
-      add += a.add;
-      rem += a.rem;
-    }
-  });
-  agg.slice()
-    .sort(function(a, b) { return a.idx - b.idx; })
-    .forEach(function(a) {
-      set += 'this.assign(t,\''+a.out+'\','+a.set+');';
-    });
-  set += 'return t;';
-
-  /* jshint evil: true */
-  ctr = Function('cell', 't', ctr);
-  ctr.prototype.assign = mutator;
-  ctr.prototype.add = Function('t', 'var v = this.get(t);' + add);
-  ctr.prototype.rem = Function('t', 'var v = this.get(t);' + rem);
-  ctr.prototype.set = Function(set);
-  ctr.prototype.get = accessor;
-  ctr.prototype.distinct = require('../stats').count.distinct;
-  ctr.prototype.isValid = util.isValid;
-  ctr.fields = agg.map(util.$('out'));
-  return ctr;
-}
-
-types.create = create;
-module.exports = types;
-
-},{"../stats":262,"../util":265}],247:[function(require,module,exports){
-arguments[4][175][0].apply(exports,arguments)
-},{"../time":264,"../util":265,"dup":175}],248:[function(require,module,exports){
-var bins = require('./bins'),
-    gen  = require('../generate'),
-    type = require('../import/type'),
-    util = require('../util'),
-    stats = require('../stats');
-
-var qtype = {
-  'integer': 1,
-  'number': 1,
-  'date': 1
-};
-
-function $bin(values, f, opt) {
-  opt = options(values, f, opt);
-  var b = spec(opt);
-  return !b ? (opt.accessor || util.identity) :
-    util.$func('bin', b.unit.unit ?
-      function(x) { return b.value(b.unit.unit(x)); } :
-      function(x) { return b.value(x); }
-    )(opt.accessor);
-}
-
-function histogram(values, f, opt) {
-  opt = options(values, f, opt);
-  var b = spec(opt);
-  return b ?
-    numerical(values, opt.accessor, b) :
-    categorical(values, opt.accessor, opt && opt.sort);
-}
-
-function spec(opt) {
-  var t = opt.type, b = null;
-  if (t == null || qtype[t]) {
-    if (t === 'integer' && opt.minstep == null) opt.minstep = 1;
-    b = (t === 'date') ? bins.date(opt) : bins(opt);
-  }
-  return b;
-}
-
-function options() {
-  var a = arguments,
-      i = 0,
-      values = util.isArray(a[i]) ? a[i++] : null,
-      f = util.isFunction(a[i]) || util.isString(a[i]) ? util.$(a[i++]) : null,
-      opt = util.extend({}, a[i]);
-
-  if (values) {
-    opt.type = opt.type || type(values, f);
-    if (qtype[opt.type]) {
-      var ext = stats.extent(values, f);
-      opt = util.extend({min: ext[0], max: ext[1]}, opt);
-    }
-  }
-  if (f) { opt.accessor = f; }
-  return opt;
-}
-
-function numerical(values, f, b) {
-  var h = gen.range(b.start, b.stop + b.step/2, b.step)
-    .map(function(v) { return {value: b.value(v), count: 0}; });
-
-  for (var i=0, v, j; i<values.length; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) {
-      j = b.index(v);
-      if (j < 0 || j >= h.length || !isFinite(j)) continue;
-      h[j].count += 1;
-    }
-  }
-  h.bins = b;
-  return h;
-}
-
-function categorical(values, f, sort) {
-  var u = stats.unique(values, f),
-      c = stats.count.map(values, f);
-  return u.map(function(k) { return {value: k, count: c[k]}; })
-    .sort(util.comparator(sort ? '-count' : '+value'));
-}
-
-module.exports = {
-  $bin: $bin,
-  histogram: histogram
-};
-
-},{"../generate":251,"../import/type":260,"../stats":262,"../util":265,"./bins":247}],249:[function(require,module,exports){
-var util = require('./util'),
-    type = require('./import/type'),
-    stats = require('./stats'),
-    template = require('./template');
-
-module.exports = {
-  table:   formatTable,  // format a data table
-  summary: formatSummary // format a data table summary
-};
-
-var FMT = {
-  'date':    '|time:"%m/%d/%Y %H:%M:%S"',
-  'number':  '|number:".4f"',
-  'integer': '|number:"d"'
-};
-
-var POS = {
-  'number':  'left',
-  'integer': 'left'
-};
-
-function formatTable(data, opt) {
-  opt = util.extend({separator:' ', minwidth: 8, maxwidth: 15}, opt);
-  var fields = opt.fields || util.keys(data[0]),
-      types = type.all(data);
-
-  if (opt.start || opt.limit) {
-    var a = opt.start || 0,
-        b = opt.limit ? a + opt.limit : data.length;
-    data = data.slice(a, b);
-  }
-
-  // determine char width of fields
-  var lens = fields.map(function(name) {
-    var format = FMT[types[name]] || '',
-        t = template('{{' + name + format + '}}'),
-        l = stats.max(data, function(x) { return t(x).length; });
-    l = Math.max(Math.min(name.length, opt.minwidth), l);
-    return opt.maxwidth > 0 ? Math.min(l, opt.maxwidth) : l;
-  });
-
-  // print header row
-  var head = fields.map(function(name, i) {
-    return util.truncate(util.pad(name, lens[i], 'center'), lens[i]);
-  }).join(opt.separator);
-
-  // build template function for each row
-  var tmpl = template(fields.map(function(name, i) {
-    return '{{' +
-      name +
-      (FMT[types[name]] || '') +
-      ('|pad:' + lens[i] + ',' + (POS[types[name]] || 'right')) +
-      ('|truncate:' + lens[i]) +
-    '}}';
-  }).join(opt.separator));
-
-  // print table
-  return head + "\n" + data.map(tmpl).join('\n');
-}
-
-function formatSummary(s) {
-  s = s ? s.__summary__ ? s : stats.summary(s) : this;
-  var str = [], i, n;
-  for (i=0, n=s.length; i<n; ++i) {
-    str.push('-- ' + s[i].field + ' --');
-    if (s[i].type === 'string' || s[i].distinct < 10) {
-      str.push(printCategoricalProfile(s[i]));
-    } else {
-      str.push(printQuantitativeProfile(s[i]));
-    }
-    str.push('');
-  }
-  return str.join('\n');
-}
-
-function printQuantitativeProfile(p) {
-  return [
-    'valid:    ' + p.valid,
-    'missing:  ' + p.missing,
-    'distinct: ' + p.distinct,
-    'min:      ' + p.min,
-    'max:      ' + p.max,
-    'median:   ' + p.median,
-    'mean:     ' + p.mean,
-    'stdev:    ' + p.stdev,
-    'modeskew: ' + p.modeskew
-  ].join('\n');
-}
-
-function printCategoricalProfile(p) {
-  var list = [
-    'valid:    ' + p.valid,
-    'missing:  ' + p.missing,
-    'distinct: ' + p.distinct,
-    'top values: '
-  ];
-  var u = p.unique;
-  var top = util.keys(u)
-    .sort(function(a,b) { return u[b] - u[a]; })
-    .slice(0, 6)
-    .map(function(v) { return ' \'' + v + '\' (' + u[v] + ')'; });
-  return list.concat(top).join('\n');
-}
-},{"./import/type":260,"./stats":262,"./template":263,"./util":265}],250:[function(require,module,exports){
-var util = require('./util'),
-    d3_time = require('d3-time'),
-    d3_timeF = require('d3-time-format'),
-    d3_numberF = require('d3-format'),
-    numberF = d3_numberF, // defaults to EN-US
-    timeF = d3_timeF,     // defaults to EN-US
-    tmpDate = new Date(2000, 0, 1),
-    monthFull, monthAbbr, dayFull, dayAbbr;
-
-
-module.exports = {
-  // Update number formatter to use provided locale configuration.
-  // For more see https://github.com/d3/d3-format
-  numberLocale: numberLocale,
-  number:       function(f) { return numberF.format(f); },
-  numberPrefix: function(f, v) { return numberF.formatPrefix(f, v); },
-
-  // Update time formatter to use provided locale configuration.
-  // For more see https://github.com/d3/d3-time-format
-  timeLocale:   timeLocale,
-  time:         function(f) { return timeF.format(f); },
-  utc:          function(f) { return timeF.utcFormat(f); },
-
-  // Set number and time locale simultaneously.
-  locale:       function(l) { numberLocale(l); timeLocale(l); },
-
-  // automatic formatting functions
-  auto: {
-    number:   autoNumberFormat,
-    linear:   linearNumberFormat,
-    time:     function() { return timeAutoFormat(); },
-    utc:      function() { return utcAutoFormat(); }
-  },
-
-  month:    monthFormat,  // format month name from integer code
-  day:      dayFormat,    // format week day name from integer code
-  quarter:  quarterFormat // format quarter number from integer code
-};
-
-// -- Locales ----
-
-// transform 'en-US' style locale string to match d3-format v0.4+ convention
-function localeRef(l) {
-  return l.length > 4 && 'locale' + (
-    l[0].toUpperCase() + l[1].toLowerCase() +
-    l[3].toUpperCase() + l[4].toLowerCase()
-  );
-}
-
-function numberLocale(l) {
-  var f = util.isString(l) ? d3_numberF[localeRef(l)] : d3_numberF.locale(l);
-  if (f == null) throw Error('Unrecognized locale: ' + l);
-  numberF = f;
-}
-
-function timeLocale(l) {
-  var f = util.isString(l) ? d3_timeF[localeRef(l)] : d3_timeF.locale(l);
-  if (f == null) throw Error('Unrecognized locale: ' + l);
-  timeF = f;
-  monthFull = monthAbbr = dayFull = dayAbbr = null;
-}
-
-// -- Number Formatting ----
-
-var e10 = Math.sqrt(50),
-    e5 = Math.sqrt(10),
-    e2 = Math.sqrt(2);
-
-function linearRange(domain, count) {
-  if (!domain.length) domain = [0];
-  if (count == null) count = 10;
-
-  var start = domain[0],
-      stop = domain[domain.length - 1];
-
-  if (stop < start) { error = stop; stop = start; start = error; }
-
-  var span = (stop - start) || (count = 1, start || stop || 1),
-      step = Math.pow(10, Math.floor(Math.log(span / count) / Math.LN10)),
-      error = span / count / step;
-
-  // Filter ticks to get closer to the desired count.
-  if (error >= e10) step *= 10;
-  else if (error >= e5) step *= 5;
-  else if (error >= e2) step *= 2;
-
-  // Round start and stop values to step interval.
-  return [
-    Math.ceil(start / step) * step,
-    Math.floor(stop / step) * step + step / 2, // inclusive
-    step
-  ];
-}
-
-function trimZero(f, decimal) {
-  return function(x) {
-    var s = f(x),
-        n = s.indexOf(decimal);
-    if (n < 0) return s;
-
-    var idx = rightmostDigit(s, n),
-        end = idx < s.length ? s.slice(idx) : '';
-
-    while (--idx > n) {
-      if (s[idx] !== '0') { ++idx; break; }
-    }
-    return s.slice(0, idx) + end;
-  };
-}
-
-function rightmostDigit(s, n) {
-  var i = s.lastIndexOf('e'), c;
-  if (i > 0) return i;
-  for (i=s.length; --i > n;) {
-    c = s.charCodeAt(i);
-    if (c >= 48 && c <= 57) return i+1; // is digit
-  }
-}
-
-function autoNumberFormat(f) {
-  var decimal = numberF.format('.1f')(1)[1]; // get decimal char
-  if (f == null) f = ',';
-  f = d3_numberF.formatSpecifier(f);
-  if (f.precision == null) f.precision = 12;
-  switch (f.type) {
-    case '%': f.precision -= 2; break;
-    case 'e': f.precision -= 1; break;
-  }
-  return trimZero(numberF.format(f), decimal);
-}
-
-function linearNumberFormat(domain, count, f) {
-  var range = linearRange(domain, count);
-
-  if (f == null) f = ',f';
-
-  switch (f = d3_numberF.formatSpecifier(f), f.type) {
-    case 's': {
-      var value = Math.max(Math.abs(range[0]), Math.abs(range[1]));
-      if (f.precision == null) f.precision = d3_numberF.precisionPrefix(range[2], value);
-      return numberF.formatPrefix(f, value);
-    }
-    case '':
-    case 'e':
-    case 'g':
-    case 'p':
-    case 'r': {
-      if (f.precision == null) f.precision = d3_numberF.precisionRound(range[2], Math.max(Math.abs(range[0]), Math.abs(range[1]))) - (f.type === 'e');
-      break;
-    }
-    case 'f':
-    case '%': {
-      if (f.precision == null) f.precision = d3_numberF.precisionFixed(range[2]) - 2 * (f.type === '%');
-      break;
-    }
-  }
-  return numberF.format(f);
-}
-
-// -- Datetime Formatting ----
-
-function timeAutoFormat() {
-  var f = timeF.format,
-      formatMillisecond = f('.%L'),
-      formatSecond = f(':%S'),
-      formatMinute = f('%I:%M'),
-      formatHour = f('%I %p'),
-      formatDay = f('%a %d'),
-      formatWeek = f('%b %d'),
-      formatMonth = f('%B'),
-      formatYear = f('%Y');
-
-  return function(date) {
-    var d = +date;
-    return (d3_time.second(date) < d ? formatMillisecond
-        : d3_time.minute(date) < d ? formatSecond
-        : d3_time.hour(date) < d ? formatMinute
-        : d3_time.day(date) < d ? formatHour
-        : d3_time.month(date) < d ?
-          (d3_time.week(date) < d ? formatDay : formatWeek)
-        : d3_time.year(date) < d ? formatMonth
-        : formatYear)(date);
-  };
-}
-
-function utcAutoFormat() {
-  var f = timeF.utcFormat,
-      formatMillisecond = f('.%L'),
-      formatSecond = f(':%S'),
-      formatMinute = f('%I:%M'),
-      formatHour = f('%I %p'),
-      formatDay = f('%a %d'),
-      formatWeek = f('%b %d'),
-      formatMonth = f('%B'),
-      formatYear = f('%Y');
-
-  return function(date) {
-    var d = +date;
-    return (d3_time.utcSecond(date) < d ? formatMillisecond
-        : d3_time.utcMinute(date) < d ? formatSecond
-        : d3_time.utcHour(date) < d ? formatMinute
-        : d3_time.utcDay(date) < d ? formatHour
-        : d3_time.utcMonth(date) < d ?
-          (d3_time.utcWeek(date) < d ? formatDay : formatWeek)
-        : d3_time.utcYear(date) < d ? formatMonth
-        : formatYear)(date);
-  };
-}
-
-function monthFormat(month, abbreviate) {
-  var f = abbreviate ?
-    (monthAbbr || (monthAbbr = timeF.format('%b'))) :
-    (monthFull || (monthFull = timeF.format('%B')));
-  return (tmpDate.setMonth(month), f(tmpDate));
-}
-
-function dayFormat(day, abbreviate) {
-  var f = abbreviate ?
-    (dayAbbr || (dayAbbr = timeF.format('%a'))) :
-    (dayFull || (dayFull = timeF.format('%A')));
-  return (tmpDate.setMonth(0), tmpDate.setDate(2 + day), f(tmpDate));
-}
-
-function quarterFormat(month) {
-  return Math.floor(month / 3) + 1;
-}
-
-},{"./util":265,"d3-format":239,"d3-time":241,"d3-time-format":240}],251:[function(require,module,exports){
-arguments[4][176][0].apply(exports,arguments)
-},{"./util":265,"dup":176}],252:[function(require,module,exports){
-var util = require('../../util');
-var d3_dsv = require('d3-dsv');
-
-function dsv(data, format) {
-  if (data) {
-    var h = format.header;
-    data = (h ? h.join(format.delimiter) + '\n' : '') + data;
-  }
-  return d3_dsv.dsv(format.delimiter).parse(data);
-}
-
-dsv.delimiter = function(delim) {
-  var fmt = {delimiter: delim};
-  return function(data, format) {
-    return dsv(data, format ? util.extend(format, fmt) : fmt);
-  };
-};
-
-module.exports = dsv;
-
-},{"../../util":265,"d3-dsv":238}],253:[function(require,module,exports){
-var dsv = require('./dsv');
-
-module.exports = {
-  json: require('./json'),
-  topojson: require('./topojson'),
-  treejson: require('./treejson'),
-  dsv: dsv,
-  csv: dsv.delimiter(','),
-  tsv: dsv.delimiter('\t')
-};
-
-},{"./dsv":252,"./json":254,"./topojson":255,"./treejson":256}],254:[function(require,module,exports){
-var util = require('../../util');
-
-module.exports = function(data, format) {
-  var d = util.isObject(data) && !util.isBuffer(data) ?
-    data : JSON.parse(data);
-  if (format && format.property) {
-    d = util.accessor(format.property)(d);
-  }
-  return d;
-};
-
-},{"../../util":265}],255:[function(require,module,exports){
-var json = require('./json');
-
-var reader = function(data, format) {
-  var topojson = reader.topojson;
-  if (topojson == null) { throw Error('TopoJSON library not loaded.'); }
-
-  var t = json(data, format), obj;
-
-  if (format && format.feature) {
-    if ((obj = t.objects[format.feature])) {
-      return topojson.feature(t, obj).features;
-    } else {
-      throw Error('Invalid TopoJSON object: ' + format.feature);
-    }
-  } else if (format && format.mesh) {
-    if ((obj = t.objects[format.mesh])) {
-      return [topojson.mesh(t, t.objects[format.mesh])];
-    } else {
-      throw Error('Invalid TopoJSON object: ' + format.mesh);
-    }
-  } else {
-    throw Error('Missing TopoJSON feature or mesh parameter.');
-  }
-};
-
-reader.topojson = require('topojson');
-module.exports = reader;
-
-},{"./json":254,"topojson":266}],256:[function(require,module,exports){
-var json = require('./json');
-
-module.exports = function(tree, format) {
-  return toTable(json(tree, format), format);
-};
-
-function toTable(root, fields) {
-  var childrenField = fields && fields.children || 'children',
-      parentField = fields && fields.parent || 'parent',
-      table = [];
-
-  function visit(node, parent) {
-    node[parentField] = parent;
-    table.push(node);
-    var children = node[childrenField];
-    if (children) {
-      for (var i=0; i<children.length; ++i) {
-        visit(children[i], node);
-      }
-    }
-  }
-
-  visit(root, null);
-  return (table.root = root, table);
-}
-
-},{"./json":254}],257:[function(require,module,exports){
-var util = require('../util');
-
-// Matches absolute URLs with optional protocol
-//   https://...    file://...    //...
-var protocol_re = /^([A-Za-z]+:)?\/\//;
-
-// Special treatment in node.js for the file: protocol
-var fileProtocol = 'file://';
-
-// Validate and cleanup URL to ensure that it is allowed to be accessed
-// Returns cleaned up URL, or false if access is not allowed
-function sanitizeUrl(opt) {
-  var url = opt.url;
-  if (!url && opt.file) { return fileProtocol + opt.file; }
-
-  // In case this is a relative url (has no host), prepend opt.baseURL
-  if (opt.baseURL && !protocol_re.test(url)) {
-    if (!startsWith(url, '/') && opt.baseURL[opt.baseURL.length-1] !== '/') {
-      url = '/' + url; // Ensure that there is a slash between the baseURL (e.g. hostname) and url
-    }
-    url = opt.baseURL + url;
-  }
-  // relative protocol, starts with '//'
-  if (!load.useXHR && startsWith(url, '//')) {
-    url = (opt.defaultProtocol || 'http') + ':' + url;
-  }
-  // If opt.domainWhiteList is set, only allows url, whose hostname
-  // * Is the same as the origin (window.location.hostname)
-  // * Equals one of the values in the whitelist
-  // * Is a proper subdomain of one of the values in the whitelist
-  if (opt.domainWhiteList) {
-    var domain, origin;
-    if (load.useXHR) {
-      var a = document.createElement('a');
-      a.href = url;
-      // From http://stackoverflow.com/questions/736513/how-do-i-parse-a-url-into-hostname-and-path-in-javascript
-      // IE doesn't populate all link properties when setting .href with a relative URL,
-      // however .href will return an absolute URL which then can be used on itself
-      // to populate these additional fields.
-      if (a.host === '') {
-        a.href = a.href;
-      }
-      domain = a.hostname.toLowerCase();
-      origin = window.location.hostname;
-    } else {
-      // relative protocol is broken: https://github.com/defunctzombie/node-url/issues/5
-      var parts = require('url').parse(url);
-      domain = parts.hostname;
-      origin = null;
-    }
-
-    if (origin !== domain) {
-      var whiteListed = opt.domainWhiteList.some(function(d) {
-        var idx = domain.length - d.length;
-        return d === domain ||
-          (idx > 1 && domain[idx-1] === '.' && domain.lastIndexOf(d) === idx);
-      });
-      if (!whiteListed) {
-        throw 'URL is not whitelisted: ' + url;
-      }
-    }
-  }
-  return url;
-}
-
-function load(opt, callback) {
-  return load.loader(opt, callback);
-}
-
-function loader(opt, callback) {
-  var error = callback || function(e) { throw e; }, url;
-
-  try {
-    url = load.sanitizeUrl(opt); // enable override
-  } catch (err) {
-    error(err);
-    return;
-  }
-
-  if (!url) {
-    error('Invalid URL: ' + opt.url);
-  } else if (load.useXHR) {
-    // on client, use xhr
-    return load.xhr(url, opt, callback);
-  } else if (startsWith(url, fileProtocol)) {
-    // on server, if url starts with 'file://', strip it and load from file
-    return load.file(url.slice(fileProtocol.length), opt, callback);
-  } else if (url.indexOf('://') < 0) { // TODO better protocol check?
-    // on server, if no protocol assume file
-    return load.file(url, opt, callback);
-  } else {
-    // for regular URLs on server
-    return load.http(url, opt, callback);
-  }
-}
-
-function xhrHasResponse(request) {
-  var type = request.responseType;
-  return type && type !== 'text' ?
-    request.response : // null on error
-    request.responseText; // '' on error
-}
-
-function xhr(url, opt, callback) {
-  var async = !!callback;
-  var request = new XMLHttpRequest();
-  // If IE does not support CORS, use XDomainRequest (copied from d3.xhr)
-  if (typeof XDomainRequest !== 'undefined' &&
-      !('withCredentials' in request) &&
-      /^(http(s)?:)?\/\//.test(url)) request = new XDomainRequest();
-
-  function respond() {
-    var status = request.status;
-    if (!status && xhrHasResponse(request) || status >= 200 && status < 300 || status === 304) {
-      callback(null, request.responseText);
-    } else {
-      callback(request, null);
-    }
-  }
-
-  if (async) {
-    if ('onload' in request) {
-      request.onload = request.onerror = respond;
-    } else {
-      request.onreadystatechange = function() {
-        if (request.readyState > 3) respond();
-      };
-    }
-  }
-
-  request.open('GET', url, async);
-  /* istanbul ignore else */
-  if (request.setRequestHeader) {
-    var headers = util.extend({}, load.headers, opt.headers);
-    for (var name in headers) {
-      request.setRequestHeader(name, headers[name]);
-    }
-  }
-  request.send();
-
-  if (!async && xhrHasResponse(request)) {
-    return request.responseText;
-  }
-}
-
-function file(filename, opt, callback) {
-  var fs = require('fs');
-  if (!callback) {
-    return fs.readFileSync(filename, 'utf8');
-  }
-  fs.readFile(filename, callback);
-}
-
-function http(url, opt, callback) {
-  var headers = util.extend({}, load.headers, opt.headers);
-
-  if (!callback) {
-    return require('sync-request')('GET', url, {headers: headers}).getBody();
-  }
-
-  var options = {url: url, encoding: null, gzip: true, headers: headers};
-  require('request')(options, function(error, response, body) {
-    if (!error && response.statusCode === 200) {
-      callback(null, body);
-    } else {
-      error = error ||
-        'Load failed with response code ' + response.statusCode + '.';
-      callback(error, null);
-    }
-  });
-}
-
-function startsWith(string, searchString) {
-  return string == null ? false : string.lastIndexOf(searchString, 0) === 0;
-}
-
-// Allow these functions to be overriden by the user of the library
-load.loader = loader;
-load.sanitizeUrl = sanitizeUrl;
-load.xhr = xhr;
-load.file = file;
-load.http = http;
-
-// Default settings
-load.useXHR = (typeof XMLHttpRequest !== 'undefined');
-load.headers = {};
-
-module.exports = load;
-
-},{"../util":265,"fs":388,"request":388,"sync-request":388,"url":388}],258:[function(require,module,exports){
-var util = require('../util'),
-  type = require('./type'),
-  formats = require('./formats'),
-  timeF = require('../format').time;
-
-function read(data, format) {
-  var type = (format && format.type) || 'json';
-  data = formats[type](data, format);
-  if (format && format.parse) parse(data, format.parse);
-  return data;
-}
-
-function parse(data, types) {
-  var cols, parsers, d, i, j, clen, len = data.length;
-
-  types = (types==='auto') ? type.inferAll(data) : util.duplicate(types);
-  cols = util.keys(types);
-  parsers = cols.map(function(c) {
-    var t = types[c];
-    if (t && t.indexOf('date:') === 0) {
-      var parts = t.split(/:(.+)?/, 2),  // split on first :
-          pattern = parts[1];
-      if ((pattern[0] === '\'' && pattern[pattern.length-1] === '\'') ||
-          (pattern[0] === '"'  && pattern[pattern.length-1] === '"')) {
-        pattern = pattern.slice(1, -1);
-      } else {
-        throw Error('Format pattern must be quoted: ' + pattern);
-      }
-      pattern = timeF(pattern);
-      return function(v) { return pattern.parse(v); };
-    }
-    if (!type.parsers[t]) {
-      throw Error('Illegal format pattern: ' + c + ':' + t);
-    }
-    return type.parsers[t];
-  });
-
-  for (i=0, clen=cols.length; i<len; ++i) {
-    d = data[i];
-    for (j=0; j<clen; ++j) {
-      d[cols[j]] = parsers[j](d[cols[j]]);
-    }
-  }
-  type.annotation(data, types);
-}
-
-read.formats = formats;
-module.exports = read;
-
-},{"../format":250,"../util":265,"./formats":253,"./type":260}],259:[function(require,module,exports){
-var util = require('../util');
-var load = require('./load');
-var read = require('./read');
-
-module.exports = util
-  .keys(read.formats)
-  .reduce(function(out, type) {
-    out[type] = function(opt, format, callback) {
-      // process arguments
-      if (util.isString(opt)) { opt = {url: opt}; }
-      if (arguments.length === 2 && util.isFunction(format)) {
-        callback = format;
-        format = undefined;
-      }
-
-      // set up read format
-      format = util.extend({parse: 'auto'}, format);
-      format.type = type;
-
-      // load data
-      var data = load(opt, callback ? function(error, data) {
-        if (error) { callback(error, null); return; }
-        try {
-          // data loaded, now parse it (async)
-          data = read(data, format);
-          callback(null, data);
-        } catch (e) {
-          callback(e, null);
-        }
-      } : undefined);
-
-      // data loaded, now parse it (sync)
-      if (!callback) return read(data, format);
-    };
-    return out;
-  }, {});
-
-},{"../util":265,"./load":257,"./read":258}],260:[function(require,module,exports){
-var util = require('../util');
-
-var TYPES = '__types__';
-
-var PARSERS = {
-  boolean: util.boolean,
-  integer: util.number,
-  number:  util.number,
-  date:    util.date,
-  string:  function(x) { return x==='' ? null : x; }
-};
-
-var TESTS = {
-  boolean: function(x) { return x==='true' || x==='false' || util.isBoolean(x); },
-  integer: function(x) { return TESTS.number(x) && (x=+x) === ~~x; },
-  number: function(x) { return !isNaN(+x) && !util.isDate(x); },
-  date: function(x) { return !isNaN(Date.parse(x)); }
-};
-
-function annotation(data, types) {
-  if (!types) return data && data[TYPES] || null;
-  data[TYPES] = types;
-}
-
-function type(values, f) {
-  values = util.array(values);
-  f = util.$(f);
-  var v, i, n;
-
-  // if data array has type annotations, use them
-  if (values[TYPES]) {
-    v = f(values[TYPES]);
-    if (util.isString(v)) return v;
-  }
-
-  for (i=0, n=values.length; !util.isValid(v) && i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-  }
-
-  return util.isDate(v) ? 'date' :
-    util.isNumber(v)    ? 'number' :
-    util.isBoolean(v)   ? 'boolean' :
-    util.isString(v)    ? 'string' : null;
-}
-
-function typeAll(data, fields) {
-  if (!data.length) return;
-  fields = fields || util.keys(data[0]);
-  return fields.reduce(function(types, f) {
-    return (types[f] = type(data, f), types);
-  }, {});
-}
-
-function infer(values, f) {
-  values = util.array(values);
-  f = util.$(f);
-  var i, j, v;
-
-  // types to test for, in precedence order
-  var types = ['boolean', 'integer', 'number', 'date'];
-
-  for (i=0; i<values.length; ++i) {
-    // get next value to test
-    v = f ? f(values[i]) : values[i];
-    // test value against remaining types
-    for (j=0; j<types.length; ++j) {
-      if (util.isValid(v) && !TESTS[types[j]](v)) {
-        types.splice(j, 1);
-        j -= 1;
-      }
-    }
-    // if no types left, return 'string'
-    if (types.length === 0) return 'string';
-  }
-
-  return types[0];
-}
-
-function inferAll(data, fields) {
-  fields = fields || util.keys(data[0]);
-  return fields.reduce(function(types, f) {
-    types[f] = infer(data, f);
-    return types;
-  }, {});
-}
-
-type.annotation = annotation;
-type.all = typeAll;
-type.infer = infer;
-type.inferAll = inferAll;
-type.parsers = PARSERS;
-module.exports = type;
-
-},{"../util":265}],261:[function(require,module,exports){
-var util = require('./util');
-
-var dl = {
-  version:    '1.7.0',
-  load:       require('./import/load'),
-  read:       require('./import/read'),
-  type:       require('./import/type'),
-  Aggregator: require('./aggregate/aggregator'),
-  groupby:    require('./aggregate/groupby'),
-  bins:       require('./bins/bins'),
-  $bin:       require('./bins/histogram').$bin,
-  histogram:  require('./bins/histogram').histogram,
-  format:     require('./format'),
-  template:   require('./template'),
-  time:       require('./time')
-};
-
-util.extend(dl, util);
-util.extend(dl, require('./accessor'));
-util.extend(dl, require('./generate'));
-util.extend(dl, require('./stats'));
-util.extend(dl, require('./import/readers'));
-util.extend(dl.format, require('./format-tables'));
-
-// backwards-compatible, deprecated API
-// will remove in the future
-dl.print = {
-  table:   dl.format.table,
-  summary: dl.format.summary
-};
-
-module.exports = dl;
-
-},{"./accessor":242,"./aggregate/aggregator":243,"./aggregate/groupby":245,"./bins/bins":247,"./bins/histogram":248,"./format":250,"./format-tables":249,"./generate":251,"./import/load":257,"./import/read":258,"./import/readers":259,"./import/type":260,"./stats":262,"./template":263,"./time":264,"./util":265}],262:[function(require,module,exports){
-var util = require('./util');
-var type = require('./import/type');
-var gen = require('./generate');
-
-var stats = module.exports;
-
-// Collect unique values.
-// Output: an array of unique values, in first-observed order
-stats.unique = function(values, f, results) {
-  f = util.$(f);
-  results = results || [];
-  var u = {}, v, i, n;
-  for (i=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (v in u) continue;
-    u[v] = 1;
-    results.push(v);
-  }
-  return results;
-};
-
-// Return the length of the input array.
-stats.count = function(values) {
-  return values && values.length || 0;
-};
-
-// Count the number of non-null, non-undefined, non-NaN values.
-stats.count.valid = function(values, f) {
-  f = util.$(f);
-  var v, i, n, valid = 0;
-  for (i=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) valid += 1;
-  }
-  return valid;
-};
-
-// Count the number of null or undefined values.
-stats.count.missing = function(values, f) {
-  f = util.$(f);
-  var v, i, n, count = 0;
-  for (i=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (v == null) count += 1;
-  }
-  return count;
-};
-
-// Count the number of distinct values.
-// Null, undefined and NaN are each considered distinct values.
-stats.count.distinct = function(values, f) {
-  f = util.$(f);
-  var u = {}, v, i, n, count = 0;
-  for (i=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (v in u) continue;
-    u[v] = 1;
-    count += 1;
-  }
-  return count;
-};
-
-// Construct a map from distinct values to occurrence counts.
-stats.count.map = function(values, f) {
-  f = util.$(f);
-  var map = {}, v, i, n;
-  for (i=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    map[v] = (v in map) ? map[v] + 1 : 1;
-  }
-  return map;
-};
-
-// Compute the median of an array of numbers.
-stats.median = function(values, f) {
-  if (f) values = values.map(util.$(f));
-  values = values.filter(util.isValid).sort(util.cmp);
-  return stats.quantile(values, 0.5);
-};
-
-// Computes the quartile boundaries of an array of numbers.
-stats.quartile = function(values, f) {
-  if (f) values = values.map(util.$(f));
-  values = values.filter(util.isValid).sort(util.cmp);
-  var q = stats.quantile;
-  return [q(values, 0.25), q(values, 0.50), q(values, 0.75)];
-};
-
-// Compute the quantile of a sorted array of numbers.
-// Adapted from the D3.js implementation.
-stats.quantile = function(values, f, p) {
-  if (p === undefined) { p = f; f = util.identity; }
-  f = util.$(f);
-  var H = (values.length - 1) * p + 1,
-      h = Math.floor(H),
-      v = +f(values[h - 1]),
-      e = H - h;
-  return e ? v + e * (f(values[h]) - v) : v;
-};
-
-// Compute the sum of an array of numbers.
-stats.sum = function(values, f) {
-  f = util.$(f);
-  for (var sum=0, i=0, n=values.length, v; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) sum += v;
-  }
-  return sum;
-};
-
-// Compute the mean (average) of an array of numbers.
-stats.mean = function(values, f) {
-  f = util.$(f);
-  var mean = 0, delta, i, n, c, v;
-  for (i=0, c=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) {
-      delta = v - mean;
-      mean = mean + delta / (++c);
-    }
-  }
-  return mean;
-};
-
-// Compute the geometric mean of an array of numbers.
-stats.mean.geometric = function(values, f) {
-  f = util.$(f);
-  var mean = 1, c, n, v, i;
-  for (i=0, c=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) {
-      if (v <= 0) {
-        throw Error("Geometric mean only defined for positive values.");
-      }
-      mean *= v;
-      ++c;
-    }
-  }
-  mean = c > 0 ? Math.pow(mean, 1/c) : 0;
-  return mean;
-};
-
-// Compute the harmonic mean of an array of numbers.
-stats.mean.harmonic = function(values, f) {
-  f = util.$(f);
-  var mean = 0, c, n, v, i;
-  for (i=0, c=0, n=values.length; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) {
-      mean += 1/v;
-      ++c;
-    }
-  }
-  return c / mean;
-};
-
-// Compute the sample variance of an array of numbers.
-stats.variance = function(values, f) {
-  f = util.$(f);
-  if (!util.isArray(values) || values.length < 2) return 0;
-  var mean = 0, M2 = 0, delta, i, c, v;
-  for (i=0, c=0; i<values.length; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) {
-      delta = v - mean;
-      mean = mean + delta / (++c);
-      M2 = M2 + delta * (v - mean);
-    }
-  }
-  M2 = M2 / (c - 1);
-  return M2;
-};
-
-// Compute the sample standard deviation of an array of numbers.
-stats.stdev = function(values, f) {
-  return Math.sqrt(stats.variance(values, f));
-};
-
-// Compute the Pearson mode skewness ((median-mean)/stdev) of an array of numbers.
-stats.modeskew = function(values, f) {
-  var avg = stats.mean(values, f),
-      med = stats.median(values, f),
-      std = stats.stdev(values, f);
-  return std === 0 ? 0 : (avg - med) / std;
-};
-
-// Find the minimum value in an array.
-stats.min = function(values, f) {
-  return stats.extent(values, f)[0];
-};
-
-// Find the maximum value in an array.
-stats.max = function(values, f) {
-  return stats.extent(values, f)[1];
-};
-
-// Find the minimum and maximum of an array of values.
-stats.extent = function(values, f) {
-  f = util.$(f);
-  var a, b, v, i, n = values.length;
-  for (i=0; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) { a = b = v; break; }
-  }
-  for (; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) {
-      if (v < a) a = v;
-      if (v > b) b = v;
-    }
-  }
-  return [a, b];
-};
-
-// Find the integer indices of the minimum and maximum values.
-stats.extent.index = function(values, f) {
-  f = util.$(f);
-  var x = -1, y = -1, a, b, v, i, n = values.length;
-  for (i=0; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) { a = b = v; x = y = i; break; }
-  }
-  for (; i<n; ++i) {
-    v = f ? f(values[i]) : values[i];
-    if (util.isValid(v)) {
-      if (v < a) { a = v; x = i; }
-      if (v > b) { b = v; y = i; }
-    }
-  }
-  return [x, y];
-};
-
-// Compute the dot product of two arrays of numbers.
-stats.dot = function(values, a, b) {
-  var sum = 0, i, v;
-  if (!b) {
-    if (values.length !== a.length) {
-      throw Error('Array lengths must match.');
-    }
-    for (i=0; i<values.length; ++i) {
-      v = values[i] * a[i];
-      if (v === v) sum += v;
-    }
-  } else {
-    a = util.$(a);
-    b = util.$(b);
-    for (i=0; i<values.length; ++i) {
-      v = a(values[i]) * b(values[i]);
-      if (v === v) sum += v;
-    }
-  }
-  return sum;
-};
-
-// Compute the vector distance between two arrays of numbers.
-// Default is Euclidean (exp=2) distance, configurable via exp argument.
-stats.dist = function(values, a, b, exp) {
-  var f = util.isFunction(b) || util.isString(b),
-      X = values,
-      Y = f ? values : a,
-      e = f ? exp : b,
-      L2 = e === 2 || e == null,
-      n = values.length, s = 0, d, i;
-  if (f) {
-    a = util.$(a);
-    b = util.$(b);
-  }
-  for (i=0; i<n; ++i) {
-    d = f ? (a(X[i])-b(Y[i])) : (X[i]-Y[i]);
-    s += L2 ? d*d : Math.pow(Math.abs(d), e);
-  }
-  return L2 ? Math.sqrt(s) : Math.pow(s, 1/e);
-};
-
-// Compute the Cohen's d effect size between two arrays of numbers.
-stats.cohensd = function(values, a, b) {
-  var X = b ? values.map(util.$(a)) : values,
-      Y = b ? values.map(util.$(b)) : a,
-      x1 = stats.mean(X),
-      x2 = stats.mean(Y),
-      n1 = stats.count.valid(X),
-      n2 = stats.count.valid(Y);
-
-  if ((n1+n2-2) <= 0) {
-    // if both arrays are size 1, or one is empty, there's no effect size
-    return 0;
-  }
-  // pool standard deviation
-  var s1 = stats.variance(X),
-      s2 = stats.variance(Y),
-      s = Math.sqrt((((n1-1)*s1) + ((n2-1)*s2)) / (n1+n2-2));
-  // if there is no variance, there's no effect size
-  return s===0 ? 0 : (x1 - x2) / s;
-};
-
-// Computes the covariance between two arrays of numbers
-stats.covariance = function(values, a, b) {
-  var X = b ? values.map(util.$(a)) : values,
-      Y = b ? values.map(util.$(b)) : a,
-      n = X.length,
-      xm = stats.mean(X),
-      ym = stats.mean(Y),
-      sum = 0, c = 0, i, x, y, vx, vy;
-
-  if (n !== Y.length) {
-    throw Error('Input lengths must match.');
-  }
-
-  for (i=0; i<n; ++i) {
-    x = X[i]; vx = util.isValid(x);
-    y = Y[i]; vy = util.isValid(y);
-    if (vx && vy) {
-      sum += (x-xm) * (y-ym);
-      ++c;
-    } else if (vx || vy) {
-      throw Error('Valid values must align.');
-    }
-  }
-  return sum / (c-1);
-};
-
-// Compute ascending rank scores for an array of values.
-// Ties are assigned their collective mean rank.
-stats.rank = function(values, f) {
-  f = util.$(f) || util.identity;
-  var a = values.map(function(v, i) {
-      return {idx: i, val: f(v)};
-    })
-    .sort(util.comparator('val'));
-
-  var n = values.length,
-      r = Array(n),
-      tie = -1, p = {}, i, v, mu;
-
-  for (i=0; i<n; ++i) {
-    v = a[i].val;
-    if (tie < 0 && p === v) {
-      tie = i - 1;
-    } else if (tie > -1 && p !== v) {
-      mu = 1 + (i-1 + tie) / 2;
-      for (; tie<i; ++tie) r[a[tie].idx] = mu;
-      tie = -1;
-    }
-    r[a[i].idx] = i + 1;
-    p = v;
-  }
-
-  if (tie > -1) {
-    mu = 1 + (n-1 + tie) / 2;
-    for (; tie<n; ++tie) r[a[tie].idx] = mu;
-  }
-
-  return r;
-};
-
-// Compute the sample Pearson product-moment correlation of two arrays of numbers.
-stats.cor = function(values, a, b) {
-  var fn = b;
-  b = fn ? values.map(util.$(b)) : a;
-  a = fn ? values.map(util.$(a)) : values;
-
-  var dot = stats.dot(a, b),
-      mua = stats.mean(a),
-      mub = stats.mean(b),
-      sda = stats.stdev(a),
-      sdb = stats.stdev(b),
-      n = values.length;
-
-  return (dot - n*mua*mub) / ((n-1) * sda * sdb);
-};
-
-// Compute the Spearman rank correlation of two arrays of values.
-stats.cor.rank = function(values, a, b) {
-  var ra = b ? stats.rank(values, a) : stats.rank(values),
-      rb = b ? stats.rank(values, b) : stats.rank(a),
-      n = values.length, i, s, d;
-
-  for (i=0, s=0; i<n; ++i) {
-    d = ra[i] - rb[i];
-    s += d * d;
-  }
-
-  return 1 - 6*s / (n * (n*n-1));
-};
-
-// Compute the distance correlation of two arrays of numbers.
-// http://en.wikipedia.org/wiki/Distance_correlation
-stats.cor.dist = function(values, a, b) {
-  var X = b ? values.map(util.$(a)) : values,
-      Y = b ? values.map(util.$(b)) : a;
-
-  var A = stats.dist.mat(X),
-      B = stats.dist.mat(Y),
-      n = A.length,
-      i, aa, bb, ab;
-
-  for (i=0, aa=0, bb=0, ab=0; i<n; ++i) {
-    aa += A[i]*A[i];
-    bb += B[i]*B[i];
-    ab += A[i]*B[i];
-  }
-
-  return Math.sqrt(ab / Math.sqrt(aa*bb));
-};
-
-// Simple linear regression.
-// Returns a "fit" object with slope (m), intercept (b),
-// r value (R), and sum-squared residual error (rss).
-stats.linearRegression = function(values, a, b) {
-  var X = b ? values.map(util.$(a)) : values,
-      Y = b ? values.map(util.$(b)) : a,
-      n = X.length,
-      xy = stats.covariance(X, Y), // will throw err if valid vals don't align
-      sx = stats.stdev(X),
-      sy = stats.stdev(Y),
-      slope = xy / (sx*sx),
-      icept = stats.mean(Y) - slope * stats.mean(X),
-      fit = {slope: slope, intercept: icept, R: xy / (sx*sy), rss: 0},
-      res, i;
-
-  for (i=0; i<n; ++i) {
-    if (util.isValid(X[i]) && util.isValid(Y[i])) {
-      res = (slope*X[i] + icept) - Y[i];
-      fit.rss += res * res;
-    }
-  }
-
-  return fit;
-};
-
-// Namespace for bootstrap
-stats.bootstrap = {};
-
-// Construct a bootstrapped confidence interval at a given percentile level
-// Arguments are an array, an optional n (defaults to 1000),
-//  an optional alpha (defaults to 0.05), and an optional smoothing parameter
-stats.bootstrap.ci = function(values, a, b, c, d) {
-  var X, N, alpha, smooth, bs, means, i;
-  if (util.isFunction(a) || util.isString(a)) {
-    X = values.map(util.$(a));
-    N = b;
-    alpha = c;
-    smooth = d;
-  } else {
-    X = values;
-    N = a;
-    alpha = b;
-    smooth = c;
-  }
-  N = N ? +N : 1000;
-  alpha = alpha || 0.05;
-
-  bs = gen.random.bootstrap(X, smooth);
-  for (i=0, means = Array(N); i<N; ++i) {
-    means[i] = stats.mean(bs.samples(X.length));
-  }
-  means.sort(util.numcmp);
-  return [
-    stats.quantile(means, alpha/2),
-    stats.quantile(means, 1-(alpha/2))
-  ];
-};
-
-// Namespace for z-tests
-stats.z = {};
-
-// Construct a z-confidence interval at a given significance level
-// Arguments are an array and an optional alpha (defaults to 0.05).
-stats.z.ci = function(values, a, b) {
-  var X = values, alpha = a;
-  if (util.isFunction(a) || util.isString(a)) {
-    X = values.map(util.$(a));
-    alpha = b;
-  }
-  alpha = alpha || 0.05;
-
-  var z = alpha===0.05 ? 1.96 : gen.random.normal(0, 1).icdf(1-(alpha/2)),
-      mu = stats.mean(X),
-      SE = stats.stdev(X) / Math.sqrt(stats.count.valid(X));
-  return [mu - (z*SE), mu + (z*SE)];
-};
-
-// Perform a z-test of means. Returns the p-value.
-// If a single array is provided, performs a one-sample location test.
-// If two arrays or a table and two accessors are provided, performs
-// a two-sample location test. A paired test is performed if specified
-// by the options hash.
-// The options hash format is: {paired: boolean, nullh: number}.
-// http://en.wikipedia.org/wiki/Z-test
-// http://en.wikipedia.org/wiki/Paired_difference_test
-stats.z.test = function(values, a, b, opt) {
-  if (util.isFunction(b) || util.isString(b)) { // table and accessors
-    return (opt && opt.paired ? ztestP : ztest2)(opt, values, a, b);
-  } else if (util.isArray(a)) { // two arrays
-    return (b && b.paired ? ztestP : ztest2)(b, values, a);
-  } else if (util.isFunction(a) || util.isString(a)) {
-    return ztest1(b, values, a); // table and accessor
-  } else {
-    return ztest1(a, values); // one array
-  }
-};
-
-// Perform a z-test of means. Returns the p-value.
-// Assuming we have a list of values, and a null hypothesis. If no null
-// hypothesis, assume our null hypothesis is mu=0.
-function ztest1(opt, X, f) {
-  var nullH = opt && opt.nullh || 0,
-      gaussian = gen.random.normal(0, 1),
-      mu = stats.mean(X,f),
-      SE = stats.stdev(X,f) / Math.sqrt(stats.count.valid(X,f));
-
-  if (SE===0) {
-    // Test not well defined when standard error is 0.
-    return (mu - nullH) === 0 ? 1 : 0;
-  }
-  // Two-sided, so twice the one-sided cdf.
-  var z = (mu - nullH) / SE;
-  return 2 * gaussian.cdf(-Math.abs(z));
-}
-
-// Perform a two sample paired z-test of means. Returns the p-value.
-function ztestP(opt, values, a, b) {
-  var X = b ? values.map(util.$(a)) : values,
-      Y = b ? values.map(util.$(b)) : a,
-      n1 = stats.count(X),
-      n2 = stats.count(Y),
-      diffs = Array(), i;
-
-  if (n1 !== n2) {
-    throw Error('Array lengths must match.');
-  }
-  for (i=0; i<n1; ++i) {
-    // Only valid differences should contribute to the test statistic
-    if (util.isValid(X[i]) && util.isValid(Y[i])) {
-      diffs.push(X[i] - Y[i]);
-    }
-  }
-  return stats.z.test(diffs, opt && opt.nullh || 0);
-}
-
-// Perform a two sample z-test of means. Returns the p-value.
-function ztest2(opt, values, a, b) {
-  var X = b ? values.map(util.$(a)) : values,
-      Y = b ? values.map(util.$(b)) : a,
-      n1 = stats.count.valid(X),
-      n2 = stats.count.valid(Y),
-      gaussian = gen.random.normal(0, 1),
-      meanDiff = stats.mean(X) - stats.mean(Y) - (opt && opt.nullh || 0),
-      SE = Math.sqrt(stats.variance(X)/n1 + stats.variance(Y)/n2);
-
-  if (SE===0) {
-    // Not well defined when pooled standard error is 0.
-    return meanDiff===0 ? 1 : 0;
-  }
-  // Two-tailed, so twice the one-sided cdf.
-  var z = meanDiff / SE;
-  return 2 * gaussian.cdf(-Math.abs(z));
-}
-
-// Construct a mean-centered distance matrix for an array of numbers.
-stats.dist.mat = function(X) {
-  var n = X.length,
-      m = n*n,
-      A = Array(m),
-      R = gen.zeros(n),
-      M = 0, v, i, j;
-
-  for (i=0; i<n; ++i) {
-    A[i*n+i] = 0;
-    for (j=i+1; j<n; ++j) {
-      A[i*n+j] = (v = Math.abs(X[i] - X[j]));
-      A[j*n+i] = v;
-      R[i] += v;
-      R[j] += v;
-    }
-  }
-
-  for (i=0; i<n; ++i) {
-    M += R[i];
-    R[i] /= n;
-  }
-  M /= m;
-
-  for (i=0; i<n; ++i) {
-    for (j=i; j<n; ++j) {
-      A[i*n+j] += M - R[i] - R[j];
-      A[j*n+i] = A[i*n+j];
-    }
-  }
-
-  return A;
-};
-
-// Compute the Shannon entropy (log base 2) of an array of counts.
-stats.entropy = function(counts, f) {
-  f = util.$(f);
-  var i, p, s = 0, H = 0, n = counts.length;
-  for (i=0; i<n; ++i) {
-    s += (f ? f(counts[i]) : counts[i]);
-  }
-  if (s === 0) return 0;
-  for (i=0; i<n; ++i) {
-    p = (f ? f(counts[i]) : counts[i]) / s;
-    if (p) H += p * Math.log(p);
-  }
-  return -H / Math.LN2;
-};
-
-// Compute the mutual information between two discrete variables.
-// Returns an array of the form [MI, MI_distance]
-// MI_distance is defined as 1 - I(a,b) / H(a,b).
-// http://en.wikipedia.org/wiki/Mutual_information
-stats.mutual = function(values, a, b, counts) {
-  var x = counts ? values.map(util.$(a)) : values,
-      y = counts ? values.map(util.$(b)) : a,
-      z = counts ? values.map(util.$(counts)) : b;
-
-  var px = {},
-      py = {},
-      n = z.length,
-      s = 0, I = 0, H = 0, p, t, i;
-
-  for (i=0; i<n; ++i) {
-    px[x[i]] = 0;
-    py[y[i]] = 0;
-  }
-
-  for (i=0; i<n; ++i) {
-    px[x[i]] += z[i];
-    py[y[i]] += z[i];
-    s += z[i];
-  }
-
-  t = 1 / (s * Math.LN2);
-  for (i=0; i<n; ++i) {
-    if (z[i] === 0) continue;
-    p = (s * z[i]) / (px[x[i]] * py[y[i]]);
-    I += z[i] * t * Math.log(p);
-    H += z[i] * t * Math.log(z[i]/s);
-  }
-
-  return [I, 1 + I/H];
-};
-
-// Compute the mutual information between two discrete variables.
-stats.mutual.info = function(values, a, b, counts) {
-  return stats.mutual(values, a, b, counts)[0];
-};
-
-// Compute the mutual information distance between two discrete variables.
-// MI_distance is defined as 1 - I(a,b) / H(a,b).
-stats.mutual.dist = function(values, a, b, counts) {
-  return stats.mutual(values, a, b, counts)[1];
-};
-
-// Compute a profile of summary statistics for a variable.
-stats.profile = function(values, f) {
-  var mean = 0,
-      valid = 0,
-      missing = 0,
-      distinct = 0,
-      min = null,
-      max = null,
-      M2 = 0,
-      vals = [],
-      u = {}, delta, sd, i, v, x;
-
-  // compute summary stats
-  for (i=0; i<values.length; ++i) {
-    v = f ? f(values[i]) : values[i];
-
-    // update unique values
-    u[v] = (v in u) ? u[v] + 1 : (distinct += 1, 1);
-
-    if (v == null) {
-      ++missing;
-    } else if (util.isValid(v)) {
-      // update stats
-      x = (typeof v === 'string') ? v.length : v;
-      if (min===null || x < min) min = x;
-      if (max===null || x > max) max = x;
-      delta = x - mean;
-      mean = mean + delta / (++valid);
-      M2 = M2 + delta * (x - mean);
-      vals.push(x);
-    }
-  }
-  M2 = M2 / (valid - 1);
-  sd = Math.sqrt(M2);
-
-  // sort values for median and iqr
-  vals.sort(util.cmp);
-
-  return {
-    type:     type(values, f),
-    unique:   u,
-    count:    values.length,
-    valid:    valid,
-    missing:  missing,
-    distinct: distinct,
-    min:      min,
-    max:      max,
-    mean:     mean,
-    stdev:    sd,
-    median:   (v = stats.quantile(vals, 0.5)),
-    q1:       stats.quantile(vals, 0.25),
-    q3:       stats.quantile(vals, 0.75),
-    modeskew: sd === 0 ? 0 : (mean - v) / sd
-  };
-};
-
-// Compute profiles for all variables in a data set.
-stats.summary = function(data, fields) {
-  fields = fields || util.keys(data[0]);
-  var s = fields.map(function(f) {
-    var p = stats.profile(data, util.$(f));
-    return (p.field = f, p);
-  });
-  return (s.__summary__ = true, s);
-};
-
-},{"./generate":251,"./import/type":260,"./util":265}],263:[function(require,module,exports){
-var util = require('./util'),
-    format = require('./format');
-
-var context = {
-  formats:    [],
-  format_map: {},
-  truncate:   util.truncate,
-  pad:        util.pad,
-  day:        format.day,
-  month:      format.month,
-  quarter:    format.quarter
-};
-
-function template(text) {
-  var src = source(text, 'd');
-  src = 'var __t; return ' + src + ';';
-
-  /* jshint evil: true */
-  return (new Function('d', src)).bind(context);
-}
-
-template.source = source;
-template.context = context;
-template.format = get_format;
-module.exports = template;
-
-// Clear cache of format objects.
-// This can *break* prior template functions, so invoke with care!
-template.clearFormatCache = function() {
-  context.formats = [];
-  context.format_map = {};
-};
-
-// Generate property access code for use within template source.
-// object: the name of the object (variable) containing template data
-// property: the property access string, verbatim from template tag
-template.property = function(object, property) {
-  var src = util.field(property).map(util.str).join('][');
-  return object + '[' + src + ']';
-};
-
-// Generate source code for a template function.
-// text: the template text
-// variable: the name of the data object variable ('obj' by default)
-// properties: optional hash for collecting all accessed properties
-function source(text, variable, properties) {
-  variable = variable || 'obj';
-  var index = 0;
-  var src = '\'';
-  var regex = template_re;
-
-  // Compile the template source, escaping string literals appropriately.
-  text.replace(regex, function(match, interpolate, offset) {
-    src += text
-      .slice(index, offset)
-      .replace(template_escaper, template_escapeChar);
-    index = offset + match.length;
-
-    if (interpolate) {
-      src += '\'\n+((__t=(' +
-        template_var(interpolate, variable, properties) +
-        '))==null?\'\':__t)+\n\'';
-    }
-
-    // Adobe VMs need the match returned to produce the correct offest.
-    return match;
-  });
-  return src + '\'';
-}
-
-function template_var(text, variable, properties) {
-  var filters = text.match(filter_re);
-  var prop = filters.shift().trim();
-  var stringCast = true;
-
-  function strcall(fn) {
-    fn = fn || '';
-    if (stringCast) {
-      stringCast = false;
-      src = 'String(' + src + ')' + fn;
-    } else {
-      src += fn;
-    }
-    return src;
-  }
-
-  function date() {
-    return '(typeof ' + src + '==="number"?new Date('+src+'):'+src+')';
-  }
-
-  function formatter(type) {
-    var pattern = args[0];
-    if ((pattern[0] === '\'' && pattern[pattern.length-1] === '\'') ||
-        (pattern[0] === '"'  && pattern[pattern.length-1] === '"')) {
-      pattern = pattern.slice(1, -1);
-    } else {
-      throw Error('Format pattern must be quoted: ' + pattern);
-    }
-    a = template_format(pattern, type);
-    stringCast = false;
-    var arg = type === 'number' ? src : date();
-    src = 'this.formats['+a+']('+arg+')';
-  }
-
-  if (properties) properties[prop] = 1;
-  var src = template.property(variable, prop);
-
-  for (var i=0; i<filters.length; ++i) {
-    var f = filters[i], args = null, pidx, a, b;
-
-    if ((pidx=f.indexOf(':')) > 0) {
-      f = f.slice(0, pidx);
-      args = filters[i].slice(pidx+1)
-        .match(args_re)
-        .map(function(s) { return s.trim(); });
-    }
-    f = f.trim();
-
-    switch (f) {
-      case 'length':
-        strcall('.length');
-        break;
-      case 'lower':
-        strcall('.toLowerCase()');
-        break;
-      case 'upper':
-        strcall('.toUpperCase()');
-        break;
-      case 'lower-locale':
-        strcall('.toLocaleLowerCase()');
-        break;
-      case 'upper-locale':
-        strcall('.toLocaleUpperCase()');
-        break;
-      case 'trim':
-        strcall('.trim()');
-        break;
-      case 'left':
-        a = util.number(args[0]);
-        strcall('.slice(0,' + a + ')');
-        break;
-      case 'right':
-        a = util.number(args[0]);
-        strcall('.slice(-' + a +')');
-        break;
-      case 'mid':
-        a = util.number(args[0]);
-        b = a + util.number(args[1]);
-        strcall('.slice(+'+a+','+b+')');
-        break;
-      case 'slice':
-        a = util.number(args[0]);
-        strcall('.slice('+ a +
-          (args.length > 1 ? ',' + util.number(args[1]) : '') +
-          ')');
-        break;
-      case 'truncate':
-        a = util.number(args[0]);
-        b = args[1];
-        b = (b!=='left' && b!=='middle' && b!=='center') ? 'right' : b;
-        src = 'this.truncate(' + strcall() + ',' + a + ',\'' + b + '\')';
-        break;
-      case 'pad':
-        a = util.number(args[0]);
-        b = args[1];
-        b = (b!=='left' && b!=='middle' && b!=='center') ? 'right' : b;
-        src = 'this.pad(' + strcall() + ',' + a + ',\'' + b + '\')';
-        break;
-      case 'number':
-        formatter('number');
-        break;
-      case 'time':
-        formatter('time');
-        break;
-      case 'time-utc':
-        formatter('utc');
-        break;
-      case 'month':
-        src = 'this.month(' + src + ')';
-        break;
-      case 'month-abbrev':
-        src = 'this.month(' + src + ',true)';
-        break;
-      case 'day':
-        src = 'this.day(' + src + ')';
-        break;
-      case 'day-abbrev':
-        src = 'this.day(' + src + ',true)';
-        break;
-      case 'quarter':
-        src = 'this.quarter(' + src + ')';
-        break;
-      default:
-        throw Error('Unrecognized template filter: ' + f);
-    }
-  }
-
-  return src;
-}
-
-var template_re = /\{\{(.+?)\}\}|$/g,
-    filter_re = /(?:"[^"]*"|\'[^\']*\'|[^\|"]+|[^\|\']+)+/g,
-    args_re = /(?:"[^"]*"|\'[^\']*\'|[^,"]+|[^,\']+)+/g;
-
-// Certain characters need to be escaped so that they can be put into a
-// string literal.
-var template_escapes = {
-  '\'':     '\'',
-  '\\':     '\\',
-  '\r':     'r',
-  '\n':     'n',
-  '\u2028': 'u2028',
-  '\u2029': 'u2029'
-};
-
-var template_escaper = /\\|'|\r|\n|\u2028|\u2029/g;
-
-function template_escapeChar(match) {
-  return '\\' + template_escapes[match];
-}
-
-function template_format(pattern, type) {
-  var key = type + ':' + pattern;
-  if (context.format_map[key] == null) {
-    var f = format[type](pattern);
-    var i = context.formats.length;
-    context.formats.push(f);
-    context.format_map[key] = i;
-    return i;
-  }
-  return context.format_map[key];
-}
-
-function get_format(pattern, type) {
-  return context.formats[template_format(pattern, type)];
-}
-
-},{"./format":250,"./util":265}],264:[function(require,module,exports){
-arguments[4][177][0].apply(exports,arguments)
-},{"d3-time":241,"dup":177}],265:[function(require,module,exports){
-arguments[4][178][0].apply(exports,arguments)
-},{"buffer":388,"dup":178}],266:[function(require,module,exports){
-(function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
-  typeof define === 'function' && define.amd ? define(['exports'], factory) :
-  (factory((global.topojson = global.topojson || {})));
-}(this, function (exports) { 'use strict';
-
-  function noop() {}
-
-  function transformAbsolute(transform) {
-    if (!transform) return noop;
-    var x0,
-        y0,
-        kx = transform.scale[0],
-        ky = transform.scale[1],
-        dx = transform.translate[0],
-        dy = transform.translate[1];
-    return function(point, i) {
-      if (!i) x0 = y0 = 0;
-      point[0] = (x0 += point[0]) * kx + dx;
-      point[1] = (y0 += point[1]) * ky + dy;
-    };
-  }
-
-  function transformRelative(transform) {
-    if (!transform) return noop;
-    var x0,
-        y0,
-        kx = transform.scale[0],
-        ky = transform.scale[1],
-        dx = transform.translate[0],
-        dy = transform.translate[1];
-    return function(point, i) {
-      if (!i) x0 = y0 = 0;
-      var x1 = Math.round((point[0] - dx) / kx),
-          y1 = Math.round((point[1] - dy) / ky);
-      point[0] = x1 - x0;
-      point[1] = y1 - y0;
-      x0 = x1;
-      y0 = y1;
-    };
-  }
-
-  function reverse(array, n) {
-    var t, j = array.length, i = j - n;
-    while (i < --j) t = array[i], array[i++] = array[j], array[j] = t;
-  }
-
-  function bisect(a, x) {
-    var lo = 0, hi = a.length;
-    while (lo < hi) {
-      var mid = lo + hi >>> 1;
-      if (a[mid] < x) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-
-  function feature(topology, o) {
-    return o.type === "GeometryCollection" ? {
-      type: "FeatureCollection",
-      features: o.geometries.map(function(o) { return feature$1(topology, o); })
-    } : feature$1(topology, o);
-  }
-
-  function feature$1(topology, o) {
-    var f = {
-      type: "Feature",
-      id: o.id,
-      properties: o.properties || {},
-      geometry: object(topology, o)
-    };
-    if (o.id == null) delete f.id;
-    return f;
-  }
-
-  function object(topology, o) {
-    var absolute = transformAbsolute(topology.transform),
-        arcs = topology.arcs;
-
-    function arc(i, points) {
-      if (points.length) points.pop();
-      for (var a = arcs[i < 0 ? ~i : i], k = 0, n = a.length, p; k < n; ++k) {
-        points.push(p = a[k].slice());
-        absolute(p, k);
-      }
-      if (i < 0) reverse(points, n);
-    }
-
-    function point(p) {
-      p = p.slice();
-      absolute(p, 0);
-      return p;
-    }
-
-    function line(arcs) {
-      var points = [];
-      for (var i = 0, n = arcs.length; i < n; ++i) arc(arcs[i], points);
-      if (points.length < 2) points.push(points[0].slice());
-      return points;
-    }
-
-    function ring(arcs) {
-      var points = line(arcs);
-      while (points.length < 4) points.push(points[0].slice());
-      return points;
-    }
-
-    function polygon(arcs) {
-      return arcs.map(ring);
-    }
-
-    function geometry(o) {
-      var t = o.type;
-      return t === "GeometryCollection" ? {type: t, geometries: o.geometries.map(geometry)}
-          : t in geometryType ? {type: t, coordinates: geometryType[t](o)}
-          : null;
-    }
-
-    var geometryType = {
-      Point: function(o) { return point(o.coordinates); },
-      MultiPoint: function(o) { return o.coordinates.map(point); },
-      LineString: function(o) { return line(o.arcs); },
-      MultiLineString: function(o) { return o.arcs.map(line); },
-      Polygon: function(o) { return polygon(o.arcs); },
-      MultiPolygon: function(o) { return o.arcs.map(polygon); }
-    };
-
-    return geometry(o);
-  }
-
-  function stitchArcs(topology, arcs) {
-    var stitchedArcs = {},
-        fragmentByStart = {},
-        fragmentByEnd = {},
-        fragments = [],
-        emptyIndex = -1;
-
-    // Stitch empty arcs first, since they may be subsumed by other arcs.
-    arcs.forEach(function(i, j) {
-      var arc = topology.arcs[i < 0 ? ~i : i], t;
-      if (arc.length < 3 && !arc[1][0] && !arc[1][1]) {
-        t = arcs[++emptyIndex], arcs[emptyIndex] = i, arcs[j] = t;
-      }
-    });
-
-    arcs.forEach(function(i) {
-      var e = ends(i),
-          start = e[0],
-          end = e[1],
-          f, g;
-
-      if (f = fragmentByEnd[start]) {
-        delete fragmentByEnd[f.end];
-        f.push(i);
-        f.end = end;
-        if (g = fragmentByStart[end]) {
-          delete fragmentByStart[g.start];
-          var fg = g === f ? f : f.concat(g);
-          fragmentByStart[fg.start = f.start] = fragmentByEnd[fg.end = g.end] = fg;
-        } else {
-          fragmentByStart[f.start] = fragmentByEnd[f.end] = f;
-        }
-      } else if (f = fragmentByStart[end]) {
-        delete fragmentByStart[f.start];
-        f.unshift(i);
-        f.start = start;
-        if (g = fragmentByEnd[start]) {
-          delete fragmentByEnd[g.end];
-          var gf = g === f ? f : g.concat(f);
-          fragmentByStart[gf.start = g.start] = fragmentByEnd[gf.end = f.end] = gf;
-        } else {
-          fragmentByStart[f.start] = fragmentByEnd[f.end] = f;
-        }
-      } else {
-        f = [i];
-        fragmentByStart[f.start = start] = fragmentByEnd[f.end = end] = f;
-      }
-    });
-
-    function ends(i) {
-      var arc = topology.arcs[i < 0 ? ~i : i], p0 = arc[0], p1;
-      if (topology.transform) p1 = [0, 0], arc.forEach(function(dp) { p1[0] += dp[0], p1[1] += dp[1]; });
-      else p1 = arc[arc.length - 1];
-      return i < 0 ? [p1, p0] : [p0, p1];
-    }
-
-    function flush(fragmentByEnd, fragmentByStart) {
-      for (var k in fragmentByEnd) {
-        var f = fragmentByEnd[k];
-        delete fragmentByStart[f.start];
-        delete f.start;
-        delete f.end;
-        f.forEach(function(i) { stitchedArcs[i < 0 ? ~i : i] = 1; });
-        fragments.push(f);
-      }
-    }
-
-    flush(fragmentByEnd, fragmentByStart);
-    flush(fragmentByStart, fragmentByEnd);
-    arcs.forEach(function(i) { if (!stitchedArcs[i < 0 ? ~i : i]) fragments.push([i]); });
-
-    return fragments;
-  }
-
-  function mesh(topology) {
-    return object(topology, meshArcs.apply(this, arguments));
-  }
-
-  function meshArcs(topology, o, filter) {
-    var arcs = [];
-
-    function arc(i) {
-      var j = i < 0 ? ~i : i;
-      (geomsByArc[j] || (geomsByArc[j] = [])).push({i: i, g: geom});
-    }
-
-    function line(arcs) {
-      arcs.forEach(arc);
-    }
-
-    function polygon(arcs) {
-      arcs.forEach(line);
-    }
-
-    function geometry(o) {
-      if (o.type === "GeometryCollection") o.geometries.forEach(geometry);
-      else if (o.type in geometryType) geom = o, geometryType[o.type](o.arcs);
-    }
-
-    if (arguments.length > 1) {
-      var geomsByArc = [],
-          geom;
-
-      var geometryType = {
-        LineString: line,
-        MultiLineString: polygon,
-        Polygon: polygon,
-        MultiPolygon: function(arcs) { arcs.forEach(polygon); }
-      };
-
-      geometry(o);
-
-      geomsByArc.forEach(arguments.length < 3
-          ? function(geoms) { arcs.push(geoms[0].i); }
-          : function(geoms) { if (filter(geoms[0].g, geoms[geoms.length - 1].g)) arcs.push(geoms[0].i); });
-    } else {
-      for (var i = 0, n = topology.arcs.length; i < n; ++i) arcs.push(i);
-    }
-
-    return {type: "MultiLineString", arcs: stitchArcs(topology, arcs)};
-  }
-
-  function cartesianTriangleArea(triangle) {
-    var a = triangle[0], b = triangle[1], c = triangle[2];
-    return Math.abs((a[0] - c[0]) * (b[1] - a[1]) - (a[0] - b[0]) * (c[1] - a[1]));
-  }
-
-  function ring(ring) {
-    var i = -1,
-        n = ring.length,
-        a,
-        b = ring[n - 1],
-        area = 0;
-
-    while (++i < n) {
-      a = b;
-      b = ring[i];
-      area += a[0] * b[1] - a[1] * b[0];
-    }
-
-    return area / 2;
-  }
-
-  function merge(topology) {
-    return object(topology, mergeArcs.apply(this, arguments));
-  }
-
-  function mergeArcs(topology, objects) {
-    var polygonsByArc = {},
-        polygons = [],
-        components = [];
-
-    objects.forEach(function(o) {
-      if (o.type === "Polygon") register(o.arcs);
-      else if (o.type === "MultiPolygon") o.arcs.forEach(register);
-    });
-
-    function register(polygon) {
-      polygon.forEach(function(ring$$) {
-        ring$$.forEach(function(arc) {
-          (polygonsByArc[arc = arc < 0 ? ~arc : arc] || (polygonsByArc[arc] = [])).push(polygon);
-        });
-      });
-      polygons.push(polygon);
-    }
-
-    function area(ring$$) {
-      return Math.abs(ring(object(topology, {type: "Polygon", arcs: [ring$$]}).coordinates[0]));
-    }
-
-    polygons.forEach(function(polygon) {
-      if (!polygon._) {
-        var component = [],
-            neighbors = [polygon];
-        polygon._ = 1;
-        components.push(component);
-        while (polygon = neighbors.pop()) {
-          component.push(polygon);
-          polygon.forEach(function(ring$$) {
-            ring$$.forEach(function(arc) {
-              polygonsByArc[arc < 0 ? ~arc : arc].forEach(function(polygon) {
-                if (!polygon._) {
-                  polygon._ = 1;
-                  neighbors.push(polygon);
-                }
-              });
-            });
-          });
-        }
-      }
-    });
-
-    polygons.forEach(function(polygon) {
-      delete polygon._;
-    });
-
-    return {
-      type: "MultiPolygon",
-      arcs: components.map(function(polygons) {
-        var arcs = [], n;
-
-        // Extract the exterior (unique) arcs.
-        polygons.forEach(function(polygon) {
-          polygon.forEach(function(ring$$) {
-            ring$$.forEach(function(arc) {
-              if (polygonsByArc[arc < 0 ? ~arc : arc].length < 2) {
-                arcs.push(arc);
-              }
-            });
-          });
-        });
-
-        // Stitch the arcs into one or more rings.
-        arcs = stitchArcs(topology, arcs);
-
-        // If more than one ring is returned,
-        // at most one of these rings can be the exterior;
-        // choose the one with the greatest absolute area.
-        if ((n = arcs.length) > 1) {
-          for (var i = 1, k = area(arcs[0]), ki, t; i < n; ++i) {
-            if ((ki = area(arcs[i])) > k) {
-              t = arcs[0], arcs[0] = arcs[i], arcs[i] = t, k = ki;
-            }
-          }
-        }
-
-        return arcs;
-      })
-    };
-  }
-
-  function neighbors(objects) {
-    var indexesByArc = {}, // arc index -> array of object indexes
-        neighbors = objects.map(function() { return []; });
-
-    function line(arcs, i) {
-      arcs.forEach(function(a) {
-        if (a < 0) a = ~a;
-        var o = indexesByArc[a];
-        if (o) o.push(i);
-        else indexesByArc[a] = [i];
-      });
-    }
-
-    function polygon(arcs, i) {
-      arcs.forEach(function(arc) { line(arc, i); });
-    }
-
-    function geometry(o, i) {
-      if (o.type === "GeometryCollection") o.geometries.forEach(function(o) { geometry(o, i); });
-      else if (o.type in geometryType) geometryType[o.type](o.arcs, i);
-    }
-
-    var geometryType = {
-      LineString: line,
-      MultiLineString: polygon,
-      Polygon: polygon,
-      MultiPolygon: function(arcs, i) { arcs.forEach(function(arc) { polygon(arc, i); }); }
-    };
-
-    objects.forEach(geometry);
-
-    for (var i in indexesByArc) {
-      for (var indexes = indexesByArc[i], m = indexes.length, j = 0; j < m; ++j) {
-        for (var k = j + 1; k < m; ++k) {
-          var ij = indexes[j], ik = indexes[k], n;
-          if ((n = neighbors[ij])[i = bisect(n, ik)] !== ik) n.splice(i, 0, ik);
-          if ((n = neighbors[ik])[i = bisect(n, ij)] !== ij) n.splice(i, 0, ij);
-        }
-      }
-    }
-
-    return neighbors;
-  }
-
-  function compareArea(a, b) {
-    return a[1][2] - b[1][2];
-  }
-
-  function minAreaHeap() {
-    var heap = {},
-        array = [],
-        size = 0;
-
-    heap.push = function(object) {
-      up(array[object._ = size] = object, size++);
-      return size;
-    };
-
-    heap.pop = function() {
-      if (size <= 0) return;
-      var removed = array[0], object;
-      if (--size > 0) object = array[size], down(array[object._ = 0] = object, 0);
-      return removed;
-    };
-
-    heap.remove = function(removed) {
-      var i = removed._, object;
-      if (array[i] !== removed) return; // invalid request
-      if (i !== --size) object = array[size], (compareArea(object, removed) < 0 ? up : down)(array[object._ = i] = object, i);
-      return i;
-    };
-
-    function up(object, i) {
-      while (i > 0) {
-        var j = ((i + 1) >> 1) - 1,
-            parent = array[j];
-        if (compareArea(object, parent) >= 0) break;
-        array[parent._ = i] = parent;
-        array[object._ = i = j] = object;
-      }
-    }
-
-    function down(object, i) {
-      while (true) {
-        var r = (i + 1) << 1,
-            l = r - 1,
-            j = i,
-            child = array[j];
-        if (l < size && compareArea(array[l], child) < 0) child = array[j = l];
-        if (r < size && compareArea(array[r], child) < 0) child = array[j = r];
-        if (j === i) break;
-        array[child._ = i] = child;
-        array[object._ = i = j] = object;
-      }
-    }
-
-    return heap;
-  }
-
-  function presimplify(topology, triangleArea) {
-    var absolute = transformAbsolute(topology.transform),
-        relative = transformRelative(topology.transform),
-        heap = minAreaHeap();
-
-    if (!triangleArea) triangleArea = cartesianTriangleArea;
-
-    topology.arcs.forEach(function(arc) {
-      var triangles = [],
-          maxArea = 0,
-          triangle,
-          i,
-          n,
-          p;
-
-      // To store each point’s effective area, we create a new array rather than
-      // extending the passed-in point to workaround a Chrome/V8 bug (getting
-      // stuck in smi mode). For midpoints, the initial effective area of
-      // Infinity will be computed in the next step.
-      for (i = 0, n = arc.length; i < n; ++i) {
-        p = arc[i];
-        absolute(arc[i] = [p[0], p[1], Infinity], i);
-      }
-
-      for (i = 1, n = arc.length - 1; i < n; ++i) {
-        triangle = arc.slice(i - 1, i + 2);
-        triangle[1][2] = triangleArea(triangle);
-        triangles.push(triangle);
-        heap.push(triangle);
-      }
-
-      for (i = 0, n = triangles.length; i < n; ++i) {
-        triangle = triangles[i];
-        triangle.previous = triangles[i - 1];
-        triangle.next = triangles[i + 1];
-      }
-
-      while (triangle = heap.pop()) {
-        var previous = triangle.previous,
-            next = triangle.next;
-
-        // If the area of the current point is less than that of the previous point
-        // to be eliminated, use the latter's area instead. This ensures that the
-        // current point cannot be eliminated without eliminating previously-
-        // eliminated points.
-        if (triangle[1][2] < maxArea) triangle[1][2] = maxArea;
-        else maxArea = triangle[1][2];
-
-        if (previous) {
-          previous.next = next;
-          previous[2] = triangle[2];
-          update(previous);
-        }
-
-        if (next) {
-          next.previous = previous;
-          next[0] = triangle[0];
-          update(next);
-        }
-      }
-
-      arc.forEach(relative);
-    });
-
-    function update(triangle) {
-      heap.remove(triangle);
-      triangle[1][2] = triangleArea(triangle);
-      heap.push(triangle);
-    }
-
-    return topology;
-  }
-
-  var version = "1.6.26";
-
-  exports.version = version;
-  exports.mesh = mesh;
-  exports.meshArcs = meshArcs;
-  exports.merge = merge;
-  exports.mergeArcs = mergeArcs;
-  exports.feature = feature;
-  exports.neighbors = neighbors;
-  exports.presimplify = presimplify;
-
-}));
-},{}],267:[function(require,module,exports){
+},{}],206:[function(require,module,exports){
 var DEPS = require('./Dependencies').ALL;
 
 function create(cs, reflow) {
@@ -52381,7 +46947,7 @@ module.exports = {
   create: create,
   copy: copy
 };
-},{"./Dependencies":270}],268:[function(require,module,exports){
+},{"./Dependencies":209}],207:[function(require,module,exports){
 var log = require('vega-logging'),
     Tuple = require('./Tuple'),
     Base = require('./Node').prototype,
@@ -52435,7 +47001,7 @@ prototype.evaluate = function(input) {
 };
 
 module.exports = Collector;
-},{"./ChangeSet":267,"./Node":273,"./Tuple":275,"vega-logging":283}],269:[function(require,module,exports){
+},{"./ChangeSet":206,"./Node":212,"./Tuple":214,"vega-logging":277}],208:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     ChangeSet = require('./ChangeSet'),
@@ -52743,13 +47309,13 @@ function DataSourceListener(ds) {
 
 module.exports = DataSource;
 
-},{"./ChangeSet":267,"./Collector":268,"./Node":273,"./Tuple":275,"datalib":261,"vega-logging":283}],270:[function(require,module,exports){
+},{"./ChangeSet":206,"./Collector":207,"./Node":212,"./Tuple":214,"datalib":27,"vega-logging":277}],209:[function(require,module,exports){
 var deps = module.exports = {
   ALL: ['data', 'fields', 'scales', 'signals']
 };
 deps.ALL.forEach(function(k) { deps[k.toUpperCase()] = k; });
 
-},{}],271:[function(require,module,exports){
+},{}],210:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     Heap = require('./Heap'),
@@ -53085,7 +47651,7 @@ prototype.evaluate = function(pulse, node) {
 
 module.exports = Graph;
 
-},{"./ChangeSet":267,"./Collector":268,"./DataSource":269,"./Dependencies":270,"./Heap":272,"./Signal":274,"./Tuple":275,"datalib":261,"vega-logging":283}],272:[function(require,module,exports){
+},{"./ChangeSet":206,"./Collector":207,"./DataSource":208,"./Dependencies":209,"./Heap":211,"./Signal":213,"./Tuple":214,"datalib":27,"vega-logging":277}],211:[function(require,module,exports){
 function Heap(comparator) {
   this.cmp = comparator;
   this.nodes = [];
@@ -53182,7 +47748,7 @@ function _siftup(array, idx, cmp) {
 
 module.exports = Heap;
 
-},{}],273:[function(require,module,exports){
+},{}],212:[function(require,module,exports){
 var DEPS = require('./Dependencies').ALL,
     nodeID = 0;
 
@@ -53381,7 +47947,7 @@ Node.reset = function() { nodeID = 0; };
 
 module.exports = Node;
 
-},{"./Dependencies":270}],274:[function(require,module,exports){
+},{"./Dependencies":209}],213:[function(require,module,exports){
 var ChangeSet = require('./ChangeSet'),
     Node = require('./Node'), // jshint ignore:line
     Base = Node.prototype;
@@ -53457,7 +48023,7 @@ prototype.off = function(handler) {
 
 module.exports = Signal;
 
-},{"./ChangeSet":267,"./Node":273}],275:[function(require,module,exports){
+},{"./ChangeSet":206,"./Node":212}],214:[function(require,module,exports){
 var tupleID = 0;
 
 function ingest(datum) {
@@ -53527,7 +48093,7 @@ module.exports = {
   }
 };
 
-},{}],276:[function(require,module,exports){
+},{}],215:[function(require,module,exports){
 module.exports = {
   ChangeSet:    require('./ChangeSet'),
   Collector:    require('./Collector'),
@@ -53540,7 +48106,7 @@ module.exports = {
   debug:        require('vega-logging').debug
 };
 
-},{"./ChangeSet":267,"./Collector":268,"./DataSource":269,"./Dependencies":270,"./Graph":271,"./Node":273,"./Signal":274,"./Tuple":275,"vega-logging":283}],277:[function(require,module,exports){
+},{"./ChangeSet":206,"./Collector":207,"./DataSource":208,"./Dependencies":209,"./Graph":210,"./Node":212,"./Signal":213,"./Tuple":214,"vega-logging":277}],216:[function(require,module,exports){
 module.exports = (function() {
   "use strict";
 
@@ -54725,7 +49291,7 @@ module.exports = (function() {
   };
 })();
 
-},{}],278:[function(require,module,exports){
+},{}],217:[function(require,module,exports){
 function toMap(list) {
   var map = {}, i, n;
   for (i=0, n=list.length; i<n; ++i) map[list[i]] = 1;
@@ -54868,7 +49434,7 @@ module.exports = function(opt) {
   return codegen_wrap;
 };
 
-},{"./constants":279,"./functions":280}],279:[function(require,module,exports){
+},{"./constants":218,"./functions":219}],218:[function(require,module,exports){
 module.exports = {
   'NaN':     'NaN',
   'E':       'Math.E',
@@ -54880,7 +49446,7 @@ module.exports = {
   'SQRT1_2': 'Math.SQRT1_2',
   'SQRT2':   'Math.SQRT2'
 };
-},{}],280:[function(require,module,exports){
+},{}],219:[function(require,module,exports){
 module.exports = function(codegen) {
 
   function fncall(name, args, cast, type) {
@@ -54989,7 +49555,7 @@ module.exports = function(codegen) {
   };
 };
 
-},{}],281:[function(require,module,exports){
+},{}],220:[function(require,module,exports){
 var parser = require('./parser'),
     codegen = require('./codegen');
 
@@ -55021,7 +49587,7 @@ var expr = module.exports = {
   functions: require('./functions'),
   constants: require('./constants')
 };
-},{"./codegen":278,"./constants":279,"./functions":280,"./parser":282}],282:[function(require,module,exports){
+},{"./codegen":217,"./constants":218,"./functions":219,"./parser":221}],221:[function(require,module,exports){
 /*
   The following expression parser is based on Esprima (http://esprima.org/).
   Original header comment and license for Esprima is included here:
@@ -57349,7 +51915,5421 @@ module.exports = (function() {
   };
 
 })();
-},{}],283:[function(require,module,exports){
+},{}],222:[function(require,module,exports){
+var json = typeof JSON !== 'undefined' ? JSON : require('jsonify');
+
+module.exports = function (obj, opts) {
+    if (!opts) opts = {};
+    if (typeof opts === 'function') opts = { cmp: opts };
+    var space = opts.space || '';
+    if (typeof space === 'number') space = Array(space+1).join(' ');
+    var cycles = (typeof opts.cycles === 'boolean') ? opts.cycles : false;
+    var replacer = opts.replacer || function(key, value) { return value; };
+
+    var cmp = opts.cmp && (function (f) {
+        return function (node) {
+            return function (a, b) {
+                var aobj = { key: a, value: node[a] };
+                var bobj = { key: b, value: node[b] };
+                return f(aobj, bobj);
+            };
+        };
+    })(opts.cmp);
+
+    var seen = [];
+    return (function stringify (parent, key, node, level) {
+        var indent = space ? ('\n' + new Array(level + 1).join(space)) : '';
+        var colonSeparator = space ? ': ' : ':';
+
+        if (node && node.toJSON && typeof node.toJSON === 'function') {
+            node = node.toJSON();
+        }
+
+        node = replacer.call(parent, key, node);
+
+        if (node === undefined) {
+            return;
+        }
+        if (typeof node !== 'object' || node === null) {
+            return json.stringify(node);
+        }
+        if (isArray(node)) {
+            var out = [];
+            for (var i = 0; i < node.length; i++) {
+                var item = stringify(node, i, node[i], level+1) || json.stringify(null);
+                out.push(indent + space + item);
+            }
+            return '[' + out.join(',') + indent + ']';
+        }
+        else {
+            if (seen.indexOf(node) !== -1) {
+                if (cycles) return json.stringify('__cycle__');
+                throw new TypeError('Converting circular structure to JSON');
+            }
+            else seen.push(node);
+
+            var keys = objectKeys(node).sort(cmp && cmp(node));
+            var out = [];
+            for (var i = 0; i < keys.length; i++) {
+                var key = keys[i];
+                var value = stringify(node, key, node[key], level+1);
+
+                if(!value) continue;
+
+                var keyValue = json.stringify(key)
+                    + colonSeparator
+                    + value;
+                ;
+                out.push(indent + space + keyValue);
+            }
+            seen.splice(seen.indexOf(node), 1);
+            return '{' + out.join(',') + indent + '}';
+        }
+    })({ '': obj }, '', obj, 0);
+};
+
+var isArray = Array.isArray || function (x) {
+    return {}.toString.call(x) === '[object Array]';
+};
+
+var objectKeys = Object.keys || function (obj) {
+    var has = Object.prototype.hasOwnProperty || function () { return true };
+    var keys = [];
+    for (var key in obj) {
+        if (has.call(obj, key)) keys.push(key);
+    }
+    return keys;
+};
+
+},{"jsonify":60}],223:[function(require,module,exports){
+"use strict";
+(function (AggregateOp) {
+    AggregateOp[AggregateOp["VALUES"] = 'values'] = "VALUES";
+    AggregateOp[AggregateOp["COUNT"] = 'count'] = "COUNT";
+    AggregateOp[AggregateOp["VALID"] = 'valid'] = "VALID";
+    AggregateOp[AggregateOp["MISSING"] = 'missing'] = "MISSING";
+    AggregateOp[AggregateOp["DISTINCT"] = 'distinct'] = "DISTINCT";
+    AggregateOp[AggregateOp["SUM"] = 'sum'] = "SUM";
+    AggregateOp[AggregateOp["MEAN"] = 'mean'] = "MEAN";
+    AggregateOp[AggregateOp["AVERAGE"] = 'average'] = "AVERAGE";
+    AggregateOp[AggregateOp["VARIANCE"] = 'variance'] = "VARIANCE";
+    AggregateOp[AggregateOp["VARIANCEP"] = 'variancep'] = "VARIANCEP";
+    AggregateOp[AggregateOp["STDEV"] = 'stdev'] = "STDEV";
+    AggregateOp[AggregateOp["STDEVP"] = 'stdevp'] = "STDEVP";
+    AggregateOp[AggregateOp["MEDIAN"] = 'median'] = "MEDIAN";
+    AggregateOp[AggregateOp["Q1"] = 'q1'] = "Q1";
+    AggregateOp[AggregateOp["Q3"] = 'q3'] = "Q3";
+    AggregateOp[AggregateOp["MODESKEW"] = 'modeskew'] = "MODESKEW";
+    AggregateOp[AggregateOp["MIN"] = 'min'] = "MIN";
+    AggregateOp[AggregateOp["MAX"] = 'max'] = "MAX";
+    AggregateOp[AggregateOp["ARGMIN"] = 'argmin'] = "ARGMIN";
+    AggregateOp[AggregateOp["ARGMAX"] = 'argmax'] = "ARGMAX";
+})(exports.AggregateOp || (exports.AggregateOp = {}));
+var AggregateOp = exports.AggregateOp;
+exports.AGGREGATE_OPS = [
+    AggregateOp.VALUES,
+    AggregateOp.COUNT,
+    AggregateOp.VALID,
+    AggregateOp.MISSING,
+    AggregateOp.DISTINCT,
+    AggregateOp.SUM,
+    AggregateOp.MEAN,
+    AggregateOp.AVERAGE,
+    AggregateOp.VARIANCE,
+    AggregateOp.VARIANCEP,
+    AggregateOp.STDEV,
+    AggregateOp.STDEVP,
+    AggregateOp.MEDIAN,
+    AggregateOp.Q1,
+    AggregateOp.Q3,
+    AggregateOp.MODESKEW,
+    AggregateOp.MIN,
+    AggregateOp.MAX,
+    AggregateOp.ARGMIN,
+    AggregateOp.ARGMAX,
+];
+exports.SHARED_DOMAIN_OPS = [
+    AggregateOp.MEAN,
+    AggregateOp.AVERAGE,
+    AggregateOp.STDEV,
+    AggregateOp.STDEVP,
+    AggregateOp.MEDIAN,
+    AggregateOp.Q1,
+    AggregateOp.Q3,
+    AggregateOp.MIN,
+    AggregateOp.MAX,
+];
+
+},{}],224:[function(require,module,exports){
+"use strict";
+(function (AxisOrient) {
+    AxisOrient[AxisOrient["TOP"] = 'top'] = "TOP";
+    AxisOrient[AxisOrient["RIGHT"] = 'right'] = "RIGHT";
+    AxisOrient[AxisOrient["LEFT"] = 'left'] = "LEFT";
+    AxisOrient[AxisOrient["BOTTOM"] = 'bottom'] = "BOTTOM";
+})(exports.AxisOrient || (exports.AxisOrient = {}));
+var AxisOrient = exports.AxisOrient;
+exports.defaultAxisConfig = {
+    offset: undefined,
+    grid: undefined,
+    labels: true,
+    labelMaxLength: 25,
+    tickSize: undefined,
+    characterWidth: 6
+};
+exports.defaultFacetAxisConfig = {
+    axisWidth: 0,
+    labels: true,
+    grid: false,
+    tickSize: 0
+};
+
+},{}],225:[function(require,module,exports){
+"use strict";
+var channel_1 = require('./channel');
+function autoMaxBins(channel) {
+    switch (channel) {
+        case channel_1.ROW:
+        case channel_1.COLUMN:
+        case channel_1.SIZE:
+        case channel_1.SHAPE:
+            return 6;
+        default:
+            return 10;
+    }
+}
+exports.autoMaxBins = autoMaxBins;
+
+},{"./channel":226}],226:[function(require,module,exports){
+"use strict";
+var util_1 = require('./util');
+(function (Channel) {
+    Channel[Channel["X"] = 'x'] = "X";
+    Channel[Channel["Y"] = 'y'] = "Y";
+    Channel[Channel["ROW"] = 'row'] = "ROW";
+    Channel[Channel["COLUMN"] = 'column'] = "COLUMN";
+    Channel[Channel["SHAPE"] = 'shape'] = "SHAPE";
+    Channel[Channel["SIZE"] = 'size'] = "SIZE";
+    Channel[Channel["COLOR"] = 'color'] = "COLOR";
+    Channel[Channel["TEXT"] = 'text'] = "TEXT";
+    Channel[Channel["DETAIL"] = 'detail'] = "DETAIL";
+    Channel[Channel["LABEL"] = 'label'] = "LABEL";
+    Channel[Channel["PATH"] = 'path'] = "PATH";
+    Channel[Channel["ORDER"] = 'order'] = "ORDER";
+    Channel[Channel["OPACITY"] = 'opacity'] = "OPACITY";
+})(exports.Channel || (exports.Channel = {}));
+var Channel = exports.Channel;
+exports.X = Channel.X;
+exports.Y = Channel.Y;
+exports.ROW = Channel.ROW;
+exports.COLUMN = Channel.COLUMN;
+exports.SHAPE = Channel.SHAPE;
+exports.SIZE = Channel.SIZE;
+exports.COLOR = Channel.COLOR;
+exports.TEXT = Channel.TEXT;
+exports.DETAIL = Channel.DETAIL;
+exports.LABEL = Channel.LABEL;
+exports.PATH = Channel.PATH;
+exports.ORDER = Channel.ORDER;
+exports.OPACITY = Channel.OPACITY;
+exports.CHANNELS = [exports.X, exports.Y, exports.ROW, exports.COLUMN, exports.SIZE, exports.SHAPE, exports.COLOR, exports.PATH, exports.ORDER, exports.OPACITY, exports.TEXT, exports.DETAIL, exports.LABEL];
+exports.UNIT_CHANNELS = util_1.without(exports.CHANNELS, [exports.ROW, exports.COLUMN]);
+exports.UNIT_SCALE_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.PATH, exports.ORDER, exports.DETAIL, exports.TEXT, exports.LABEL]);
+exports.NONSPATIAL_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.X, exports.Y]);
+exports.NONSPATIAL_SCALE_CHANNELS = util_1.without(exports.UNIT_SCALE_CHANNELS, [exports.X, exports.Y]);
+;
+function supportMark(channel, mark) {
+    return !!getSupportedMark(channel)[mark];
+}
+exports.supportMark = supportMark;
+function getSupportedMark(channel) {
+    switch (channel) {
+        case exports.X:
+        case exports.Y:
+        case exports.COLOR:
+        case exports.DETAIL:
+        case exports.ORDER:
+        case exports.OPACITY:
+        case exports.ROW:
+        case exports.COLUMN:
+            return {
+                point: true, tick: true, rule: true, circle: true, square: true,
+                bar: true, line: true, area: true, text: true
+            };
+        case exports.SIZE:
+            return {
+                point: true, tick: true, rule: true, circle: true, square: true,
+                bar: true, text: true
+            };
+        case exports.SHAPE:
+            return { point: true };
+        case exports.TEXT:
+            return { text: true };
+        case exports.PATH:
+            return { line: true };
+    }
+    return {};
+}
+exports.getSupportedMark = getSupportedMark;
+;
+function getSupportedRole(channel) {
+    switch (channel) {
+        case exports.X:
+        case exports.Y:
+        case exports.COLOR:
+        case exports.OPACITY:
+        case exports.LABEL:
+        case exports.DETAIL:
+            return {
+                measure: true,
+                dimension: true
+            };
+        case exports.ROW:
+        case exports.COLUMN:
+        case exports.SHAPE:
+            return {
+                measure: false,
+                dimension: true
+            };
+        case exports.SIZE:
+        case exports.TEXT:
+            return {
+                measure: true,
+                dimension: false
+            };
+        case exports.PATH:
+            return {
+                measure: false,
+                dimension: true
+            };
+    }
+    throw new Error('Invalid encoding channel' + channel);
+}
+exports.getSupportedRole = getSupportedRole;
+function hasScale(channel) {
+    return !util_1.contains([exports.DETAIL, exports.PATH, exports.TEXT, exports.LABEL, exports.ORDER], channel);
+}
+exports.hasScale = hasScale;
+
+},{"./util":273}],227:[function(require,module,exports){
+"use strict";
+var axis_1 = require('../axis');
+var channel_1 = require('../channel');
+var fielddef_1 = require('../fielddef');
+var type_1 = require('../type');
+var util_1 = require('../util');
+var common_1 = require('./common');
+function parseAxisComponent(model, axisChannels) {
+    return axisChannels.reduce(function (axis, channel) {
+        if (model.axis(channel)) {
+            axis[channel] = parseAxis(channel, model);
+        }
+        return axis;
+    }, {});
+}
+exports.parseAxisComponent = parseAxisComponent;
+function parseInnerAxis(channel, model) {
+    var isCol = channel === channel_1.COLUMN, isRow = channel === channel_1.ROW, type = isCol ? 'x' : isRow ? 'y' : channel;
+    var def = {
+        type: type,
+        scale: model.scaleName(channel),
+        grid: true,
+        tickSize: 0,
+        properties: {
+            labels: {
+                text: { value: '' }
+            },
+            axis: {
+                stroke: { value: 'transparent' }
+            }
+        }
+    };
+    var axis = model.axis(channel);
+    ['layer', 'ticks', 'values', 'subdivide'].forEach(function (property) {
+        var method;
+        var value = (method = exports[property]) ?
+            method(model, channel, def) :
+            axis[property];
+        if (value !== undefined) {
+            def[property] = value;
+        }
+    });
+    var props = model.axis(channel).properties || {};
+    ['grid'].forEach(function (group) {
+        var value = properties[group] ?
+            properties[group](model, channel, props[group] || {}, def) :
+            props[group];
+        if (value !== undefined && util_1.keys(value).length > 0) {
+            def.properties = def.properties || {};
+            def.properties[group] = value;
+        }
+    });
+    return def;
+}
+exports.parseInnerAxis = parseInnerAxis;
+function parseAxis(channel, model) {
+    var isCol = channel === channel_1.COLUMN, isRow = channel === channel_1.ROW, type = isCol ? 'x' : isRow ? 'y' : channel;
+    var axis = model.axis(channel);
+    var def = {
+        type: type,
+        scale: model.scaleName(channel)
+    };
+    util_1.extend(def, common_1.formatMixins(model, channel, model.axis(channel).format));
+    [
+        'grid', 'layer', 'offset', 'orient', 'tickSize', 'ticks', 'tickSizeEnd', 'title', 'titleOffset',
+        'tickPadding', 'tickSize', 'tickSizeMajor', 'tickSizeMinor', 'values', 'subdivide'
+    ].forEach(function (property) {
+        var method;
+        var value = (method = exports[property]) ?
+            method(model, channel, def) :
+            axis[property];
+        if (value !== undefined) {
+            def[property] = value;
+        }
+    });
+    var props = model.axis(channel).properties || {};
+    [
+        'axis', 'labels',
+        'grid', 'title', 'ticks', 'majorTicks', 'minorTicks'
+    ].forEach(function (group) {
+        var value = properties[group] ?
+            properties[group](model, channel, props[group] || {}, def) :
+            props[group];
+        if (value !== undefined && util_1.keys(value).length > 0) {
+            def.properties = def.properties || {};
+            def.properties[group] = value;
+        }
+    });
+    return def;
+}
+exports.parseAxis = parseAxis;
+function offset(model, channel) {
+    return model.axis(channel).offset;
+}
+exports.offset = offset;
+function gridShow(model, channel) {
+    var grid = model.axis(channel).grid;
+    if (grid !== undefined) {
+        return grid;
+    }
+    return !model.isOrdinalScale(channel) && !model.fieldDef(channel).bin;
+}
+exports.gridShow = gridShow;
+function grid(model, channel) {
+    if (channel === channel_1.ROW || channel === channel_1.COLUMN) {
+        return undefined;
+    }
+    return gridShow(model, channel) && ((channel === channel_1.Y || channel === channel_1.X) && !(model.parent() && model.parent().isFacet()));
+}
+exports.grid = grid;
+function layer(model, channel, def) {
+    var layer = model.axis(channel).layer;
+    if (layer !== undefined) {
+        return layer;
+    }
+    if (def.grid) {
+        return 'back';
+    }
+    return undefined;
+}
+exports.layer = layer;
+;
+function orient(model, channel) {
+    var orient = model.axis(channel).orient;
+    if (orient) {
+        return orient;
+    }
+    else if (channel === channel_1.COLUMN) {
+        return axis_1.AxisOrient.TOP;
+    }
+    return undefined;
+}
+exports.orient = orient;
+function ticks(model, channel) {
+    var ticks = model.axis(channel).ticks;
+    if (ticks !== undefined) {
+        return ticks;
+    }
+    if (channel === channel_1.X && !model.fieldDef(channel).bin) {
+        return 5;
+    }
+    return undefined;
+}
+exports.ticks = ticks;
+function tickSize(model, channel) {
+    var tickSize = model.axis(channel).tickSize;
+    if (tickSize !== undefined) {
+        return tickSize;
+    }
+    return undefined;
+}
+exports.tickSize = tickSize;
+function tickSizeEnd(model, channel) {
+    var tickSizeEnd = model.axis(channel).tickSizeEnd;
+    if (tickSizeEnd !== undefined) {
+        return tickSizeEnd;
+    }
+    return undefined;
+}
+exports.tickSizeEnd = tickSizeEnd;
+function title(model, channel) {
+    var axis = model.axis(channel);
+    if (axis.title !== undefined) {
+        return axis.title;
+    }
+    var fieldTitle = fielddef_1.title(model.fieldDef(channel));
+    var maxLength;
+    if (axis.titleMaxLength) {
+        maxLength = axis.titleMaxLength;
+    }
+    else if (channel === channel_1.X && !model.isOrdinalScale(channel_1.X)) {
+        var unitModel = model;
+        maxLength = unitModel.config().cell.width / model.axis(channel_1.X).characterWidth;
+    }
+    else if (channel === channel_1.Y && !model.isOrdinalScale(channel_1.Y)) {
+        var unitModel = model;
+        maxLength = unitModel.config().cell.height / model.axis(channel_1.Y).characterWidth;
+    }
+    return maxLength ? util_1.truncate(fieldTitle, maxLength) : fieldTitle;
+}
+exports.title = title;
+function titleOffset(model, channel) {
+    var titleOffset = model.axis(channel).titleOffset;
+    if (titleOffset !== undefined) {
+        return titleOffset;
+    }
+    return undefined;
+}
+exports.titleOffset = titleOffset;
+var properties;
+(function (properties) {
+    function axis(model, channel, axisPropsSpec) {
+        var axis = model.axis(channel);
+        return util_1.extend(axis.axisColor !== undefined ?
+            { stroke: { value: axis.axisColor } } :
+            {}, axis.axisWidth !== undefined ?
+            { strokeWidth: { value: axis.axisWidth } } :
+            {}, axisPropsSpec || {});
+    }
+    properties.axis = axis;
+    function grid(model, channel, gridPropsSpec) {
+        var axis = model.axis(channel);
+        return util_1.extend(axis.gridColor !== undefined ? { stroke: { value: axis.gridColor } } : {}, axis.gridOpacity !== undefined ? { strokeOpacity: { value: axis.gridOpacity } } : {}, axis.gridWidth !== undefined ? { strokeWidth: { value: axis.gridWidth } } : {}, axis.gridDash !== undefined ? { strokeDashOffset: { value: axis.gridDash } } : {}, gridPropsSpec || {});
+    }
+    properties.grid = grid;
+    function labels(model, channel, labelsSpec, def) {
+        var fieldDef = model.fieldDef(channel);
+        var axis = model.axis(channel);
+        if (!axis.labels) {
+            return util_1.extend({
+                text: ''
+            }, labelsSpec);
+        }
+        if (util_1.contains([type_1.NOMINAL, type_1.ORDINAL], fieldDef.type) && axis.labelMaxLength) {
+            labelsSpec = util_1.extend({
+                text: {
+                    template: '{{ datum.data | truncate:' + axis.labelMaxLength + '}}'
+                }
+            }, labelsSpec || {});
+        }
+        if (axis.labelAngle !== undefined) {
+            labelsSpec.angle = { value: axis.labelAngle };
+        }
+        else {
+            if (channel === channel_1.X && (fielddef_1.isDimension(fieldDef) || fieldDef.type === type_1.TEMPORAL)) {
+                labelsSpec.angle = { value: 270 };
+            }
+        }
+        if (axis.labelAlign !== undefined) {
+            labelsSpec.align = { value: axis.labelAlign };
+        }
+        else {
+            if (labelsSpec.angle) {
+                if (labelsSpec.angle.value === 270) {
+                    labelsSpec.align = {
+                        value: def.orient === 'top' ? 'left' :
+                            def.type === 'x' ? 'right' :
+                                'center'
+                    };
+                }
+                else if (labelsSpec.angle.value === 90) {
+                    labelsSpec.align = { value: 'center' };
+                }
+            }
+        }
+        if (axis.labelBaseline !== undefined) {
+            labelsSpec.baseline = { value: axis.labelBaseline };
+        }
+        else {
+            if (labelsSpec.angle) {
+                if (labelsSpec.angle.value === 270) {
+                    labelsSpec.baseline = { value: def.type === 'x' ? 'middle' : 'bottom' };
+                }
+                else if (labelsSpec.angle.value === 90) {
+                    labelsSpec.baseline = { value: 'bottom' };
+                }
+            }
+        }
+        if (axis.tickLabelColor !== undefined) {
+            labelsSpec.stroke = { value: axis.tickLabelColor };
+        }
+        if (axis.tickLabelFont !== undefined) {
+            labelsSpec.font = { value: axis.tickLabelFont };
+        }
+        if (axis.tickLabelFontSize !== undefined) {
+            labelsSpec.fontSize = { value: axis.tickLabelFontSize };
+        }
+        return util_1.keys(labelsSpec).length === 0 ? undefined : labelsSpec;
+    }
+    properties.labels = labels;
+    function ticks(model, channel, ticksPropsSpec) {
+        var axis = model.axis(channel);
+        return util_1.extend(axis.tickColor !== undefined ? { stroke: { value: axis.tickColor } } : {}, axis.tickWidth !== undefined ? { strokeWidth: { value: axis.tickWidth } } : {}, ticksPropsSpec || {});
+    }
+    properties.ticks = ticks;
+    function title(model, channel, titlePropsSpec) {
+        var axis = model.axis(channel);
+        return util_1.extend(axis.titleColor !== undefined ? { stroke: { value: axis.titleColor } } : {}, axis.titleFont !== undefined ? { font: { value: axis.titleFont } } : {}, axis.titleFontSize !== undefined ? { fontSize: { value: axis.titleFontSize } } : {}, axis.titleFontWeight !== undefined ? { fontWeight: { value: axis.titleFontWeight } } : {}, titlePropsSpec || {});
+    }
+    properties.title = title;
+})(properties = exports.properties || (exports.properties = {}));
+
+},{"../axis":224,"../channel":226,"../fielddef":264,"../type":272,"../util":273,"./common":228}],228:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../channel');
+var fielddef_1 = require('../fielddef');
+var sort_1 = require('../sort');
+var type_1 = require('../type');
+var util_1 = require('../util');
+var facet_1 = require('./facet');
+var layer_1 = require('./layer');
+var timeunit_1 = require('../timeunit');
+var unit_1 = require('./unit');
+var spec_1 = require('../spec');
+function buildModel(spec, parent, parentGivenName) {
+    if (spec_1.isFacetSpec(spec)) {
+        return new facet_1.FacetModel(spec, parent, parentGivenName);
+    }
+    if (spec_1.isLayerSpec(spec)) {
+        return new layer_1.LayerModel(spec, parent, parentGivenName);
+    }
+    if (spec_1.isUnitSpec(spec)) {
+        return new unit_1.UnitModel(spec, parent, parentGivenName);
+    }
+    console.error('Invalid spec.');
+    return null;
+}
+exports.buildModel = buildModel;
+exports.STROKE_CONFIG = ['stroke', 'strokeWidth',
+    'strokeDash', 'strokeDashOffset', 'strokeOpacity', 'opacity'];
+exports.FILL_CONFIG = ['fill', 'fillOpacity',
+    'opacity'];
+exports.FILL_STROKE_CONFIG = util_1.union(exports.STROKE_CONFIG, exports.FILL_CONFIG);
+function applyColorAndOpacity(p, model) {
+    var filled = model.config().mark.filled;
+    var colorFieldDef = model.fieldDef(channel_1.COLOR);
+    var opacityFieldDef = model.fieldDef(channel_1.OPACITY);
+    if (filled) {
+        applyMarkConfig(p, model, exports.FILL_CONFIG);
+    }
+    else {
+        applyMarkConfig(p, model, exports.STROKE_CONFIG);
+    }
+    var colorValue;
+    var opacityValue;
+    if (model.has(channel_1.COLOR)) {
+        colorValue = {
+            scale: model.scaleName(channel_1.COLOR),
+            field: model.field(channel_1.COLOR, colorFieldDef.type === type_1.ORDINAL ? { prefn: 'rank_' } : {})
+        };
+    }
+    else if (colorFieldDef && colorFieldDef.value) {
+        colorValue = { value: colorFieldDef.value };
+    }
+    if (model.has(channel_1.OPACITY)) {
+        opacityValue = {
+            scale: model.scaleName(channel_1.OPACITY),
+            field: model.field(channel_1.OPACITY, opacityFieldDef.type === type_1.ORDINAL ? { prefn: 'rank_' } : {})
+        };
+    }
+    else if (opacityFieldDef && opacityFieldDef.value) {
+        opacityValue = { value: opacityFieldDef.value };
+    }
+    if (colorValue !== undefined) {
+        if (filled) {
+            p.fill = colorValue;
+        }
+        else {
+            p.stroke = colorValue;
+        }
+    }
+    else {
+        p[filled ? 'fill' : 'stroke'] = p[filled ? 'fill' : 'stroke'] ||
+            { value: model.config().mark.color };
+    }
+    if (opacityValue !== undefined) {
+        p.opacity = opacityValue;
+    }
+}
+exports.applyColorAndOpacity = applyColorAndOpacity;
+function applyConfig(properties, config, propsList) {
+    propsList.forEach(function (property) {
+        var value = config[property];
+        if (value !== undefined) {
+            properties[property] = { value: value };
+        }
+    });
+    return properties;
+}
+exports.applyConfig = applyConfig;
+function applyMarkConfig(marksProperties, model, propsList) {
+    return applyConfig(marksProperties, model.config().mark, propsList);
+}
+exports.applyMarkConfig = applyMarkConfig;
+function formatMixins(model, channel, format) {
+    var fieldDef = model.fieldDef(channel);
+    if (!util_1.contains([type_1.QUANTITATIVE, type_1.TEMPORAL], fieldDef.type)) {
+        return {};
+    }
+    var def = {};
+    if (fieldDef.type === type_1.TEMPORAL) {
+        def.formatType = 'time';
+    }
+    if (format !== undefined) {
+        def.format = format;
+    }
+    else {
+        switch (fieldDef.type) {
+            case type_1.QUANTITATIVE:
+                def.format = model.config().numberFormat;
+                break;
+            case type_1.TEMPORAL:
+                def.format = timeFormat(model, channel) || model.config().timeFormat;
+                break;
+        }
+    }
+    if (channel === channel_1.TEXT) {
+        var filter = (def.formatType || 'number') + (def.format ? ':\'' + def.format + '\'' : '');
+        return {
+            text: {
+                template: '{{' + model.field(channel, { datum: true }) + ' | ' + filter + '}}'
+            }
+        };
+    }
+    return def;
+}
+exports.formatMixins = formatMixins;
+function isAbbreviated(model, channel, fieldDef) {
+    switch (channel) {
+        case channel_1.ROW:
+        case channel_1.COLUMN:
+        case channel_1.X:
+        case channel_1.Y:
+            return model.axis(channel).shortTimeLabels;
+        case channel_1.COLOR:
+        case channel_1.OPACITY:
+        case channel_1.SHAPE:
+        case channel_1.SIZE:
+            return model.legend(channel).shortTimeLabels;
+        case channel_1.TEXT:
+            return model.config().mark.shortTimeLabels;
+        case channel_1.LABEL:
+    }
+    return false;
+}
+function sortField(orderChannelDef) {
+    return (orderChannelDef.sort === sort_1.SortOrder.DESCENDING ? '-' : '') + fielddef_1.field(orderChannelDef);
+}
+exports.sortField = sortField;
+function timeFormat(model, channel) {
+    var fieldDef = model.fieldDef(channel);
+    return timeunit_1.format(fieldDef.timeUnit, isAbbreviated(model, channel, fieldDef));
+}
+exports.timeFormat = timeFormat;
+
+},{"../channel":226,"../fielddef":264,"../sort":269,"../spec":270,"../timeunit":271,"../type":272,"../util":273,"./facet":244,"./layer":245,"./unit":260}],229:[function(require,module,exports){
+"use strict";
+var data_1 = require('../data');
+var spec_1 = require('../spec');
+var util_1 = require('../util');
+var common_1 = require('./common');
+function compile(inputSpec) {
+    var spec = spec_1.normalize(inputSpec);
+    var model = common_1.buildModel(spec, null, '');
+    model.parse();
+    return assemble(model);
+}
+exports.compile = compile;
+function assemble(model) {
+    var config = model.config();
+    var output = util_1.extend({
+        width: 1,
+        height: 1,
+        padding: 'auto'
+    }, config.viewport ? { viewport: config.viewport } : {}, config.background ? { background: config.background } : {}, {
+        data: [].concat(model.assembleData([]), model.assembleLayout([])),
+        marks: [assembleRootGroup(model)]
+    });
+    return {
+        spec: output
+    };
+}
+function assembleRootGroup(model) {
+    var rootGroup = util_1.extend({
+        name: model.name('root'),
+        type: 'group',
+    }, model.description() ? { description: model.description() } : {}, {
+        from: { data: data_1.LAYOUT },
+        properties: {
+            update: util_1.extend({
+                width: { field: 'width' },
+                height: { field: 'height' }
+            }, model.assembleParentGroupProperties(model.config().cell))
+        }
+    });
+    return util_1.extend(rootGroup, model.assembleGroup());
+}
+exports.assembleRootGroup = assembleRootGroup;
+
+},{"../data":262,"../spec":270,"../util":273,"./common":228}],230:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../channel');
+var encoding_1 = require('../encoding');
+var fielddef_1 = require('../fielddef');
+var mark_1 = require('../mark');
+var util_1 = require('../util');
+function initMarkConfig(mark, encoding, config) {
+    return util_1.extend(['filled', 'opacity', 'orient', 'align'].reduce(function (cfg, property) {
+        var value = config.mark[property];
+        switch (property) {
+            case 'filled':
+                if (value === undefined) {
+                    cfg[property] = mark !== mark_1.POINT && mark !== mark_1.LINE && mark !== mark_1.RULE;
+                }
+                break;
+            case 'opacity':
+                if (value === undefined && util_1.contains([mark_1.POINT, mark_1.TICK, mark_1.CIRCLE, mark_1.SQUARE], mark)) {
+                    if (!encoding_1.isAggregate(encoding) || encoding_1.has(encoding, channel_1.DETAIL)) {
+                        cfg[property] = 0.7;
+                    }
+                }
+                break;
+            case 'orient':
+                var xIsMeasure = fielddef_1.isMeasure(encoding.x);
+                var yIsMeasure = fielddef_1.isMeasure(encoding.y);
+                if (xIsMeasure && !yIsMeasure) {
+                    if (mark === mark_1.TICK) {
+                        cfg[property] = 'vertical';
+                    }
+                    else {
+                        cfg[property] = 'horizontal';
+                    }
+                }
+                else if (!xIsMeasure && yIsMeasure) {
+                    if (mark === mark_1.TICK) {
+                        cfg[property] = 'horizontal';
+                    }
+                    else {
+                        cfg[property] = 'vertical';
+                    }
+                }
+                break;
+            case 'align':
+                if (value === undefined) {
+                    cfg[property] = encoding_1.has(encoding, channel_1.X) ? 'center' : 'right';
+                }
+        }
+        return cfg;
+    }, {}), config.mark);
+}
+exports.initMarkConfig = initMarkConfig;
+
+},{"../channel":226,"../encoding":263,"../fielddef":264,"../mark":266,"../util":273}],231:[function(require,module,exports){
+"use strict";
+var bin_1 = require('../../bin');
+var channel_1 = require('../../channel');
+var fielddef_1 = require('../../fielddef');
+var util_1 = require('../../util');
+var bin;
+(function (bin_2) {
+    function parse(model) {
+        return model.reduce(function (binComponent, fieldDef, channel) {
+            var bin = model.fieldDef(channel).bin;
+            if (bin) {
+                var binTrans = util_1.extend({
+                    type: 'bin',
+                    field: fieldDef.field,
+                    output: {
+                        start: fielddef_1.field(fieldDef, { binSuffix: '_start' }),
+                        mid: fielddef_1.field(fieldDef, { binSuffix: '_mid' }),
+                        end: fielddef_1.field(fieldDef, { binSuffix: '_end' })
+                    }
+                }, typeof bin === 'boolean' ? {} : bin);
+                if (!binTrans.maxbins && !binTrans.step) {
+                    binTrans.maxbins = bin_1.autoMaxBins(channel);
+                }
+                var transform = [binTrans];
+                var isOrdinalColor = model.isOrdinalScale(channel) || channel === channel_1.COLOR;
+                if (isOrdinalColor) {
+                    transform.push({
+                        type: 'formula',
+                        field: fielddef_1.field(fieldDef, { binSuffix: '_range' }),
+                        expr: fielddef_1.field(fieldDef, { datum: true, binSuffix: '_start' }) +
+                            ' + \'-\' + ' +
+                            fielddef_1.field(fieldDef, { datum: true, binSuffix: '_end' })
+                    });
+                }
+                var key = util_1.hash(bin) + '_' + fieldDef.field + 'oc:' + isOrdinalColor;
+                binComponent[key] = transform;
+            }
+            return binComponent;
+        }, {});
+    }
+    bin_2.parseUnit = parse;
+    function parseFacet(model) {
+        var binComponent = parse(model);
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source) {
+            util_1.extend(binComponent, childDataComponent.bin);
+            delete childDataComponent.bin;
+        }
+        return binComponent;
+    }
+    bin_2.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var binComponent = parse(model);
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (!childDataComponent.source) {
+                util_1.extend(binComponent, childDataComponent.bin);
+                delete childDataComponent.bin;
+            }
+        });
+        return binComponent;
+    }
+    bin_2.parseLayer = parseLayer;
+    function assemble(component) {
+        return util_1.flatten(util_1.vals(component.bin));
+    }
+    bin_2.assemble = assemble;
+})(bin = exports.bin || (exports.bin = {}));
+
+},{"../../bin":225,"../../channel":226,"../../fielddef":264,"../../util":273}],232:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var type_1 = require('../../type');
+var util_1 = require('../../util');
+var colorRank;
+(function (colorRank) {
+    function parseUnit(model) {
+        var colorRankComponent = {};
+        if (model.has(channel_1.COLOR) && model.fieldDef(channel_1.COLOR).type === type_1.ORDINAL) {
+            colorRankComponent[model.field(channel_1.COLOR)] = [{
+                    type: 'sort',
+                    by: model.field(channel_1.COLOR)
+                }, {
+                    type: 'rank',
+                    field: model.field(channel_1.COLOR),
+                    output: {
+                        rank: model.field(channel_1.COLOR, { prefn: 'rank_' })
+                    }
+                }];
+        }
+        return colorRankComponent;
+    }
+    colorRank.parseUnit = parseUnit;
+    function parseFacet(model) {
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source) {
+            var colorRankComponent = childDataComponent.colorRank;
+            delete childDataComponent.colorRank;
+            return colorRankComponent;
+        }
+        return {};
+    }
+    colorRank.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var colorRankComponent = {};
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (!childDataComponent.source) {
+                util_1.extend(colorRankComponent, childDataComponent.colorRank);
+                delete childDataComponent.colorRank;
+            }
+        });
+        return colorRankComponent;
+    }
+    colorRank.parseLayer = parseLayer;
+    function assemble(component) {
+        return util_1.flatten(util_1.vals(component.colorRank));
+    }
+    colorRank.assemble = assemble;
+})(colorRank = exports.colorRank || (exports.colorRank = {}));
+
+},{"../../channel":226,"../../type":272,"../../util":273}],233:[function(require,module,exports){
+"use strict";
+var util_1 = require('../../util');
+var source_1 = require('./source');
+var formatparse_1 = require('./formatparse');
+var nullfilter_1 = require('./nullfilter');
+var filter_1 = require('./filter');
+var bin_1 = require('./bin');
+var formula_1 = require('./formula');
+var nonpositivenullfilter_1 = require('./nonpositivenullfilter');
+var summary_1 = require('./summary');
+var stackscale_1 = require('./stackscale');
+var timeunit_1 = require('./timeunit');
+var timeunitdomain_1 = require('./timeunitdomain');
+var colorrank_1 = require('./colorrank');
+function parseUnitData(model) {
+    return {
+        formatParse: formatparse_1.formatParse.parseUnit(model),
+        nullFilter: nullfilter_1.nullFilter.parseUnit(model),
+        filter: filter_1.filter.parseUnit(model),
+        nonPositiveFilter: nonpositivenullfilter_1.nonPositiveFilter.parseUnit(model),
+        source: source_1.source.parseUnit(model),
+        bin: bin_1.bin.parseUnit(model),
+        calculate: formula_1.formula.parseUnit(model),
+        timeUnit: timeunit_1.timeUnit.parseUnit(model),
+        timeUnitDomain: timeunitdomain_1.timeUnitDomain.parseUnit(model),
+        summary: summary_1.summary.parseUnit(model),
+        stackScale: stackscale_1.stackScale.parseUnit(model),
+        colorRank: colorrank_1.colorRank.parseUnit(model)
+    };
+}
+exports.parseUnitData = parseUnitData;
+function parseFacetData(model) {
+    return {
+        formatParse: formatparse_1.formatParse.parseFacet(model),
+        nullFilter: nullfilter_1.nullFilter.parseFacet(model),
+        filter: filter_1.filter.parseFacet(model),
+        nonPositiveFilter: nonpositivenullfilter_1.nonPositiveFilter.parseFacet(model),
+        source: source_1.source.parseFacet(model),
+        bin: bin_1.bin.parseFacet(model),
+        calculate: formula_1.formula.parseFacet(model),
+        timeUnit: timeunit_1.timeUnit.parseFacet(model),
+        timeUnitDomain: timeunitdomain_1.timeUnitDomain.parseFacet(model),
+        summary: summary_1.summary.parseFacet(model),
+        stackScale: stackscale_1.stackScale.parseFacet(model),
+        colorRank: colorrank_1.colorRank.parseFacet(model)
+    };
+}
+exports.parseFacetData = parseFacetData;
+function parseLayerData(model) {
+    return {
+        filter: filter_1.filter.parseLayer(model),
+        formatParse: formatparse_1.formatParse.parseLayer(model),
+        nullFilter: nullfilter_1.nullFilter.parseLayer(model),
+        nonPositiveFilter: nonpositivenullfilter_1.nonPositiveFilter.parseLayer(model),
+        source: source_1.source.parseLayer(model),
+        bin: bin_1.bin.parseLayer(model),
+        calculate: formula_1.formula.parseLayer(model),
+        timeUnit: timeunit_1.timeUnit.parseLayer(model),
+        timeUnitDomain: timeunitdomain_1.timeUnitDomain.parseLayer(model),
+        summary: summary_1.summary.parseLayer(model),
+        stackScale: stackscale_1.stackScale.parseLayer(model),
+        colorRank: colorrank_1.colorRank.parseLayer(model)
+    };
+}
+exports.parseLayerData = parseLayerData;
+function assembleData(model, data) {
+    var component = model.component.data;
+    var sourceData = source_1.source.assemble(model, component);
+    if (sourceData) {
+        data.push(sourceData);
+    }
+    summary_1.summary.assemble(component, model).forEach(function (summaryData) {
+        data.push(summaryData);
+    });
+    if (data.length > 0) {
+        var dataTable = data[data.length - 1];
+        var colorRankTransform = colorrank_1.colorRank.assemble(component);
+        if (colorRankTransform.length > 0) {
+            dataTable.transform = (dataTable.transform || []).concat(colorRankTransform);
+        }
+        var nonPositiveFilterTransform = nonpositivenullfilter_1.nonPositiveFilter.assemble(component);
+        if (nonPositiveFilterTransform.length > 0) {
+            dataTable.transform = (dataTable.transform || []).concat(nonPositiveFilterTransform);
+        }
+    }
+    else {
+        if (util_1.keys(component.colorRank).length > 0) {
+            throw new Error('Invalid colorRank not merged');
+        }
+        else if (util_1.keys(component.nonPositiveFilter).length > 0) {
+            throw new Error('Invalid nonPositiveFilter not merged');
+        }
+    }
+    var stackData = stackscale_1.stackScale.assemble(component);
+    if (stackData) {
+        data.push(stackData);
+    }
+    timeunitdomain_1.timeUnitDomain.assemble(component).forEach(function (timeUnitDomainData) {
+        data.push(timeUnitDomainData);
+    });
+    return data;
+}
+exports.assembleData = assembleData;
+
+},{"../../util":273,"./bin":231,"./colorrank":232,"./filter":234,"./formatparse":235,"./formula":236,"./nonpositivenullfilter":237,"./nullfilter":238,"./source":239,"./stackscale":240,"./summary":241,"./timeunit":242,"./timeunitdomain":243}],234:[function(require,module,exports){
+"use strict";
+var filter;
+(function (filter_1) {
+    function parse(model) {
+        return model.transform().filter;
+    }
+    filter_1.parseUnit = parse;
+    function parseFacet(model) {
+        var filterComponent = parse(model);
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source && childDataComponent.filter) {
+            filterComponent =
+                (filterComponent ? filterComponent + ' && ' : '') +
+                    childDataComponent.filter;
+            delete childDataComponent.filter;
+        }
+        return filterComponent;
+    }
+    filter_1.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var filterComponent = parse(model);
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (model.compatibleSource(child) && childDataComponent.filter && childDataComponent.filter === filterComponent) {
+                delete childDataComponent.filter;
+            }
+        });
+        return filterComponent;
+    }
+    filter_1.parseLayer = parseLayer;
+    function assemble(component) {
+        var filter = component.filter;
+        return filter ? [{
+                type: 'filter',
+                test: filter
+            }] : [];
+    }
+    filter_1.assemble = assemble;
+})(filter = exports.filter || (exports.filter = {}));
+
+},{}],235:[function(require,module,exports){
+"use strict";
+var fielddef_1 = require('../../fielddef');
+var type_1 = require('../../type');
+var util_1 = require('../../util');
+var formatParse;
+(function (formatParse) {
+    function parse(model) {
+        var calcFieldMap = (model.transform().calculate || []).reduce(function (fieldMap, formula) {
+            fieldMap[formula.field] = true;
+            return fieldMap;
+        }, {});
+        var parseComponent = {};
+        model.forEach(function (fieldDef) {
+            if (fieldDef.type === type_1.TEMPORAL) {
+                parseComponent[fieldDef.field] = 'date';
+            }
+            else if (fieldDef.type === type_1.QUANTITATIVE) {
+                if (fielddef_1.isCount(fieldDef) || calcFieldMap[fieldDef.field]) {
+                    return;
+                }
+                parseComponent[fieldDef.field] = 'number';
+            }
+        });
+        return parseComponent;
+    }
+    formatParse.parseUnit = parse;
+    function parseFacet(model) {
+        var parseComponent = parse(model);
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source && childDataComponent.formatParse) {
+            util_1.extend(parseComponent, childDataComponent.formatParse);
+            delete childDataComponent.formatParse;
+        }
+        return parseComponent;
+    }
+    formatParse.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var parseComponent = parse(model);
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (model.compatibleSource(child) && !util_1.differ(childDataComponent.formatParse, parseComponent)) {
+                util_1.extend(parseComponent, childDataComponent.formatParse);
+                delete childDataComponent.formatParse;
+            }
+        });
+        return parseComponent;
+    }
+    formatParse.parseLayer = parseLayer;
+})(formatParse = exports.formatParse || (exports.formatParse = {}));
+
+},{"../../fielddef":264,"../../type":272,"../../util":273}],236:[function(require,module,exports){
+"use strict";
+var util_1 = require('../../util');
+var formula;
+(function (formula_1) {
+    function parse(model) {
+        return (model.transform().calculate || []).reduce(function (formulaComponent, formula) {
+            formulaComponent[util_1.hash(formula)] = formula;
+            return formulaComponent;
+        }, {});
+    }
+    formula_1.parseUnit = parse;
+    function parseFacet(model) {
+        var formulaComponent = parse(model);
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source) {
+            util_1.extend(formulaComponent, childDataComponent.calculate);
+            delete childDataComponent.calculate;
+        }
+        return formulaComponent;
+    }
+    formula_1.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var formulaComponent = parse(model);
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (!childDataComponent.source && childDataComponent.calculate) {
+                util_1.extend(formulaComponent || {}, childDataComponent.calculate);
+                delete childDataComponent.calculate;
+            }
+        });
+        return formulaComponent;
+    }
+    formula_1.parseLayer = parseLayer;
+    function assemble(component) {
+        return util_1.vals(component.calculate).reduce(function (transform, formula) {
+            transform.push(util_1.extend({ type: 'formula' }, formula));
+            return transform;
+        }, []);
+    }
+    formula_1.assemble = assemble;
+})(formula = exports.formula || (exports.formula = {}));
+
+},{"../../util":273}],237:[function(require,module,exports){
+"use strict";
+var scale_1 = require('../../scale');
+var util_1 = require('../../util');
+var nonPositiveFilter;
+(function (nonPositiveFilter_1) {
+    function parseUnit(model) {
+        return model.channels().reduce(function (nonPositiveComponent, channel) {
+            var scale = model.scale(channel);
+            if (!model.field(channel) || !scale) {
+                return nonPositiveComponent;
+            }
+            nonPositiveComponent[model.field(channel)] = scale.type === scale_1.ScaleType.LOG;
+            return nonPositiveComponent;
+        }, {});
+    }
+    nonPositiveFilter_1.parseUnit = parseUnit;
+    function parseFacet(model) {
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source) {
+            var nonPositiveFilterComponent = childDataComponent.nonPositiveFilter;
+            delete childDataComponent.nonPositiveFilter;
+            return nonPositiveFilterComponent;
+        }
+        return {};
+    }
+    nonPositiveFilter_1.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var nonPositiveFilter = {};
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (model.compatibleSource(child) && !util_1.differ(childDataComponent.nonPositiveFilter, nonPositiveFilter)) {
+                util_1.extend(nonPositiveFilter, childDataComponent.nonPositiveFilter);
+                delete childDataComponent.nonPositiveFilter;
+            }
+        });
+        return nonPositiveFilter;
+    }
+    nonPositiveFilter_1.parseLayer = parseLayer;
+    function assemble(component) {
+        return util_1.keys(component.nonPositiveFilter).filter(function (field) {
+            return component.nonPositiveFilter[field];
+        }).map(function (field) {
+            return {
+                type: 'filter',
+                test: 'datum.' + field + ' > 0'
+            };
+        });
+    }
+    nonPositiveFilter_1.assemble = assemble;
+})(nonPositiveFilter = exports.nonPositiveFilter || (exports.nonPositiveFilter = {}));
+
+},{"../../scale":267,"../../util":273}],238:[function(require,module,exports){
+"use strict";
+var util_1 = require('../../util');
+var DEFAULT_NULL_FILTERS = {
+    nominal: false,
+    ordinal: false,
+    quantitative: true,
+    temporal: true
+};
+var nullFilter;
+(function (nullFilter) {
+    function parse(model) {
+        var filterNull = model.transform().filterNull;
+        return model.reduce(function (aggregator, fieldDef) {
+            if (filterNull ||
+                (filterNull === undefined && fieldDef.field && fieldDef.field !== '*' && DEFAULT_NULL_FILTERS[fieldDef.type])) {
+                aggregator[fieldDef.field] = true;
+            }
+            else {
+                aggregator[fieldDef.field] = false;
+            }
+            return aggregator;
+        }, {});
+    }
+    nullFilter.parseUnit = parse;
+    function parseFacet(model) {
+        var nullFilterComponent = parse(model);
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source) {
+            util_1.extend(nullFilterComponent, childDataComponent.nullFilter);
+            delete childDataComponent.nullFilter;
+        }
+        return nullFilterComponent;
+    }
+    nullFilter.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var nullFilterComponent = parse(model);
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (model.compatibleSource(child) && !util_1.differ(childDataComponent.nullFilter, nullFilterComponent)) {
+                util_1.extend(nullFilterComponent, childDataComponent.nullFilter);
+                delete childDataComponent.nullFilter;
+            }
+        });
+        return nullFilterComponent;
+    }
+    nullFilter.parseLayer = parseLayer;
+    function assemble(component) {
+        var filteredFields = util_1.keys(component.nullFilter).filter(function (field) {
+            return component.nullFilter[field];
+        });
+        return filteredFields.length > 0 ?
+            [{
+                    type: 'filter',
+                    test: filteredFields.map(function (fieldName) {
+                        return 'datum.' + fieldName + '!==null';
+                    }).join(' && ')
+                }] : [];
+    }
+    nullFilter.assemble = assemble;
+})(nullFilter = exports.nullFilter || (exports.nullFilter = {}));
+
+},{"../../util":273}],239:[function(require,module,exports){
+"use strict";
+var data_1 = require('../../data');
+var util_1 = require('../../util');
+var nullfilter_1 = require('./nullfilter');
+var filter_1 = require('./filter');
+var bin_1 = require('./bin');
+var formula_1 = require('./formula');
+var timeunit_1 = require('./timeunit');
+var source;
+(function (source) {
+    function parse(model) {
+        var data = model.data();
+        if (data) {
+            var sourceData = { name: model.dataName(data_1.SOURCE) };
+            if (data.values && data.values.length > 0) {
+                sourceData.values = model.data().values;
+                sourceData.format = { type: 'json' };
+            }
+            else if (data.url) {
+                sourceData.url = data.url;
+                var defaultExtension = /(?:\.([^.]+))?$/.exec(sourceData.url)[1];
+                if (!util_1.contains(['json', 'csv', 'tsv'], defaultExtension)) {
+                    defaultExtension = 'json';
+                }
+                sourceData.format = { type: model.data().formatType || defaultExtension };
+            }
+            return sourceData;
+        }
+        else if (!model.parent()) {
+            return { name: model.dataName(data_1.SOURCE) };
+        }
+        return undefined;
+    }
+    source.parseUnit = parse;
+    function parseFacet(model) {
+        var sourceData = parse(model);
+        if (!model.child().component.data.source) {
+            model.child().renameData(model.child().dataName(data_1.SOURCE), model.dataName(data_1.SOURCE));
+        }
+        return sourceData;
+    }
+    source.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var sourceData = parse(model);
+        model.children().forEach(function (child) {
+            var childData = child.component.data;
+            if (model.compatibleSource(child)) {
+                var canMerge = !childData.filter && !childData.formatParse && !childData.nullFilter;
+                if (canMerge) {
+                    child.renameData(child.dataName(data_1.SOURCE), model.dataName(data_1.SOURCE));
+                    delete childData.source;
+                }
+                else {
+                    childData.source = {
+                        name: child.dataName(data_1.SOURCE),
+                        source: model.dataName(data_1.SOURCE)
+                    };
+                }
+            }
+        });
+        return sourceData;
+    }
+    source.parseLayer = parseLayer;
+    function assemble(model, component) {
+        if (component.source) {
+            var sourceData = component.source;
+            if (component.formatParse) {
+                component.source.format = component.source.format || {};
+                component.source.format.parse = component.formatParse;
+            }
+            sourceData.transform = [].concat(nullfilter_1.nullFilter.assemble(component), formula_1.formula.assemble(component), filter_1.filter.assemble(component), bin_1.bin.assemble(component), timeunit_1.timeUnit.assemble(component));
+            return sourceData;
+        }
+        return null;
+    }
+    source.assemble = assemble;
+})(source = exports.source || (exports.source = {}));
+
+},{"../../data":262,"../../util":273,"./bin":231,"./filter":234,"./formula":236,"./nullfilter":238,"./timeunit":242}],240:[function(require,module,exports){
+"use strict";
+var data_1 = require('../../data');
+var fielddef_1 = require('../../fielddef');
+var stackScale;
+(function (stackScale) {
+    function parseUnit(model) {
+        var stackProps = model.stack();
+        if (stackProps) {
+            var groupbyChannel = stackProps.groupbyChannel;
+            var fieldChannel = stackProps.fieldChannel;
+            return {
+                name: model.dataName(data_1.STACKED_SCALE),
+                source: model.dataName(data_1.SUMMARY),
+                transform: [{
+                        type: 'aggregate',
+                        groupby: [model.field(groupbyChannel)],
+                        summarize: [{ ops: ['sum'], field: model.field(fieldChannel) }]
+                    }]
+            };
+        }
+        return null;
+    }
+    stackScale.parseUnit = parseUnit;
+    ;
+    function parseFacet(model) {
+        var child = model.child();
+        var childDataComponent = child.component.data;
+        if (!childDataComponent.source && childDataComponent.stackScale) {
+            var stackComponent = childDataComponent.stackScale;
+            var newName = model.dataName(data_1.STACKED_SCALE);
+            child.renameData(stackComponent.name, newName);
+            stackComponent.name = newName;
+            stackComponent.source = model.dataName(data_1.SUMMARY);
+            stackComponent.transform[0].groupby = model.reduce(function (groupby, fieldDef) {
+                groupby.push(fielddef_1.field(fieldDef));
+                return groupby;
+            }, stackComponent.transform[0].groupby);
+            delete childDataComponent.stackScale;
+            return stackComponent;
+        }
+        return null;
+    }
+    stackScale.parseFacet = parseFacet;
+    function parseLayer(model) {
+        return null;
+    }
+    stackScale.parseLayer = parseLayer;
+    function assemble(component) {
+        return component.stackScale;
+    }
+    stackScale.assemble = assemble;
+})(stackScale = exports.stackScale || (exports.stackScale = {}));
+
+},{"../../data":262,"../../fielddef":264}],241:[function(require,module,exports){
+"use strict";
+var aggregate_1 = require('../../aggregate');
+var data_1 = require('../../data');
+var fielddef_1 = require('../../fielddef');
+var util_1 = require('../../util');
+var summary;
+(function (summary) {
+    function addDimension(dims, fieldDef) {
+        if (fieldDef.bin) {
+            dims[fielddef_1.field(fieldDef, { binSuffix: '_start' })] = true;
+            dims[fielddef_1.field(fieldDef, { binSuffix: '_mid' })] = true;
+            dims[fielddef_1.field(fieldDef, { binSuffix: '_end' })] = true;
+            dims[fielddef_1.field(fieldDef, { binSuffix: '_range' })] = true;
+        }
+        else {
+            dims[fielddef_1.field(fieldDef)] = true;
+        }
+        return dims;
+    }
+    function parseUnit(model) {
+        var dims = {};
+        var meas = {};
+        model.forEach(function (fieldDef, channel) {
+            if (fieldDef.aggregate) {
+                if (fieldDef.aggregate === aggregate_1.AggregateOp.COUNT) {
+                    meas['*'] = meas['*'] || {};
+                    meas['*']['count'] = true;
+                }
+                else {
+                    meas[fieldDef.field] = meas[fieldDef.field] || {};
+                    meas[fieldDef.field][fieldDef.aggregate] = true;
+                }
+            }
+            else {
+                addDimension(dims, fieldDef);
+            }
+        });
+        return [{
+                name: model.dataName(data_1.SUMMARY),
+                dimensions: dims,
+                measures: meas
+            }];
+    }
+    summary.parseUnit = parseUnit;
+    function parseFacet(model) {
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source && childDataComponent.summary) {
+            var summaryComponents = childDataComponent.summary.map(function (summaryComponent) {
+                summaryComponent.dimensions = model.reduce(addDimension, summaryComponent.dimensions);
+                var summaryNameWithoutPrefix = summaryComponent.name.substr(model.child().name('').length);
+                model.child().renameData(summaryComponent.name, summaryNameWithoutPrefix);
+                summaryComponent.name = summaryNameWithoutPrefix;
+                return summaryComponent;
+            });
+            delete childDataComponent.summary;
+            return summaryComponents;
+        }
+        return [];
+    }
+    summary.parseFacet = parseFacet;
+    function mergeMeasures(parentMeasures, childMeasures) {
+        for (var field_1 in childMeasures) {
+            if (childMeasures.hasOwnProperty(field_1)) {
+                var ops = childMeasures[field_1];
+                for (var op in ops) {
+                    if (ops.hasOwnProperty(op)) {
+                        if (field_1 in parentMeasures) {
+                            parentMeasures[field_1][op] = true;
+                        }
+                        else {
+                            parentMeasures[field_1] = { op: true };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    function parseLayer(model) {
+        var summaries = {};
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (!childDataComponent.source && childDataComponent.summary) {
+                childDataComponent.summary.forEach(function (childSummary) {
+                    var key = util_1.hash(childSummary.dimensions);
+                    if (key in summaries) {
+                        mergeMeasures(summaries[key].measures, childSummary.measures);
+                    }
+                    else {
+                        childSummary.name = model.dataName(data_1.SUMMARY) + '_' + util_1.keys(summaries).length;
+                        summaries[key] = childSummary;
+                    }
+                    child.renameData(child.dataName(data_1.SUMMARY), summaries[key].name);
+                    delete childDataComponent.summary;
+                });
+            }
+        });
+        return util_1.vals(summaries);
+    }
+    summary.parseLayer = parseLayer;
+    function assemble(component, model) {
+        if (!component.summary) {
+            return [];
+        }
+        return component.summary.reduce(function (summaryData, summaryComponent) {
+            var dims = summaryComponent.dimensions;
+            var meas = summaryComponent.measures;
+            var groupby = util_1.keys(dims);
+            var summarize = util_1.reduce(meas, function (aggregator, fnDictSet, field) {
+                aggregator[field] = util_1.keys(fnDictSet);
+                return aggregator;
+            }, {});
+            if (util_1.keys(meas).length > 0) {
+                summaryData.push({
+                    name: summaryComponent.name,
+                    source: model.dataName(data_1.SOURCE),
+                    transform: [{
+                            type: 'aggregate',
+                            groupby: groupby,
+                            summarize: summarize
+                        }]
+                });
+            }
+            return summaryData;
+        }, []);
+    }
+    summary.assemble = assemble;
+})(summary = exports.summary || (exports.summary = {}));
+
+},{"../../aggregate":223,"../../data":262,"../../fielddef":264,"../../util":273}],242:[function(require,module,exports){
+"use strict";
+var fielddef_1 = require('../../fielddef');
+var type_1 = require('../../type');
+var util_1 = require('../../util');
+var time_1 = require('./../time');
+var timeUnit;
+(function (timeUnit) {
+    function parse(model) {
+        return model.reduce(function (timeUnitComponent, fieldDef, channel) {
+            var ref = fielddef_1.field(fieldDef, { nofn: true, datum: true });
+            if (fieldDef.type === type_1.TEMPORAL && fieldDef.timeUnit) {
+                var hash = fielddef_1.field(fieldDef);
+                timeUnitComponent[hash] = {
+                    type: 'formula',
+                    field: fielddef_1.field(fieldDef),
+                    expr: time_1.parseExpression(fieldDef.timeUnit, ref)
+                };
+            }
+            return timeUnitComponent;
+        }, {});
+    }
+    timeUnit.parseUnit = parse;
+    function parseFacet(model) {
+        var timeUnitComponent = parse(model);
+        var childDataComponent = model.child().component.data;
+        if (!childDataComponent.source) {
+            util_1.extend(timeUnitComponent, childDataComponent.timeUnit);
+            delete childDataComponent.timeUnit;
+        }
+        return timeUnitComponent;
+    }
+    timeUnit.parseFacet = parseFacet;
+    function parseLayer(model) {
+        var timeUnitComponent = parse(model);
+        model.children().forEach(function (child) {
+            var childDataComponent = child.component.data;
+            if (!childDataComponent.source) {
+                util_1.extend(timeUnitComponent, childDataComponent.timeUnit);
+                delete childDataComponent.timeUnit;
+            }
+        });
+        return timeUnitComponent;
+    }
+    timeUnit.parseLayer = parseLayer;
+    function assemble(component) {
+        return util_1.vals(component.timeUnit);
+    }
+    timeUnit.assemble = assemble;
+})(timeUnit = exports.timeUnit || (exports.timeUnit = {}));
+
+},{"../../fielddef":264,"../../type":272,"../../util":273,"./../time":259}],243:[function(require,module,exports){
+"use strict";
+var util_1 = require('../../util');
+var time_1 = require('./../time');
+var timeUnitDomain;
+(function (timeUnitDomain) {
+    function parse(model) {
+        return model.reduce(function (timeUnitDomainMap, fieldDef, channel) {
+            if (fieldDef.timeUnit) {
+                var domain = time_1.rawDomain(fieldDef.timeUnit, channel);
+                if (domain) {
+                    timeUnitDomainMap[fieldDef.timeUnit] = true;
+                }
+            }
+            return timeUnitDomainMap;
+        }, {});
+    }
+    timeUnitDomain.parseUnit = parse;
+    function parseFacet(model) {
+        return util_1.extend(parse(model), model.child().component.data.timeUnitDomain);
+    }
+    timeUnitDomain.parseFacet = parseFacet;
+    function parseLayer(model) {
+        return util_1.extend(parse(model), model.children().forEach(function (child) {
+            return child.component.data.timeUnitDomain;
+        }));
+    }
+    timeUnitDomain.parseLayer = parseLayer;
+    function assemble(component) {
+        return util_1.keys(component.timeUnitDomain).reduce(function (timeUnitData, tu) {
+            var timeUnit = tu;
+            var domain = time_1.rawDomain(timeUnit, null);
+            if (domain) {
+                timeUnitData.push({
+                    name: timeUnit,
+                    values: domain,
+                    transform: [{
+                            type: 'formula',
+                            field: 'date',
+                            expr: time_1.parseExpression(timeUnit, 'datum.data', true)
+                        }]
+                });
+            }
+            return timeUnitData;
+        }, []);
+    }
+    timeUnitDomain.assemble = assemble;
+})(timeUnitDomain = exports.timeUnitDomain || (exports.timeUnitDomain = {}));
+
+},{"../../util":273,"./../time":259}],244:[function(require,module,exports){
+"use strict";
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+};
+var axis_1 = require('../axis');
+var channel_1 = require('../channel');
+var config_1 = require('../config');
+var data_1 = require('../data');
+var encoding_1 = require('../encoding');
+var fielddef_1 = require('../fielddef');
+var scale_1 = require('../scale');
+var type_1 = require('../type');
+var util_1 = require('../util');
+var axis_2 = require('./axis');
+var common_1 = require('./common');
+var data_2 = require('./data/data');
+var layout_1 = require('./layout');
+var model_1 = require('./model');
+var scale_2 = require('./scale');
+var FacetModel = (function (_super) {
+    __extends(FacetModel, _super);
+    function FacetModel(spec, parent, parentGivenName) {
+        _super.call(this, spec, parent, parentGivenName);
+        var config = this._config = this._initConfig(spec.config, parent);
+        var child = this._child = common_1.buildModel(spec.spec, this, this.name('child'));
+        var facet = this._facet = this._initFacet(spec.facet);
+        this._scale = this._initScale(facet, config, child);
+        this._axis = this._initAxis(facet, config, child);
+    }
+    FacetModel.prototype._initConfig = function (specConfig, parent) {
+        return util_1.mergeDeep(util_1.duplicate(config_1.defaultConfig), specConfig, parent ? parent.config() : {});
+    };
+    FacetModel.prototype._initFacet = function (facet) {
+        facet = util_1.duplicate(facet);
+        var model = this;
+        encoding_1.channelMappingForEach(this.channels(), facet, function (fieldDef, channel) {
+            if (!fielddef_1.isDimension(fieldDef)) {
+                model.addWarning(channel + ' encoding should be ordinal.');
+            }
+            if (fieldDef.type) {
+                fieldDef.type = type_1.getFullName(fieldDef.type);
+            }
+        });
+        return facet;
+    };
+    FacetModel.prototype._initScale = function (facet, config, child) {
+        return [channel_1.ROW, channel_1.COLUMN].reduce(function (_scale, channel) {
+            if (facet[channel]) {
+                var scaleSpec = facet[channel].scale || {};
+                _scale[channel] = util_1.extend({
+                    type: scale_1.ScaleType.ORDINAL,
+                    round: config.facet.scale.round,
+                    padding: (channel === channel_1.ROW && child.has(channel_1.Y)) || (channel === channel_1.COLUMN && child.has(channel_1.X)) ?
+                        config.facet.scale.padding : 0
+                }, scaleSpec);
+            }
+            return _scale;
+        }, {});
+    };
+    FacetModel.prototype._initAxis = function (facet, config, child) {
+        return [channel_1.ROW, channel_1.COLUMN].reduce(function (_axis, channel) {
+            if (facet[channel]) {
+                var axisSpec = facet[channel].axis;
+                if (axisSpec !== false) {
+                    var modelAxis = _axis[channel] = util_1.extend({}, config.facet.axis, axisSpec === true ? {} : axisSpec || {});
+                    if (channel === channel_1.ROW) {
+                        var yAxis = child.axis(channel_1.Y);
+                        if (yAxis && yAxis.orient !== axis_1.AxisOrient.RIGHT && !modelAxis.orient) {
+                            modelAxis.orient = axis_1.AxisOrient.RIGHT;
+                        }
+                        if (child.has(channel_1.X) && !modelAxis.labelAngle) {
+                            modelAxis.labelAngle = modelAxis.orient === axis_1.AxisOrient.RIGHT ? 90 : 270;
+                        }
+                    }
+                }
+            }
+            return _axis;
+        }, {});
+    };
+    FacetModel.prototype.facet = function () {
+        return this._facet;
+    };
+    FacetModel.prototype.has = function (channel) {
+        return !!this._facet[channel];
+    };
+    FacetModel.prototype.child = function () {
+        return this._child;
+    };
+    FacetModel.prototype.hasSummary = function () {
+        var summary = this.component.data.summary;
+        for (var i = 0; i < summary.length; i++) {
+            if (util_1.keys(summary[i].measures).length > 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+    FacetModel.prototype.dataTable = function () {
+        return (this.hasSummary() ? data_1.SUMMARY : data_1.SOURCE) + '';
+    };
+    FacetModel.prototype.fieldDef = function (channel) {
+        return this.facet()[channel];
+    };
+    FacetModel.prototype.stack = function () {
+        return null;
+    };
+    FacetModel.prototype.parseData = function () {
+        this.child().parseData();
+        this.component.data = data_2.parseFacetData(this);
+    };
+    FacetModel.prototype.parseSelectionData = function () {
+    };
+    FacetModel.prototype.parseLayoutData = function () {
+        this.child().parseLayoutData();
+        this.component.layout = layout_1.parseFacetLayout(this);
+    };
+    FacetModel.prototype.parseScale = function () {
+        var child = this.child();
+        var model = this;
+        child.parseScale();
+        var scaleComponent = this.component.scale = scale_2.parseScaleComponent(this);
+        util_1.keys(child.component.scale).forEach(function (channel) {
+            if (true) {
+                scaleComponent[channel] = child.component.scale[channel];
+                util_1.vals(scaleComponent[channel]).forEach(function (scale) {
+                    var scaleNameWithoutPrefix = scale.name.substr(child.name('').length);
+                    var newName = model.scaleName(scaleNameWithoutPrefix);
+                    child.renameScale(scale.name, newName);
+                    scale.name = newName;
+                });
+                delete child.component.scale[channel];
+            }
+        });
+    };
+    FacetModel.prototype.parseMark = function () {
+        this.child().parseMark();
+        this.component.mark = util_1.extend({
+            name: this.name('cell'),
+            type: 'group',
+            from: util_1.extend(this.dataTable() ? { data: this.dataTable() } : {}, {
+                transform: [{
+                        type: 'facet',
+                        groupby: [].concat(this.has(channel_1.ROW) ? [this.field(channel_1.ROW)] : [], this.has(channel_1.COLUMN) ? [this.field(channel_1.COLUMN)] : [])
+                    }]
+            }),
+            properties: {
+                update: getFacetGroupProperties(this)
+            }
+        }, this.child().assembleGroup());
+    };
+    FacetModel.prototype.parseAxis = function () {
+        this.child().parseAxis();
+        this.component.axis = axis_2.parseAxisComponent(this, [channel_1.ROW, channel_1.COLUMN]);
+    };
+    FacetModel.prototype.parseAxisGroup = function () {
+        var xAxisGroup = parseAxisGroup(this, channel_1.X);
+        var yAxisGroup = parseAxisGroup(this, channel_1.Y);
+        this.component.axisGroup = util_1.extend(xAxisGroup ? { x: xAxisGroup } : {}, yAxisGroup ? { y: yAxisGroup } : {});
+    };
+    FacetModel.prototype.parseGridGroup = function () {
+        var child = this.child();
+        this.component.gridGroup = util_1.extend(!child.has(channel_1.X) && this.has(channel_1.COLUMN) ? { column: getColumnGridGroups(this) } : {}, !child.has(channel_1.Y) && this.has(channel_1.ROW) ? { row: getRowGridGroups(this) } : {});
+    };
+    FacetModel.prototype.parseLegend = function () {
+        this.child().parseLegend();
+        this.component.legend = this._child.component.legend;
+        this._child.component.legend = {};
+    };
+    FacetModel.prototype.assembleParentGroupProperties = function () {
+        return null;
+    };
+    FacetModel.prototype.assembleData = function (data) {
+        data_2.assembleData(this, data);
+        return this._child.assembleData(data);
+    };
+    FacetModel.prototype.assembleLayout = function (layoutData) {
+        this._child.assembleLayout(layoutData);
+        return layout_1.assembleLayout(this, layoutData);
+    };
+    FacetModel.prototype.assembleMarks = function () {
+        return [].concat(util_1.vals(this.component.axisGroup), util_1.flatten(util_1.vals(this.component.gridGroup)), this.component.mark);
+    };
+    FacetModel.prototype.channels = function () {
+        return [channel_1.ROW, channel_1.COLUMN];
+    };
+    FacetModel.prototype.mapping = function () {
+        return this.facet();
+    };
+    FacetModel.prototype.isFacet = function () {
+        return true;
+    };
+    return FacetModel;
+}(model_1.Model));
+exports.FacetModel = FacetModel;
+function getFacetGroupProperties(model) {
+    var child = model.child();
+    var mergedCellConfig = util_1.extend({}, child.config().cell, child.config().facet.cell);
+    return util_1.extend({
+        x: model.has(channel_1.COLUMN) ? {
+            scale: model.scaleName(channel_1.COLUMN),
+            field: model.field(channel_1.COLUMN),
+            offset: model.scale(channel_1.COLUMN).padding / 2
+        } : { value: model.config().facet.scale.padding / 2 },
+        y: model.has(channel_1.ROW) ? {
+            scale: model.scaleName(channel_1.ROW),
+            field: model.field(channel_1.ROW),
+            offset: model.scale(channel_1.ROW).padding / 2
+        } : { value: model.config().facet.scale.padding / 2 },
+        width: { field: { parent: model.child().sizeName('width') } },
+        height: { field: { parent: model.child().sizeName('height') } }
+    }, child.assembleParentGroupProperties(mergedCellConfig));
+}
+function parseAxisGroup(model, channel) {
+    var axisGroup = null;
+    var child = model.child();
+    if (child.has(channel)) {
+        if (child.axis(channel)) {
+            if (true) {
+                axisGroup = channel === channel_1.X ? getXAxesGroup(model) : getYAxesGroup(model);
+                if (child.axis(channel) && axis_2.gridShow(child, channel)) {
+                    child.component.axis[channel] = axis_2.parseInnerAxis(channel, child);
+                }
+                else {
+                    delete child.component.axis[channel];
+                }
+            }
+            else {
+            }
+        }
+    }
+    return axisGroup;
+}
+function getXAxesGroup(model) {
+    var hasCol = model.has(channel_1.COLUMN);
+    return util_1.extend({
+        name: model.name('x-axes'),
+        type: 'group'
+    }, hasCol ? {
+        from: {
+            data: model.dataTable(),
+            transform: [{
+                    type: 'aggregate',
+                    groupby: [model.field(channel_1.COLUMN)],
+                    summarize: { '*': ['count'] }
+                }]
+        }
+    } : {}, {
+        properties: {
+            update: {
+                width: { field: { parent: model.child().sizeName('width') } },
+                height: {
+                    field: { group: 'height' }
+                },
+                x: hasCol ? {
+                    scale: model.scaleName(channel_1.COLUMN),
+                    field: model.field(channel_1.COLUMN),
+                    offset: model.scale(channel_1.COLUMN).padding / 2
+                } : {
+                    value: model.config().facet.scale.padding / 2
+                }
+            }
+        },
+        axes: [axis_2.parseAxis(channel_1.X, model.child())]
+    });
+}
+function getYAxesGroup(model) {
+    var hasRow = model.has(channel_1.ROW);
+    return util_1.extend({
+        name: model.name('y-axes'),
+        type: 'group'
+    }, hasRow ? {
+        from: {
+            data: model.dataTable(),
+            transform: [{
+                    type: 'aggregate',
+                    groupby: [model.field(channel_1.ROW)],
+                    summarize: { '*': ['count'] }
+                }]
+        }
+    } : {}, {
+        properties: {
+            update: {
+                width: {
+                    field: { group: 'width' }
+                },
+                height: { field: { parent: model.child().sizeName('height') } },
+                y: hasRow ? {
+                    scale: model.scaleName(channel_1.ROW),
+                    field: model.field(channel_1.ROW),
+                    offset: model.scale(channel_1.ROW).padding / 2
+                } : {
+                    value: model.config().facet.scale.padding / 2
+                }
+            }
+        },
+        axes: [axis_2.parseAxis(channel_1.Y, model.child())]
+    });
+}
+function getRowGridGroups(model) {
+    var facetGridConfig = model.config().facet.grid;
+    var rowGrid = {
+        name: model.name('row-grid'),
+        type: 'rule',
+        from: {
+            data: model.dataTable(),
+            transform: [{ type: 'facet', groupby: [model.field(channel_1.ROW)] }]
+        },
+        properties: {
+            update: {
+                y: {
+                    scale: model.scaleName(channel_1.ROW),
+                    field: model.field(channel_1.ROW)
+                },
+                x: { value: 0, offset: -facetGridConfig.offset },
+                x2: { field: { group: 'width' }, offset: facetGridConfig.offset },
+                stroke: { value: facetGridConfig.color },
+                strokeOpacity: { value: facetGridConfig.opacity },
+                strokeWidth: { value: 0.5 }
+            }
+        }
+    };
+    return [rowGrid, {
+            name: model.name('row-grid-end'),
+            type: 'rule',
+            properties: {
+                update: {
+                    y: { field: { group: 'height' } },
+                    x: { value: 0, offset: -facetGridConfig.offset },
+                    x2: { field: { group: 'width' }, offset: facetGridConfig.offset },
+                    stroke: { value: facetGridConfig.color },
+                    strokeOpacity: { value: facetGridConfig.opacity },
+                    strokeWidth: { value: 0.5 }
+                }
+            }
+        }];
+}
+function getColumnGridGroups(model) {
+    var facetGridConfig = model.config().facet.grid;
+    var columnGrid = {
+        name: model.name('column-grid'),
+        type: 'rule',
+        from: {
+            data: model.dataTable(),
+            transform: [{ type: 'facet', groupby: [model.field(channel_1.COLUMN)] }]
+        },
+        properties: {
+            update: {
+                x: {
+                    scale: model.scaleName(channel_1.COLUMN),
+                    field: model.field(channel_1.COLUMN)
+                },
+                y: { value: 0, offset: -facetGridConfig.offset },
+                y2: { field: { group: 'height' }, offset: facetGridConfig.offset },
+                stroke: { value: facetGridConfig.color },
+                strokeOpacity: { value: facetGridConfig.opacity },
+                strokeWidth: { value: 0.5 }
+            }
+        }
+    };
+    return [columnGrid, {
+            name: model.name('column-grid-end'),
+            type: 'rule',
+            properties: {
+                update: {
+                    x: { field: { group: 'width' } },
+                    y: { value: 0, offset: -facetGridConfig.offset },
+                    y2: { field: { group: 'height' }, offset: facetGridConfig.offset },
+                    stroke: { value: facetGridConfig.color },
+                    strokeOpacity: { value: facetGridConfig.opacity },
+                    strokeWidth: { value: 0.5 }
+                }
+            }
+        }];
+}
+
+},{"../axis":224,"../channel":226,"../config":261,"../data":262,"../encoding":263,"../fielddef":264,"../scale":267,"../type":272,"../util":273,"./axis":227,"./common":228,"./data/data":233,"./layout":246,"./model":256,"./scale":257}],245:[function(require,module,exports){
+"use strict";
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+};
+var util_1 = require('../util');
+var config_1 = require('../config');
+var data_1 = require('./data/data');
+var layout_1 = require('./layout');
+var model_1 = require('./model');
+var common_1 = require('./common');
+var vega_schema_1 = require('../vega.schema');
+var LayerModel = (function (_super) {
+    __extends(LayerModel, _super);
+    function LayerModel(spec, parent, parentGivenName) {
+        var _this = this;
+        _super.call(this, spec, parent, parentGivenName);
+        this._config = this._initConfig(spec.config, parent);
+        this._children = spec.layers.map(function (layer, i) {
+            return common_1.buildModel(layer, _this, _this.name('layer_' + i));
+        });
+    }
+    LayerModel.prototype._initConfig = function (specConfig, parent) {
+        return util_1.mergeDeep(util_1.duplicate(config_1.defaultConfig), specConfig, parent ? parent.config() : {});
+    };
+    LayerModel.prototype.has = function (channel) {
+        return false;
+    };
+    LayerModel.prototype.children = function () {
+        return this._children;
+    };
+    LayerModel.prototype.isOrdinalScale = function (channel) {
+        return this._children[0].isOrdinalScale(channel);
+    };
+    LayerModel.prototype.dataTable = function () {
+        return this._children[0].dataTable();
+    };
+    LayerModel.prototype.fieldDef = function (channel) {
+        return null;
+    };
+    LayerModel.prototype.stack = function () {
+        return null;
+    };
+    LayerModel.prototype.parseData = function () {
+        this._children.forEach(function (child) {
+            child.parseData();
+        });
+        this.component.data = data_1.parseLayerData(this);
+    };
+    LayerModel.prototype.parseSelectionData = function () {
+    };
+    LayerModel.prototype.parseLayoutData = function () {
+        this._children.forEach(function (child, i) {
+            child.parseLayoutData();
+        });
+        this.component.layout = layout_1.parseLayerLayout(this);
+    };
+    LayerModel.prototype.parseScale = function () {
+        var model = this;
+        var scaleComponent = this.component.scale = {};
+        this._children.forEach(function (child) {
+            child.parseScale();
+            if (true) {
+                util_1.keys(child.component.scale).forEach(function (channel) {
+                    var childScales = child.component.scale[channel];
+                    if (!childScales) {
+                        return;
+                    }
+                    var modelScales = scaleComponent[channel];
+                    if (modelScales && modelScales.main) {
+                        var modelDomain = modelScales.main.domain;
+                        var childDomain = childScales.main.domain;
+                        if (util_1.isArray(modelDomain)) {
+                            if (util_1.isArray(childScales.main.domain)) {
+                                modelScales.main.domain = modelDomain.concat(childDomain);
+                            }
+                            else {
+                                model.addWarning('custom domain scale cannot be unioned with default field-based domain');
+                            }
+                        }
+                        else {
+                            var unionedFields = vega_schema_1.isUnionedDomain(modelDomain) ? modelDomain.fields : [modelDomain];
+                            if (util_1.isArray(childDomain)) {
+                                model.addWarning('custom domain scale cannot be unioned with default field-based domain');
+                            }
+                            var fields = vega_schema_1.isDataRefDomain(childDomain) ? unionedFields.concat([childDomain]) :
+                                vega_schema_1.isUnionedDomain(childDomain) ? unionedFields.concat(childDomain.fields) :
+                                    unionedFields;
+                            fields = util_1.unique(fields, util_1.hash);
+                            if (fields.length > 1) {
+                                modelScales.main.domain = { fields: fields };
+                            }
+                            else {
+                                modelScales.main.domain = fields[0];
+                            }
+                        }
+                        modelScales.colorLegend = modelScales.colorLegend ? modelScales.colorLegend : childScales.colorLegend;
+                        modelScales.binColorLegend = modelScales.binColorLegend ? modelScales.binColorLegend : childScales.binColorLegend;
+                    }
+                    else {
+                        scaleComponent[channel] = childScales;
+                    }
+                    util_1.vals(childScales).forEach(function (scale) {
+                        var scaleNameWithoutPrefix = scale.name.substr(child.name('').length);
+                        var newName = model.scaleName(scaleNameWithoutPrefix);
+                        child.renameScale(scale.name, newName);
+                        scale.name = newName;
+                    });
+                    delete childScales[channel];
+                });
+            }
+        });
+    };
+    LayerModel.prototype.parseMark = function () {
+        this._children.forEach(function (child) {
+            child.parseMark();
+        });
+    };
+    LayerModel.prototype.parseAxis = function () {
+        var axisComponent = this.component.axis = {};
+        this._children.forEach(function (child) {
+            child.parseAxis();
+            if (true) {
+                util_1.keys(child.component.axis).forEach(function (channel) {
+                    if (!axisComponent[channel]) {
+                        axisComponent[channel] = child.component.axis[channel];
+                    }
+                });
+            }
+        });
+    };
+    LayerModel.prototype.parseAxisGroup = function () {
+        return null;
+    };
+    LayerModel.prototype.parseGridGroup = function () {
+        return null;
+    };
+    LayerModel.prototype.parseLegend = function () {
+        var legendComponent = this.component.legend = {};
+        this._children.forEach(function (child) {
+            child.parseLegend();
+            if (true) {
+                util_1.keys(child.component.legend).forEach(function (channel) {
+                    if (!legendComponent[channel]) {
+                        legendComponent[channel] = child.component.legend[channel];
+                    }
+                });
+            }
+        });
+    };
+    LayerModel.prototype.assembleParentGroupProperties = function () {
+        return null;
+    };
+    LayerModel.prototype.assembleData = function (data) {
+        data_1.assembleData(this, data);
+        this._children.forEach(function (child) {
+            child.assembleData(data);
+        });
+        return data;
+    };
+    LayerModel.prototype.assembleLayout = function (layoutData) {
+        this._children.forEach(function (child) {
+            child.assembleLayout(layoutData);
+        });
+        return layout_1.assembleLayout(this, layoutData);
+    };
+    LayerModel.prototype.assembleMarks = function () {
+        return util_1.flatten(this._children.map(function (child) {
+            return child.assembleMarks();
+        }));
+    };
+    LayerModel.prototype.channels = function () {
+        return [];
+    };
+    LayerModel.prototype.mapping = function () {
+        return null;
+    };
+    LayerModel.prototype.isLayer = function () {
+        return true;
+    };
+    LayerModel.prototype.compatibleSource = function (child) {
+        var sourceUrl = this.data().url;
+        var childData = child.component.data;
+        var compatible = !childData.source || (sourceUrl && sourceUrl === childData.source.url);
+        return compatible;
+    };
+    return LayerModel;
+}(model_1.Model));
+exports.LayerModel = LayerModel;
+
+},{"../config":261,"../util":273,"../vega.schema":275,"./common":228,"./data/data":233,"./layout":246,"./model":256}],246:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../channel');
+var data_1 = require('../data');
+var scale_1 = require('../scale');
+var util_1 = require('../util');
+var mark_1 = require('../mark');
+var time_1 = require('./time');
+function assembleLayout(model, layoutData) {
+    var layoutComponent = model.component.layout;
+    if (!layoutComponent.width && !layoutComponent.height) {
+        return layoutData;
+    }
+    if (true) {
+        var distinctFields = util_1.keys(util_1.extend(layoutComponent.width.distinct, layoutComponent.height.distinct));
+        var formula = layoutComponent.width.formula.concat(layoutComponent.height.formula)
+            .map(function (formula) {
+            return util_1.extend({ type: 'formula' }, formula);
+        });
+        return [
+            distinctFields.length > 0 ? {
+                name: model.dataName(data_1.LAYOUT),
+                source: model.dataTable(),
+                transform: [{
+                        type: 'aggregate',
+                        summarize: distinctFields.map(function (field) {
+                            return { field: field, ops: ['distinct'] };
+                        })
+                    }].concat(formula)
+            } : {
+                name: model.dataName(data_1.LAYOUT),
+                values: [{}],
+                transform: formula
+            }
+        ];
+    }
+}
+exports.assembleLayout = assembleLayout;
+function parseUnitLayout(model) {
+    return {
+        width: parseUnitSizeLayout(model, channel_1.X),
+        height: parseUnitSizeLayout(model, channel_1.Y)
+    };
+}
+exports.parseUnitLayout = parseUnitLayout;
+function parseUnitSizeLayout(model, channel) {
+    var cellConfig = model.config().cell;
+    var nonOrdinalSize = channel === channel_1.X ? cellConfig.width : cellConfig.height;
+    return {
+        distinct: getDistinct(model, channel),
+        formula: [{
+                field: model.channelSizeName(channel),
+                expr: unitSizeExpr(model, channel, nonOrdinalSize)
+            }]
+    };
+}
+function unitSizeExpr(model, channel, nonOrdinalSize) {
+    if (model.has(channel)) {
+        if (model.isOrdinalScale(channel)) {
+            var scale = model.scale(channel);
+            return '(' + cardinalityFormula(model, channel) +
+                ' + ' + scale.padding +
+                ') * ' + scale.bandSize;
+        }
+        else {
+            return nonOrdinalSize + '';
+        }
+    }
+    else {
+        if (model.mark() === mark_1.TEXT && channel === channel_1.X) {
+            return model.config().scale.textBandWidth + '';
+        }
+        return model.config().scale.bandSize + '';
+    }
+}
+function parseFacetLayout(model) {
+    return {
+        width: parseFacetSizeLayout(model, channel_1.COLUMN),
+        height: parseFacetSizeLayout(model, channel_1.ROW)
+    };
+}
+exports.parseFacetLayout = parseFacetLayout;
+function parseFacetSizeLayout(model, channel) {
+    var childLayoutComponent = model.child().component.layout;
+    var sizeType = channel === channel_1.ROW ? 'height' : 'width';
+    var childSizeComponent = childLayoutComponent[sizeType];
+    if (true) {
+        var distinct = util_1.extend(getDistinct(model, channel), childSizeComponent.distinct);
+        var formula = childSizeComponent.formula.concat([{
+                field: model.channelSizeName(channel),
+                expr: facetSizeFormula(model, channel, model.child().channelSizeName(channel))
+            }]);
+        delete childLayoutComponent[sizeType];
+        return {
+            distinct: distinct,
+            formula: formula
+        };
+    }
+}
+function facetSizeFormula(model, channel, innerSize) {
+    var scale = model.scale(channel);
+    if (model.has(channel)) {
+        return '(datum.' + innerSize + ' + ' + scale.padding + ')' + ' * ' + cardinalityFormula(model, channel);
+    }
+    else {
+        return 'datum.' + innerSize + ' + ' + model.config().facet.scale.padding;
+    }
+}
+function parseLayerLayout(model) {
+    return {
+        width: parseLayerSizeLayout(model, channel_1.X),
+        height: parseLayerSizeLayout(model, channel_1.Y)
+    };
+}
+exports.parseLayerLayout = parseLayerLayout;
+function parseLayerSizeLayout(model, channel) {
+    if (true) {
+        var childLayoutComponent = model.children()[0].component.layout;
+        var sizeType_1 = channel === channel_1.Y ? 'height' : 'width';
+        var childSizeComponent = childLayoutComponent[sizeType_1];
+        var distinct = childSizeComponent.distinct;
+        var formula = [{
+                field: model.channelSizeName(channel),
+                expr: childSizeComponent.formula[0].expr
+            }];
+        model.children().forEach(function (child) {
+            delete child.component.layout[sizeType_1];
+        });
+        return {
+            distinct: distinct,
+            formula: formula
+        };
+    }
+}
+function getDistinct(model, channel) {
+    if (model.has(channel) && model.isOrdinalScale(channel)) {
+        var scale = model.scale(channel);
+        if (scale.type === scale_1.ScaleType.ORDINAL && !(scale.domain instanceof Array)) {
+            var distinctField = model.field(channel);
+            var distinct = {};
+            distinct[distinctField] = true;
+            return distinct;
+        }
+    }
+    return {};
+}
+function cardinalityFormula(model, channel) {
+    var scale = model.scale(channel);
+    if (scale.domain instanceof Array) {
+        return scale.domain.length;
+    }
+    var timeUnit = model.fieldDef(channel).timeUnit;
+    var timeUnitDomain = timeUnit ? time_1.rawDomain(timeUnit, channel) : null;
+    return timeUnitDomain !== null ? timeUnitDomain.length :
+        model.field(channel, { datum: true, prefn: 'distinct_' });
+}
+
+},{"../channel":226,"../data":262,"../mark":266,"../scale":267,"../util":273,"./time":259}],247:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../channel');
+var fielddef_1 = require('../fielddef');
+var mark_1 = require('../mark');
+var type_1 = require('../type');
+var util_1 = require('../util');
+var common_1 = require('./common');
+var scale_1 = require('./scale');
+function parseLegendComponent(model) {
+    return [channel_1.COLOR, channel_1.SIZE, channel_1.SHAPE].reduce(function (legendComponent, channel) {
+        if (model.legend(channel)) {
+            legendComponent[channel] = parseLegend(model, channel);
+        }
+        return legendComponent;
+    }, {});
+}
+exports.parseLegendComponent = parseLegendComponent;
+function getLegendDefWithScale(model, channel) {
+    switch (channel) {
+        case channel_1.COLOR:
+            var fieldDef = model.fieldDef(channel_1.COLOR);
+            var scale = model.scaleName(useColorLegendScale(fieldDef) ?
+                scale_1.COLOR_LEGEND :
+                channel_1.COLOR);
+            return model.config().mark.filled ? { fill: scale } : { stroke: scale };
+        case channel_1.SIZE:
+            return { size: model.scaleName(channel_1.SIZE) };
+        case channel_1.SHAPE:
+            return { shape: model.scaleName(channel_1.SHAPE) };
+    }
+    return null;
+}
+function parseLegend(model, channel) {
+    var fieldDef = model.fieldDef(channel);
+    var legend = model.legend(channel);
+    var def = getLegendDefWithScale(model, channel);
+    def.title = title(legend, fieldDef);
+    def.offset = offset(legend, fieldDef);
+    util_1.extend(def, formatMixins(legend, model, channel));
+    ['orient', 'values'].forEach(function (property) {
+        var value = legend[property];
+        if (value !== undefined) {
+            def[property] = value;
+        }
+    });
+    var props = (typeof legend !== 'boolean' && legend.properties) || {};
+    ['title', 'symbols', 'legend', 'labels'].forEach(function (group) {
+        var value = properties[group] ?
+            properties[group](fieldDef, props[group], model, channel) :
+            props[group];
+        if (value !== undefined && util_1.keys(value).length > 0) {
+            def.properties = def.properties || {};
+            def.properties[group] = value;
+        }
+    });
+    return def;
+}
+exports.parseLegend = parseLegend;
+function offset(legend, fieldDef) {
+    if (legend.offset !== undefined) {
+        return legend.offset;
+    }
+    return 0;
+}
+exports.offset = offset;
+function orient(legend, fieldDef) {
+    var orient = legend.orient;
+    if (orient) {
+        return orient;
+    }
+    return 'vertical';
+}
+exports.orient = orient;
+function title(legend, fieldDef) {
+    if (typeof legend !== 'boolean' && legend.title) {
+        return legend.title;
+    }
+    return fielddef_1.title(fieldDef);
+}
+exports.title = title;
+function formatMixins(legend, model, channel) {
+    var fieldDef = model.fieldDef(channel);
+    if (fieldDef.bin) {
+        return {};
+    }
+    return common_1.formatMixins(model, channel, typeof legend !== 'boolean' ? legend.format : undefined);
+}
+exports.formatMixins = formatMixins;
+function useColorLegendScale(fieldDef) {
+    return fieldDef.type === type_1.ORDINAL || fieldDef.bin || fieldDef.timeUnit;
+}
+exports.useColorLegendScale = useColorLegendScale;
+var properties;
+(function (properties) {
+    function symbols(fieldDef, symbolsSpec, model, channel) {
+        var symbols = {};
+        var mark = model.mark();
+        var legend = model.legend(channel);
+        switch (mark) {
+            case mark_1.BAR:
+            case mark_1.TICK:
+            case mark_1.TEXT:
+                symbols.shape = { value: 'square' };
+                break;
+            case mark_1.CIRCLE:
+            case mark_1.SQUARE:
+                symbols.shape = { value: mark };
+                break;
+            case mark_1.POINT:
+            case mark_1.LINE:
+            case mark_1.AREA:
+                break;
+        }
+        var filled = model.config().mark.filled;
+        var config = channel === channel_1.COLOR ?
+            util_1.without(common_1.FILL_STROKE_CONFIG, [filled ? 'fill' : 'stroke', 'strokeDash', 'strokeDashOffset']) :
+            util_1.without(common_1.FILL_STROKE_CONFIG, ['strokeDash', 'strokeDashOffset']);
+        config = util_1.without(config, ['strokeDash', 'strokeDashOffset']);
+        common_1.applyMarkConfig(symbols, model, config);
+        if (filled) {
+            symbols.strokeWidth = { value: 0 };
+        }
+        var value;
+        if (model.has(channel_1.COLOR) && channel === channel_1.COLOR) {
+            if (useColorLegendScale(fieldDef)) {
+                value = { scale: model.scaleName(channel_1.COLOR), field: 'data' };
+            }
+        }
+        else if (model.fieldDef(channel_1.COLOR).value) {
+            value = { value: model.fieldDef(channel_1.COLOR).value };
+        }
+        if (value !== undefined) {
+            if (filled) {
+                symbols.fill = value;
+            }
+            else {
+                symbols.stroke = value;
+            }
+        }
+        else if (channel !== channel_1.COLOR) {
+            symbols[filled ? 'fill' : 'stroke'] = symbols[filled ? 'fill' : 'stroke'] ||
+                { value: model.config().mark.color };
+        }
+        if (legend.symbolColor !== undefined) {
+            symbols.fill = { value: legend.symbolColor };
+        }
+        if (legend.symbolShape !== undefined) {
+            symbols.shape = { value: legend.symbolShape };
+        }
+        if (legend.symbolSize !== undefined) {
+            symbols.size = { value: legend.symbolSize };
+        }
+        if (legend.symbolStrokeWidth !== undefined) {
+            symbols.strokeWidth = { value: legend.symbolStrokeWidth };
+        }
+        symbols = util_1.extend(symbols, symbolsSpec || {});
+        return util_1.keys(symbols).length > 0 ? symbols : undefined;
+    }
+    properties.symbols = symbols;
+    function labels(fieldDef, labelsSpec, model, channel) {
+        var legend = model.legend(channel);
+        var labels = {};
+        if (channel === channel_1.COLOR) {
+            if (fieldDef.type === type_1.ORDINAL) {
+                labelsSpec = util_1.extend({
+                    text: {
+                        scale: model.scaleName(scale_1.COLOR_LEGEND),
+                        field: 'data'
+                    }
+                }, labelsSpec || {});
+            }
+            else if (fieldDef.bin) {
+                labelsSpec = util_1.extend({
+                    text: {
+                        scale: model.scaleName(scale_1.COLOR_LEGEND_LABEL),
+                        field: 'data'
+                    }
+                }, labelsSpec || {});
+            }
+            else if (fieldDef.timeUnit) {
+                labelsSpec = util_1.extend({
+                    text: {
+                        template: '{{ datum.data | time:\'' + common_1.timeFormat(model, channel) + '\'}}'
+                    }
+                }, labelsSpec || {});
+            }
+        }
+        if (legend.labelAlign !== undefined) {
+            labels.align = { value: legend.labelAlign };
+        }
+        if (legend.labelColor !== undefined) {
+            labels.stroke = { value: legend.labelColor };
+        }
+        if (legend.labelFont !== undefined) {
+            labels.font = { value: legend.labelFont };
+        }
+        if (legend.labelFontSize !== undefined) {
+            labels.fontSize = { value: legend.labelFontSize };
+        }
+        if (legend.labelBaseline !== undefined) {
+            labels.baseline = { value: legend.labelBaseline };
+        }
+        labels = util_1.extend(labels, labelsSpec || {});
+        return util_1.keys(labels).length > 0 ? labels : undefined;
+    }
+    properties.labels = labels;
+    function title(fieldDef, titleSpec, model, channel) {
+        var legend = model.legend(channel);
+        var titles = {};
+        if (legend.titleColor !== undefined) {
+            titles.stroke = { value: legend.titleColor };
+        }
+        if (legend.titleFont !== undefined) {
+            titles.font = { value: legend.titleFont };
+        }
+        if (legend.titleFontSize !== undefined) {
+            titles.fontSize = { value: legend.titleFontSize };
+        }
+        if (legend.titleFontWeight !== undefined) {
+            titles.fontWeight = { value: legend.titleFontWeight };
+        }
+        titles = util_1.extend(titles, titleSpec || {});
+        return util_1.keys(titles).length > 0 ? titles : undefined;
+    }
+    properties.title = title;
+})(properties = exports.properties || (exports.properties = {}));
+
+},{"../channel":226,"../fielddef":264,"../mark":266,"../type":272,"../util":273,"./common":228,"./scale":257}],248:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var fielddef_1 = require('../../fielddef');
+var common_1 = require('../common');
+var area;
+(function (area) {
+    function markType() {
+        return 'area';
+    }
+    area.markType = markType;
+    function properties(model) {
+        var p = {};
+        var orient = model.config().mark.orient;
+        if (orient !== undefined) {
+            p.orient = { value: orient };
+        }
+        var stack = model.stack();
+        var xFieldDef = model.encoding().x;
+        if (stack && channel_1.X === stack.fieldChannel) {
+            p.x = {
+                scale: model.scaleName(channel_1.X),
+                field: model.field(channel_1.X, { suffix: '_start' })
+            };
+        }
+        else if (fielddef_1.isMeasure(xFieldDef)) {
+            p.x = { scale: model.scaleName(channel_1.X), field: model.field(channel_1.X) };
+        }
+        else if (fielddef_1.isDimension(xFieldDef)) {
+            p.x = {
+                scale: model.scaleName(channel_1.X),
+                field: model.field(channel_1.X, { binSuffix: '_mid' })
+            };
+        }
+        if (orient === 'horizontal') {
+            if (stack && channel_1.X === stack.fieldChannel) {
+                p.x2 = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X, { suffix: '_end' })
+                };
+            }
+            else {
+                p.x2 = {
+                    scale: model.scaleName(channel_1.X),
+                    value: 0
+                };
+            }
+        }
+        var yFieldDef = model.encoding().y;
+        if (stack && channel_1.Y === stack.fieldChannel) {
+            p.y = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y, { suffix: '_start' })
+            };
+        }
+        else if (fielddef_1.isMeasure(yFieldDef)) {
+            p.y = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y)
+            };
+        }
+        else if (fielddef_1.isDimension(yFieldDef)) {
+            p.y = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y, { binSuffix: '_mid' })
+            };
+        }
+        if (orient !== 'horizontal') {
+            if (stack && channel_1.Y === stack.fieldChannel) {
+                p.y2 = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y, { suffix: '_end' })
+                };
+            }
+            else {
+                p.y2 = {
+                    scale: model.scaleName(channel_1.Y),
+                    value: 0
+                };
+            }
+        }
+        common_1.applyColorAndOpacity(p, model);
+        common_1.applyMarkConfig(p, model, ['interpolate', 'tension']);
+        return p;
+    }
+    area.properties = properties;
+    function labels(model) {
+        return undefined;
+    }
+    area.labels = labels;
+})(area = exports.area || (exports.area = {}));
+
+},{"../../channel":226,"../../fielddef":264,"../common":228}],249:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var fielddef_1 = require('../../fielddef');
+var common_1 = require('../common');
+var bar;
+(function (bar) {
+    function markType() {
+        return 'rect';
+    }
+    bar.markType = markType;
+    function properties(model) {
+        var p = {};
+        var orient = model.config().mark.orient;
+        var stack = model.stack();
+        var xFieldDef = model.encoding().x;
+        if (stack && channel_1.X === stack.fieldChannel) {
+            p.x = {
+                scale: model.scaleName(channel_1.X),
+                field: model.field(channel_1.X, { suffix: '_start' })
+            };
+            p.x2 = {
+                scale: model.scaleName(channel_1.X),
+                field: model.field(channel_1.X, { suffix: '_end' })
+            };
+        }
+        else if (fielddef_1.isMeasure(xFieldDef)) {
+            if (orient === 'horizontal') {
+                p.x = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X)
+                };
+                p.x2 = {
+                    scale: model.scaleName(channel_1.X),
+                    value: 0
+                };
+            }
+            else {
+                p.xc = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X)
+                };
+                p.width = { value: sizeValue(model, channel_1.X) };
+            }
+        }
+        else if (model.fieldDef(channel_1.X).bin) {
+            if (model.has(channel_1.SIZE) && orient !== 'horizontal') {
+                p.xc = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X, { binSuffix: '_mid' })
+                };
+                p.width = {
+                    scale: model.scaleName(channel_1.SIZE),
+                    field: model.field(channel_1.SIZE)
+                };
+            }
+            else {
+                p.x = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X, { binSuffix: '_start' }),
+                    offset: 1
+                };
+                p.x2 = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X, { binSuffix: '_end' })
+                };
+            }
+        }
+        else {
+            if (model.has(channel_1.X)) {
+                p.xc = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X)
+                };
+            }
+            else {
+                p.x = { value: 0, offset: 2 };
+            }
+            p.width = model.has(channel_1.SIZE) && orient !== 'horizontal' ? {
+                scale: model.scaleName(channel_1.SIZE),
+                field: model.field(channel_1.SIZE)
+            } : {
+                value: sizeValue(model, (channel_1.X))
+            };
+        }
+        var yFieldDef = model.encoding().y;
+        if (stack && channel_1.Y === stack.fieldChannel) {
+            p.y = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y, { suffix: '_start' })
+            };
+            p.y2 = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y, { suffix: '_end' })
+            };
+        }
+        else if (fielddef_1.isMeasure(yFieldDef)) {
+            if (orient !== 'horizontal') {
+                p.y = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y)
+                };
+                p.y2 = {
+                    scale: model.scaleName(channel_1.Y),
+                    value: 0
+                };
+            }
+            else {
+                p.yc = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y)
+                };
+                p.height = { value: sizeValue(model, channel_1.Y) };
+            }
+        }
+        else if (model.fieldDef(channel_1.Y).bin) {
+            if (model.has(channel_1.SIZE) && orient === 'horizontal') {
+                p.yc = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y, { binSuffix: '_mid' })
+                };
+                p.height = {
+                    scale: model.scaleName(channel_1.SIZE),
+                    field: model.field(channel_1.SIZE)
+                };
+            }
+            else {
+                p.y = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y, { binSuffix: '_start' })
+                };
+                p.y2 = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y, { binSuffix: '_end' }),
+                    offset: 1
+                };
+            }
+        }
+        else {
+            if (model.has(channel_1.Y)) {
+                p.yc = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y)
+                };
+            }
+            else {
+                p.y2 = {
+                    field: { group: 'height' },
+                    offset: -1
+                };
+            }
+            p.height = model.has(channel_1.SIZE) && orient === 'horizontal' ? {
+                scale: model.scaleName(channel_1.SIZE),
+                field: model.field(channel_1.SIZE)
+            } : {
+                value: sizeValue(model, channel_1.Y)
+            };
+        }
+        common_1.applyColorAndOpacity(p, model);
+        return p;
+    }
+    bar.properties = properties;
+    function sizeValue(model, channel) {
+        var fieldDef = model.fieldDef(channel_1.SIZE);
+        if (fieldDef && fieldDef.value !== undefined) {
+            return fieldDef.value;
+        }
+        var markConfig = model.config().mark;
+        if (markConfig.barSize) {
+            return markConfig.barSize;
+        }
+        return model.isOrdinalScale(channel) ?
+            model.scale(channel).bandSize - 1 :
+            !model.has(channel) ?
+                model.config().scale.bandSize - 1 :
+                markConfig.barThinSize;
+    }
+    function labels(model) {
+        return undefined;
+    }
+    bar.labels = labels;
+})(bar = exports.bar || (exports.bar = {}));
+
+},{"../../channel":226,"../../fielddef":264,"../common":228}],250:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var common_1 = require('../common');
+var line;
+(function (line) {
+    function markType() {
+        return 'line';
+    }
+    line.markType = markType;
+    function properties(model) {
+        var p = {};
+        if (model.has(channel_1.X)) {
+            p.x = {
+                scale: model.scaleName(channel_1.X),
+                field: model.field(channel_1.X, { binSuffix: '_mid' })
+            };
+        }
+        else {
+            p.x = { value: 0 };
+        }
+        if (model.has(channel_1.Y)) {
+            p.y = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y, { binSuffix: '_mid' })
+            };
+        }
+        else {
+            p.y = { field: { group: 'height' } };
+        }
+        common_1.applyColorAndOpacity(p, model);
+        common_1.applyMarkConfig(p, model, ['interpolate', 'tension']);
+        var size = sizeValue(model);
+        if (size) {
+            p.strokeWidth = { value: size };
+        }
+        return p;
+    }
+    line.properties = properties;
+    function sizeValue(model) {
+        var fieldDef = model.fieldDef(channel_1.SIZE);
+        if (fieldDef && fieldDef.value !== undefined) {
+            return fieldDef.value;
+        }
+        return model.config().mark.lineSize;
+    }
+    function labels(model) {
+        return undefined;
+    }
+    line.labels = labels;
+})(line = exports.line || (exports.line = {}));
+
+},{"../../channel":226,"../common":228}],251:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var mark_1 = require('../../mark');
+var stack_1 = require('../stack');
+var util_1 = require('../../util');
+var area_1 = require('./area');
+var bar_1 = require('./bar');
+var line_1 = require('./line');
+var point_1 = require('./point');
+var text_1 = require('./text');
+var tick_1 = require('./tick');
+var rule_1 = require('./rule');
+var common_1 = require('../common');
+var markCompiler = {
+    area: area_1.area,
+    bar: bar_1.bar,
+    line: line_1.line,
+    point: point_1.point,
+    text: text_1.text,
+    tick: tick_1.tick,
+    rule: rule_1.rule,
+    circle: point_1.circle,
+    square: point_1.square
+};
+function parseMark(model) {
+    if (util_1.contains([mark_1.LINE, mark_1.AREA], model.mark())) {
+        return parsePathMark(model);
+    }
+    else {
+        return parseNonPathMark(model);
+    }
+}
+exports.parseMark = parseMark;
+function parsePathMark(model) {
+    var mark = model.mark();
+    var isFaceted = model.parent() && model.parent().isFacet();
+    var dataFrom = { data: model.dataTable() };
+    var details = detailFields(model);
+    var pathMarks = [
+        {
+            name: model.name('marks'),
+            type: markCompiler[mark].markType(),
+            from: util_1.extend(isFaceted || details.length > 0 ? {} : dataFrom, { transform: [{ type: 'sort', by: sortPathBy(model) }] }),
+            properties: { update: markCompiler[mark].properties(model) }
+        }
+    ];
+    if (details.length > 0) {
+        var facetTransform = { type: 'facet', groupby: details };
+        var transform = mark === mark_1.AREA && model.stack() ?
+            [stack_1.imputeTransform(model), stack_1.stackTransform(model), facetTransform] :
+            [].concat(facetTransform, model.has(channel_1.ORDER) ? [{ type: 'sort', by: sortBy(model) }] : []);
+        return [{
+                name: model.name('pathgroup'),
+                type: 'group',
+                from: util_1.extend(isFaceted ? {} : dataFrom, { transform: transform }),
+                properties: {
+                    update: {
+                        width: { field: { group: 'width' } },
+                        height: { field: { group: 'height' } }
+                    }
+                },
+                marks: pathMarks
+            }];
+    }
+    else {
+        return pathMarks;
+    }
+}
+function parseNonPathMark(model) {
+    var mark = model.mark();
+    var isFaceted = model.parent() && model.parent().isFacet();
+    var dataFrom = { data: model.dataTable() };
+    var marks = [];
+    if (mark === mark_1.TEXT &&
+        model.has(channel_1.COLOR) &&
+        model.config().mark.applyColorToBackground && !model.has(channel_1.X) && !model.has(channel_1.Y)) {
+        marks.push(util_1.extend({
+            name: model.name('background'),
+            type: 'rect'
+        }, isFaceted ? {} : { from: dataFrom }, { properties: { update: text_1.text.background(model) } }));
+    }
+    marks.push(util_1.extend({
+        name: model.name('marks'),
+        type: markCompiler[mark].markType()
+    }, (!isFaceted || model.stack() || model.has(channel_1.ORDER)) ? {
+        from: util_1.extend(isFaceted ? {} : dataFrom, model.stack() ?
+            { transform: [stack_1.stackTransform(model)] } :
+            model.has(channel_1.ORDER) ?
+                { transform: [{ type: 'sort', by: sortBy(model) }] } :
+                {})
+    } : {}, { properties: { update: markCompiler[mark].properties(model) } }));
+    if (model.has(channel_1.LABEL) && markCompiler[mark].labels) {
+        var labelProperties = markCompiler[mark].labels(model);
+        if (labelProperties !== undefined) {
+            marks.push(util_1.extend({
+                name: model.name('label'),
+                type: 'text'
+            }, isFaceted ? {} : { from: dataFrom }, { properties: { update: labelProperties } }));
+        }
+    }
+    return marks;
+}
+function sortBy(model) {
+    if (model.has(channel_1.ORDER)) {
+        var channelDef = model.encoding().order;
+        if (channelDef instanceof Array) {
+            return channelDef.map(common_1.sortField);
+        }
+        else {
+            return common_1.sortField(channelDef);
+        }
+    }
+    return null;
+}
+function sortPathBy(model) {
+    if (model.mark() === mark_1.LINE && model.has(channel_1.PATH)) {
+        var channelDef = model.encoding().path;
+        if (channelDef instanceof Array) {
+            return channelDef.map(common_1.sortField);
+        }
+        else {
+            return common_1.sortField(channelDef);
+        }
+    }
+    else {
+        return '-' + model.field(model.config().mark.orient === 'horizontal' ? channel_1.Y : channel_1.X);
+    }
+}
+function detailFields(model) {
+    return [channel_1.COLOR, channel_1.DETAIL, channel_1.OPACITY, channel_1.SHAPE].reduce(function (details, channel) {
+        if (model.has(channel) && !model.fieldDef(channel).aggregate) {
+            details.push(model.field(channel));
+        }
+        return details;
+    }, []);
+}
+
+},{"../../channel":226,"../../mark":266,"../../util":273,"../common":228,"../stack":258,"./area":248,"./bar":249,"./line":250,"./point":252,"./rule":253,"./text":254,"./tick":255}],252:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var fielddef_1 = require('../../fielddef');
+var common_1 = require('../common');
+var point;
+(function (point) {
+    function markType() {
+        return 'symbol';
+    }
+    point.markType = markType;
+    function properties(model, fixedShape) {
+        var p = {};
+        var config = model.config();
+        p.x = x(model.encoding().x, model.scaleName(channel_1.X), config);
+        p.y = y(model.encoding().y, model.scaleName(channel_1.Y), config);
+        p.size = size(model.encoding().size, model.scaleName(channel_1.SIZE), model.scale(channel_1.SIZE), config);
+        p.shape = shape(model.encoding().shape, model.scaleName(channel_1.SHAPE), model.scale(channel_1.SHAPE), config, fixedShape);
+        common_1.applyColorAndOpacity(p, model);
+        return p;
+    }
+    point.properties = properties;
+    function x(fieldDef, scaleName, config) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+                };
+            }
+        }
+        return { value: config.scale.bandSize / 2 };
+    }
+    function y(fieldDef, scaleName, config) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+                };
+            }
+        }
+        return { value: config.scale.bandSize / 2 };
+    }
+    function size(fieldDef, scaleName, scale, config) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { scaleType: scale.type })
+                };
+            }
+            else if (fieldDef.value !== undefined) {
+                return { value: fieldDef.value };
+            }
+        }
+        return { value: config.mark.size };
+    }
+    function shape(fieldDef, scaleName, scale, config, fixedShape) {
+        if (fixedShape) {
+            return { value: fixedShape };
+        }
+        else if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { scaleType: scale.type })
+                };
+            }
+            else if (fieldDef.value) {
+                return { value: fieldDef.value };
+            }
+        }
+        return { value: config.mark.shape };
+    }
+})(point = exports.point || (exports.point = {}));
+var circle;
+(function (circle) {
+    function markType() {
+        return 'symbol';
+    }
+    circle.markType = markType;
+    function properties(model) {
+        return point.properties(model, 'circle');
+    }
+    circle.properties = properties;
+    function labels(model) {
+        return undefined;
+    }
+    circle.labels = labels;
+})(circle = exports.circle || (exports.circle = {}));
+var square;
+(function (square) {
+    function markType() {
+        return 'symbol';
+    }
+    square.markType = markType;
+    function properties(model) {
+        return point.properties(model, 'square');
+    }
+    square.properties = properties;
+    function labels(model) {
+        return undefined;
+    }
+    square.labels = labels;
+})(square = exports.square || (exports.square = {}));
+
+},{"../../channel":226,"../../fielddef":264,"../common":228}],253:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var common_1 = require('../common');
+var rule;
+(function (rule) {
+    function markType() {
+        return 'rule';
+    }
+    rule.markType = markType;
+    function properties(model) {
+        var p = {};
+        if (model.has(channel_1.X)) {
+            p.x = position(model, channel_1.X);
+            p.y = { value: 0 };
+            p.y2 = {
+                field: { group: 'height' }
+            };
+        }
+        if (model.has(channel_1.Y)) {
+            p.y = position(model, channel_1.Y);
+            p.x = { value: 0 };
+            p.x2 = {
+                field: { group: 'width' }
+            };
+        }
+        common_1.applyColorAndOpacity(p, model);
+        if (model.has(channel_1.SIZE)) {
+            p.strokeWidth = {
+                scale: model.scaleName(channel_1.SIZE),
+                field: model.field(channel_1.SIZE)
+            };
+        }
+        else {
+            p.strokeWidth = { value: sizeValue(model) };
+        }
+        return p;
+    }
+    rule.properties = properties;
+    function position(model, channel) {
+        return {
+            scale: model.scaleName(channel),
+            field: model.field(channel, { binSuffix: '_mid' })
+        };
+    }
+    function sizeValue(model) {
+        var fieldDef = model.fieldDef(channel_1.SIZE);
+        if (fieldDef && fieldDef.value !== undefined) {
+            return fieldDef.value;
+        }
+        return model.config().mark.ruleSize;
+    }
+    function labels(model) {
+        return undefined;
+    }
+    rule.labels = labels;
+})(rule = exports.rule || (exports.rule = {}));
+
+},{"../../channel":226,"../common":228}],254:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var common_1 = require('../common');
+var util_1 = require('../../util');
+var type_1 = require('../../type');
+var text;
+(function (text) {
+    function markType() {
+        return 'text';
+    }
+    text.markType = markType;
+    function background(model) {
+        return {
+            x: { value: 0 },
+            y: { value: 0 },
+            width: { field: { group: 'width' } },
+            height: { field: { group: 'height' } },
+            fill: {
+                scale: model.scaleName(channel_1.COLOR),
+                field: model.field(channel_1.COLOR, model.fieldDef(channel_1.COLOR).type === type_1.ORDINAL ? { prefn: 'rank_' } : {})
+            }
+        };
+    }
+    text.background = background;
+    function properties(model) {
+        var p = {};
+        common_1.applyMarkConfig(p, model, ['angle', 'align', 'baseline', 'dx', 'dy', 'font', 'fontWeight',
+            'fontStyle', 'radius', 'theta', 'text']);
+        var fieldDef = model.fieldDef(channel_1.TEXT);
+        if (model.has(channel_1.X)) {
+            p.x = {
+                scale: model.scaleName(channel_1.X),
+                field: model.field(channel_1.X, { binSuffix: '_mid' })
+            };
+        }
+        else {
+            if (model.has(channel_1.TEXT) && model.fieldDef(channel_1.TEXT).type === type_1.QUANTITATIVE) {
+                p.x = { field: { group: 'width' }, offset: -5 };
+            }
+            else {
+                p.x = { value: model.config().scale.textBandWidth / 2 };
+            }
+        }
+        if (model.has(channel_1.Y)) {
+            p.y = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y, { binSuffix: '_mid' })
+            };
+        }
+        else {
+            p.y = { value: model.config().scale.bandSize / 2 };
+        }
+        if (model.has(channel_1.SIZE)) {
+            p.fontSize = {
+                scale: model.scaleName(channel_1.SIZE),
+                field: model.field(channel_1.SIZE)
+            };
+        }
+        else {
+            p.fontSize = { value: sizeValue(model) };
+        }
+        if (model.config().mark.applyColorToBackground && !model.has(channel_1.X) && !model.has(channel_1.Y)) {
+            p.fill = { value: 'black' };
+            var opacity = model.config().mark.opacity;
+            if (opacity) {
+                p.opacity = { value: opacity };
+            }
+            ;
+        }
+        else {
+            common_1.applyColorAndOpacity(p, model);
+        }
+        if (model.has(channel_1.TEXT)) {
+            if (util_1.contains([type_1.QUANTITATIVE, type_1.TEMPORAL], model.fieldDef(channel_1.TEXT).type)) {
+                var format = model.config().mark.format;
+                util_1.extend(p, common_1.formatMixins(model, channel_1.TEXT, format));
+            }
+            else {
+                p.text = { field: model.field(channel_1.TEXT) };
+            }
+        }
+        else if (fieldDef.value) {
+            p.text = { value: fieldDef.value };
+        }
+        return p;
+    }
+    text.properties = properties;
+    function sizeValue(model) {
+        var fieldDef = model.fieldDef(channel_1.SIZE);
+        if (fieldDef && fieldDef.value !== undefined) {
+            return fieldDef.value;
+        }
+        return model.config().mark.fontSize;
+    }
+})(text = exports.text || (exports.text = {}));
+
+},{"../../channel":226,"../../type":272,"../../util":273,"../common":228}],255:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../../channel');
+var common_1 = require('../common');
+var tick;
+(function (tick) {
+    function markType() {
+        return 'rect';
+    }
+    tick.markType = markType;
+    function properties(model) {
+        var p = {};
+        if (model.has(channel_1.X)) {
+            p.xc = {
+                scale: model.scaleName(channel_1.X),
+                field: model.field(channel_1.X, { binSuffix: '_mid' })
+            };
+        }
+        else {
+            p.xc = { value: model.config().scale.bandSize / 2 };
+        }
+        if (model.has(channel_1.Y)) {
+            p.yc = {
+                scale: model.scaleName(channel_1.Y),
+                field: model.field(channel_1.Y, { binSuffix: '_mid' })
+            };
+        }
+        else {
+            p.yc = { value: model.config().scale.bandSize / 2 };
+        }
+        if (model.config().mark.orient === 'horizontal') {
+            p.width = model.has(channel_1.SIZE) ? {
+                scale: model.scaleName(channel_1.SIZE),
+                field: model.field(channel_1.SIZE)
+            } : {
+                value: sizeValue(model, channel_1.X)
+            };
+            p.height = { value: model.config().mark.tickThickness };
+        }
+        else {
+            p.width = { value: model.config().mark.tickThickness };
+            p.height = model.has(channel_1.SIZE) ? {
+                scale: model.scaleName(channel_1.SIZE),
+                field: model.field(channel_1.SIZE)
+            } : {
+                value: sizeValue(model, channel_1.Y)
+            };
+        }
+        common_1.applyColorAndOpacity(p, model);
+        return p;
+    }
+    tick.properties = properties;
+    function sizeValue(model, channel) {
+        var fieldDef = model.fieldDef(channel_1.SIZE);
+        if (fieldDef && fieldDef.value !== undefined) {
+            return fieldDef.value;
+        }
+        var scaleConfig = model.config().scale;
+        var markConfig = model.config().mark;
+        if (markConfig.tickSize) {
+            return markConfig.tickSize;
+        }
+        var bandSize = model.has(channel) ?
+            model.scale(channel).bandSize :
+            scaleConfig.bandSize;
+        return bandSize / 1.5;
+    }
+    function labels(model) {
+        return undefined;
+    }
+    tick.labels = labels;
+})(tick = exports.tick || (exports.tick = {}));
+
+},{"../../channel":226,"../common":228}],256:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../channel');
+var encoding_1 = require('../encoding');
+var fielddef_1 = require('../fielddef');
+var scale_1 = require('../scale');
+var util_1 = require('../util');
+var NameMap = (function () {
+    function NameMap() {
+        this._nameMap = {};
+    }
+    NameMap.prototype.rename = function (oldName, newName) {
+        this._nameMap[oldName] = newName;
+    };
+    NameMap.prototype.get = function (name) {
+        while (this._nameMap[name]) {
+            name = this._nameMap[name];
+        }
+        return name;
+    };
+    return NameMap;
+}());
+var Model = (function () {
+    function Model(spec, parent, parentGivenName) {
+        this._warnings = [];
+        this._parent = parent;
+        this._name = spec.name || parentGivenName;
+        this._dataNameMap = parent ? parent._dataNameMap : new NameMap();
+        this._scaleNameMap = parent ? parent._scaleNameMap : new NameMap();
+        this._sizeNameMap = parent ? parent._sizeNameMap : new NameMap();
+        this._data = spec.data;
+        this._description = spec.description;
+        this._transform = spec.transform;
+        this.component = { data: null, layout: null, mark: null, scale: null, axis: null, axisGroup: null, gridGroup: null, legend: null };
+    }
+    Model.prototype.parse = function () {
+        this.parseData();
+        this.parseSelectionData();
+        this.parseLayoutData();
+        this.parseScale();
+        this.parseAxis();
+        this.parseLegend();
+        this.parseAxisGroup();
+        this.parseGridGroup();
+        this.parseMark();
+    };
+    Model.prototype.assembleScales = function () {
+        return util_1.flatten(util_1.vals(this.component.scale).map(function (scales) {
+            var arr = [scales.main];
+            if (scales.colorLegend) {
+                arr.push(scales.colorLegend);
+            }
+            if (scales.binColorLegend) {
+                arr.push(scales.binColorLegend);
+            }
+            return arr;
+        }));
+    };
+    Model.prototype.assembleAxes = function () {
+        return util_1.vals(this.component.axis);
+    };
+    Model.prototype.assembleLegends = function () {
+        return util_1.vals(this.component.legend);
+    };
+    Model.prototype.assembleGroup = function () {
+        var group = {};
+        group.marks = this.assembleMarks();
+        var scales = this.assembleScales();
+        if (scales.length > 0) {
+            group.scales = scales;
+        }
+        var axes = this.assembleAxes();
+        if (axes.length > 0) {
+            group.axes = axes;
+        }
+        var legends = this.assembleLegends();
+        if (legends.length > 0) {
+            group.legends = legends;
+        }
+        return group;
+    };
+    Model.prototype.reduce = function (f, init, t) {
+        return encoding_1.channelMappingReduce(this.channels(), this.mapping(), f, init, t);
+    };
+    Model.prototype.forEach = function (f, t) {
+        encoding_1.channelMappingForEach(this.channels(), this.mapping(), f, t);
+    };
+    Model.prototype.parent = function () {
+        return this._parent;
+    };
+    Model.prototype.name = function (text, delimiter) {
+        if (delimiter === void 0) { delimiter = '_'; }
+        return (this._name ? this._name + delimiter : '') + text;
+    };
+    Model.prototype.description = function () {
+        return this._description;
+    };
+    Model.prototype.data = function () {
+        return this._data;
+    };
+    Model.prototype.renameData = function (oldName, newName) {
+        this._dataNameMap.rename(oldName, newName);
+    };
+    Model.prototype.dataName = function (dataSourceType) {
+        return this._dataNameMap.get(this.name(String(dataSourceType)));
+    };
+    Model.prototype.renameSize = function (oldName, newName) {
+        this._sizeNameMap.rename(oldName, newName);
+    };
+    Model.prototype.channelSizeName = function (channel) {
+        return this.sizeName(channel === channel_1.X || channel === channel_1.COLUMN ? 'width' : 'height');
+    };
+    Model.prototype.sizeName = function (size) {
+        return this._sizeNameMap.get(this.name(size, '_'));
+    };
+    Model.prototype.transform = function () {
+        return this._transform || {};
+    };
+    Model.prototype.field = function (channel, opt) {
+        if (opt === void 0) { opt = {}; }
+        var fieldDef = this.fieldDef(channel);
+        if (fieldDef.bin) {
+            opt = util_1.extend({
+                binSuffix: this.scale(channel).type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
+            }, opt);
+        }
+        return fielddef_1.field(fieldDef, opt);
+    };
+    Model.prototype.scale = function (channel) {
+        return this._scale[channel];
+    };
+    Model.prototype.isOrdinalScale = function (channel) {
+        var scale = this.scale(channel);
+        return scale && scale.type === scale_1.ScaleType.ORDINAL;
+    };
+    Model.prototype.renameScale = function (oldName, newName) {
+        this._scaleNameMap.rename(oldName, newName);
+    };
+    Model.prototype.scaleName = function (channel) {
+        return this._scaleNameMap.get(this.name(channel + ''));
+    };
+    Model.prototype.sort = function (channel) {
+        return (this.mapping()[channel] || {}).sort;
+    };
+    Model.prototype.axis = function (channel) {
+        return this._axis[channel];
+    };
+    Model.prototype.legend = function (channel) {
+        return this._legend[channel];
+    };
+    Model.prototype.config = function () {
+        return this._config;
+    };
+    Model.prototype.addWarning = function (message) {
+        util_1.warning(message);
+        this._warnings.push(message);
+    };
+    Model.prototype.warnings = function () {
+        return this._warnings;
+    };
+    Model.prototype.isUnit = function () {
+        return false;
+    };
+    Model.prototype.isFacet = function () {
+        return false;
+    };
+    Model.prototype.isLayer = function () {
+        return false;
+    };
+    return Model;
+}());
+exports.Model = Model;
+
+},{"../channel":226,"../encoding":263,"../fielddef":264,"../scale":267,"../util":273}],257:[function(require,module,exports){
+"use strict";
+var aggregate_1 = require('../aggregate');
+var channel_1 = require('../channel');
+var config_1 = require('../config');
+var data_1 = require('../data');
+var fielddef_1 = require('../fielddef');
+var mark_1 = require('../mark');
+var scale_1 = require('../scale');
+var timeunit_1 = require('../timeunit');
+var type_1 = require('../type');
+var util_1 = require('../util');
+var time_1 = require('./time');
+exports.COLOR_LEGEND = 'color_legend';
+exports.COLOR_LEGEND_LABEL = 'color_legend_label';
+function parseScaleComponent(model) {
+    return model.channels().reduce(function (scale, channel) {
+        if (model.scale(channel)) {
+            var fieldDef = model.fieldDef(channel);
+            var scales = {
+                main: parseMainScale(model, fieldDef, channel)
+            };
+            if (channel === channel_1.COLOR && model.legend(channel_1.COLOR) && (fieldDef.type === type_1.ORDINAL || fieldDef.bin || fieldDef.timeUnit)) {
+                scales.colorLegend = parseColorLegendScale(model, fieldDef);
+                if (fieldDef.bin) {
+                    scales.binColorLegend = parseBinColorLegendLabel(model, fieldDef);
+                }
+            }
+            scale[channel] = scales;
+        }
+        return scale;
+    }, {});
+}
+exports.parseScaleComponent = parseScaleComponent;
+function parseMainScale(model, fieldDef, channel) {
+    var scale = model.scale(channel);
+    var sort = model.sort(channel);
+    var scaleDef = {
+        name: model.scaleName(channel),
+        type: scale.type,
+    };
+    scaleDef.domain = domain(scale, model, channel);
+    util_1.extend(scaleDef, rangeMixins(scale, model, channel));
+    if (sort && (typeof sort === 'string' ? sort : sort.order) === 'descending') {
+        scaleDef.reverse = true;
+    }
+    [
+        'round',
+        'clamp', 'nice',
+        'exponent', 'zero',
+        'padding', 'points'
+    ].forEach(function (property) {
+        var value = exports[property](scale, channel, fieldDef, model);
+        if (value !== undefined) {
+            scaleDef[property] = value;
+        }
+    });
+    return scaleDef;
+}
+function parseColorLegendScale(model, fieldDef) {
+    return {
+        name: model.scaleName(exports.COLOR_LEGEND),
+        type: scale_1.ScaleType.ORDINAL,
+        domain: {
+            data: model.dataTable(),
+            field: model.field(channel_1.COLOR, (fieldDef.bin || fieldDef.timeUnit) ? {} : { prefn: 'rank_' }),
+            sort: true
+        },
+        range: { data: model.dataTable(), field: model.field(channel_1.COLOR), sort: true }
+    };
+}
+function parseBinColorLegendLabel(model, fieldDef) {
+    return {
+        name: model.scaleName(exports.COLOR_LEGEND_LABEL),
+        type: scale_1.ScaleType.ORDINAL,
+        domain: {
+            data: model.dataTable(),
+            field: model.field(channel_1.COLOR),
+            sort: true
+        },
+        range: {
+            data: model.dataTable(),
+            field: fielddef_1.field(fieldDef, { binSuffix: '_range' }),
+            sort: {
+                field: model.field(channel_1.COLOR, { binSuffix: '_start' }),
+                op: 'min'
+            }
+        }
+    };
+}
+function scaleType(scale, fieldDef, channel, mark) {
+    if (!channel_1.hasScale(channel)) {
+        return null;
+    }
+    if (util_1.contains([channel_1.ROW, channel_1.COLUMN, channel_1.SHAPE], channel)) {
+        return scale_1.ScaleType.ORDINAL;
+    }
+    if (scale.type !== undefined) {
+        return scale.type;
+    }
+    switch (fieldDef.type) {
+        case type_1.NOMINAL:
+            return scale_1.ScaleType.ORDINAL;
+        case type_1.ORDINAL:
+            if (channel === channel_1.COLOR) {
+                return scale_1.ScaleType.LINEAR;
+            }
+            return scale_1.ScaleType.ORDINAL;
+        case type_1.TEMPORAL:
+            if (channel === channel_1.COLOR) {
+                return scale_1.ScaleType.TIME;
+            }
+            if (fieldDef.timeUnit) {
+                switch (fieldDef.timeUnit) {
+                    case timeunit_1.TimeUnit.HOURS:
+                    case timeunit_1.TimeUnit.DAY:
+                    case timeunit_1.TimeUnit.MONTH:
+                        return scale_1.ScaleType.ORDINAL;
+                    default:
+                        return scale_1.ScaleType.TIME;
+                }
+            }
+            return scale_1.ScaleType.TIME;
+        case type_1.QUANTITATIVE:
+            if (fieldDef.bin) {
+                return util_1.contains([channel_1.X, channel_1.Y, channel_1.COLOR], channel) ? scale_1.ScaleType.LINEAR : scale_1.ScaleType.ORDINAL;
+            }
+            return scale_1.ScaleType.LINEAR;
+    }
+    return null;
+}
+exports.scaleType = scaleType;
+function domain(scale, model, channel) {
+    var fieldDef = model.fieldDef(channel);
+    if (scale.domain) {
+        return scale.domain;
+    }
+    if (fieldDef.type === type_1.TEMPORAL) {
+        if (time_1.rawDomain(fieldDef.timeUnit, channel)) {
+            return {
+                data: fieldDef.timeUnit,
+                field: 'date'
+            };
+        }
+        return {
+            data: model.dataTable(),
+            field: model.field(channel),
+            sort: {
+                field: model.field(channel),
+                op: 'min'
+            }
+        };
+    }
+    var stack = model.stack();
+    if (stack && channel === stack.fieldChannel) {
+        if (stack.offset === config_1.StackOffset.NORMALIZE) {
+            return [0, 1];
+        }
+        return {
+            data: model.dataName(data_1.STACKED_SCALE),
+            field: model.field(channel, { prefn: 'sum_' })
+        };
+    }
+    var useRawDomain = _useRawDomain(scale, model, channel), sort = domainSort(model, channel, scale.type);
+    if (useRawDomain) {
+        return {
+            data: data_1.SOURCE,
+            field: model.field(channel, { noAggregate: true })
+        };
+    }
+    else if (fieldDef.bin) {
+        if (scale.type === scale_1.ScaleType.ORDINAL) {
+            return {
+                data: model.dataTable(),
+                field: model.field(channel, { binSuffix: '_range' }),
+                sort: {
+                    field: model.field(channel, { binSuffix: '_start' }),
+                    op: 'min'
+                }
+            };
+        }
+        else if (channel === channel_1.COLOR) {
+            return {
+                data: model.dataTable(),
+                field: model.field(channel, { binSuffix: '_start' })
+            };
+        }
+        else {
+            return {
+                data: model.dataTable(),
+                field: [
+                    model.field(channel, { binSuffix: '_start' }),
+                    model.field(channel, { binSuffix: '_end' })
+                ]
+            };
+        }
+    }
+    else if (sort) {
+        return {
+            data: sort.op ? data_1.SOURCE : model.dataTable(),
+            field: (fieldDef.type === type_1.ORDINAL && channel === channel_1.COLOR) ? model.field(channel, { prefn: 'rank_' }) : model.field(channel),
+            sort: sort
+        };
+    }
+    else {
+        return {
+            data: model.dataTable(),
+            field: (fieldDef.type === type_1.ORDINAL && channel === channel_1.COLOR) ? model.field(channel, { prefn: 'rank_' }) : model.field(channel),
+        };
+    }
+}
+exports.domain = domain;
+function domainSort(model, channel, scaleType) {
+    if (scaleType !== scale_1.ScaleType.ORDINAL) {
+        return undefined;
+    }
+    var sort = model.sort(channel);
+    if (util_1.contains(['ascending', 'descending', undefined], sort)) {
+        return true;
+    }
+    if (typeof sort !== 'string') {
+        return {
+            op: sort.op,
+            field: sort.field
+        };
+    }
+    return undefined;
+}
+exports.domainSort = domainSort;
+function _useRawDomain(scale, model, channel) {
+    var fieldDef = model.fieldDef(channel);
+    return scale.useRawDomain &&
+        fieldDef.aggregate &&
+        aggregate_1.SHARED_DOMAIN_OPS.indexOf(fieldDef.aggregate) >= 0 &&
+        ((fieldDef.type === type_1.QUANTITATIVE && !fieldDef.bin) ||
+            (fieldDef.type === type_1.TEMPORAL && util_1.contains([scale_1.ScaleType.TIME, scale_1.ScaleType.UTC], scale.type)));
+}
+function rangeMixins(scale, model, channel) {
+    var fieldDef = model.fieldDef(channel);
+    var scaleConfig = model.config().scale;
+    if (scale.type === scale_1.ScaleType.ORDINAL && scale.bandSize && util_1.contains([channel_1.X, channel_1.Y], channel)) {
+        return { bandSize: scale.bandSize };
+    }
+    if (scale.range && !util_1.contains([channel_1.X, channel_1.Y, channel_1.ROW, channel_1.COLUMN], channel)) {
+        return { range: scale.range };
+    }
+    switch (channel) {
+        case channel_1.ROW:
+            return { range: 'height' };
+        case channel_1.COLUMN:
+            return { range: 'width' };
+    }
+    var unitModel = model;
+    switch (channel) {
+        case channel_1.X:
+            return {
+                rangeMin: 0,
+                rangeMax: unitModel.config().cell.width
+            };
+        case channel_1.Y:
+            return {
+                rangeMin: unitModel.config().cell.height,
+                rangeMax: 0
+            };
+        case channel_1.SIZE:
+            if (unitModel.mark() === mark_1.BAR) {
+                if (scaleConfig.barSizeRange !== undefined) {
+                    return { range: scaleConfig.barSizeRange };
+                }
+                var dimension = model.config().mark.orient === 'horizontal' ? channel_1.Y : channel_1.X;
+                return { range: [model.config().mark.barThinSize, model.scale(dimension).bandSize] };
+            }
+            else if (unitModel.mark() === mark_1.TEXT) {
+                return { range: scaleConfig.fontSizeRange };
+            }
+            else if (unitModel.mark() === mark_1.RULE) {
+                return { range: scaleConfig.ruleSizeRange };
+            }
+            else if (unitModel.mark() === mark_1.TICK) {
+                return { range: scaleConfig.tickSizeRange };
+            }
+            if (scaleConfig.pointSizeRange !== undefined) {
+                return { range: scaleConfig.pointSizeRange };
+            }
+            var bandSize = pointBandSize(unitModel);
+            return { range: [9, (bandSize - 2) * (bandSize - 2)] };
+        case channel_1.SHAPE:
+            return { range: scaleConfig.shapeRange };
+        case channel_1.COLOR:
+            if (fieldDef.type === type_1.NOMINAL) {
+                return { range: scaleConfig.nominalColorRange };
+            }
+            return { range: scaleConfig.sequentialColorRange };
+        case channel_1.OPACITY:
+            return { range: scaleConfig.opacity };
+    }
+    return {};
+}
+exports.rangeMixins = rangeMixins;
+function pointBandSize(model) {
+    var scaleConfig = model.config().scale;
+    var hasX = model.has(channel_1.X);
+    var hasY = model.has(channel_1.Y);
+    var xIsMeasure = fielddef_1.isMeasure(model.encoding().x);
+    var yIsMeasure = fielddef_1.isMeasure(model.encoding().y);
+    if (hasX && hasY) {
+        return xIsMeasure !== yIsMeasure ?
+            model.scale(xIsMeasure ? channel_1.Y : channel_1.X).bandSize :
+            Math.min(model.scale(channel_1.X).bandSize || scaleConfig.bandSize, model.scale(channel_1.Y).bandSize || scaleConfig.bandSize);
+    }
+    else if (hasY) {
+        return yIsMeasure ? model.config().scale.bandSize : model.scale(channel_1.Y).bandSize;
+    }
+    else if (hasX) {
+        return xIsMeasure ? model.config().scale.bandSize : model.scale(channel_1.X).bandSize;
+    }
+    return model.config().scale.bandSize;
+}
+function clamp(scale) {
+    if (util_1.contains([scale_1.ScaleType.LINEAR, scale_1.ScaleType.POW, scale_1.ScaleType.SQRT,
+        scale_1.ScaleType.LOG, scale_1.ScaleType.TIME, scale_1.ScaleType.UTC], scale.type)) {
+        return scale.clamp;
+    }
+    return undefined;
+}
+exports.clamp = clamp;
+function exponent(scale) {
+    if (scale.type === scale_1.ScaleType.POW) {
+        return scale.exponent;
+    }
+    return undefined;
+}
+exports.exponent = exponent;
+function nice(scale, channel, fieldDef) {
+    if (util_1.contains([scale_1.ScaleType.LINEAR, scale_1.ScaleType.POW, scale_1.ScaleType.SQRT, scale_1.ScaleType.LOG,
+        scale_1.ScaleType.TIME, scale_1.ScaleType.UTC, scale_1.ScaleType.QUANTIZE], scale.type)) {
+        if (scale.nice !== undefined) {
+            return scale.nice;
+        }
+        if (util_1.contains([scale_1.ScaleType.TIME, scale_1.ScaleType.UTC], scale.type)) {
+            return time_1.smallestUnit(fieldDef.timeUnit);
+        }
+        return util_1.contains([channel_1.X, channel_1.Y], channel);
+    }
+    return undefined;
+}
+exports.nice = nice;
+function padding(scale, channel) {
+    if (scale.type === scale_1.ScaleType.ORDINAL && util_1.contains([channel_1.X, channel_1.Y], channel)) {
+        return scale.padding;
+    }
+    return undefined;
+}
+exports.padding = padding;
+function points(scale, channel, __, model) {
+    if (scale.type === scale_1.ScaleType.ORDINAL && util_1.contains([channel_1.X, channel_1.Y], channel)) {
+        return true;
+    }
+    return undefined;
+}
+exports.points = points;
+function round(scale, channel) {
+    if (util_1.contains([channel_1.X, channel_1.Y, channel_1.ROW, channel_1.COLUMN, channel_1.SIZE], channel) && scale.round !== undefined) {
+        return scale.round;
+    }
+    return undefined;
+}
+exports.round = round;
+function zero(scale, channel, fieldDef) {
+    if (!util_1.contains([scale_1.ScaleType.TIME, scale_1.ScaleType.UTC, scale_1.ScaleType.ORDINAL], scale.type)) {
+        if (scale.zero !== undefined) {
+            return scale.zero;
+        }
+        return !fieldDef.bin && util_1.contains([channel_1.X, channel_1.Y], channel);
+    }
+    return undefined;
+}
+exports.zero = zero;
+
+},{"../aggregate":223,"../channel":226,"../config":261,"../data":262,"../fielddef":264,"../mark":266,"../scale":267,"../timeunit":271,"../type":272,"../util":273,"./time":259}],258:[function(require,module,exports){
+"use strict";
+var channel_1 = require('../channel');
+var scale_1 = require('../scale');
+var config_1 = require('../config');
+var mark_1 = require('../mark');
+var fielddef_1 = require('../fielddef');
+var encoding_1 = require('../encoding');
+var util_1 = require('../util');
+var common_1 = require('./common');
+function compileStackProperties(mark, encoding, scale, config) {
+    var stackFields = getStackFields(mark, encoding, scale);
+    if (stackFields.length > 0 &&
+        util_1.contains([mark_1.BAR, mark_1.AREA], mark) &&
+        config.mark.stacked !== config_1.StackOffset.NONE &&
+        encoding_1.isAggregate(encoding)) {
+        var isXMeasure = encoding_1.has(encoding, channel_1.X) && fielddef_1.isMeasure(encoding.x), isYMeasure = encoding_1.has(encoding, channel_1.Y) && fielddef_1.isMeasure(encoding.y);
+        if (isXMeasure && !isYMeasure) {
+            return {
+                groupbyChannel: channel_1.Y,
+                fieldChannel: channel_1.X,
+                stackFields: stackFields,
+                offset: config.mark.stacked
+            };
+        }
+        else if (isYMeasure && !isXMeasure) {
+            return {
+                groupbyChannel: channel_1.X,
+                fieldChannel: channel_1.Y,
+                stackFields: stackFields,
+                offset: config.mark.stacked
+            };
+        }
+    }
+    return null;
+}
+exports.compileStackProperties = compileStackProperties;
+function getStackFields(mark, encoding, scaleMap) {
+    return [channel_1.COLOR, channel_1.DETAIL, channel_1.OPACITY, channel_1.SIZE].reduce(function (fields, channel) {
+        var channelEncoding = encoding[channel];
+        if (encoding_1.has(encoding, channel)) {
+            if (util_1.isArray(channelEncoding)) {
+                channelEncoding.forEach(function (fieldDef) {
+                    fields.push(fielddef_1.field(fieldDef));
+                });
+            }
+            else {
+                var fieldDef = channelEncoding;
+                var scale = scaleMap[channel];
+                fields.push(fielddef_1.field(fieldDef, {
+                    binSuffix: scale && scale.type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
+                }));
+            }
+        }
+        return fields;
+    }, []);
+}
+function imputeTransform(model) {
+    var stack = model.stack();
+    return {
+        type: 'impute',
+        field: model.field(stack.fieldChannel),
+        groupby: stack.stackFields,
+        orderby: [model.field(stack.groupbyChannel)],
+        method: 'value',
+        value: 0
+    };
+}
+exports.imputeTransform = imputeTransform;
+function stackTransform(model) {
+    var stack = model.stack();
+    var encoding = model.encoding();
+    var sortby = model.has(channel_1.ORDER) ?
+        (util_1.isArray(encoding[channel_1.ORDER]) ? encoding[channel_1.ORDER] : [encoding[channel_1.ORDER]]).map(common_1.sortField) :
+        stack.stackFields.map(function (field) {
+            return '-' + field;
+        });
+    var valName = model.field(stack.fieldChannel);
+    var transform = {
+        type: 'stack',
+        groupby: [model.field(stack.groupbyChannel)],
+        field: model.field(stack.fieldChannel),
+        sortby: sortby,
+        output: {
+            start: valName + '_start',
+            end: valName + '_end'
+        }
+    };
+    if (stack.offset) {
+        transform.offset = stack.offset;
+    }
+    return transform;
+}
+exports.stackTransform = stackTransform;
+
+},{"../channel":226,"../config":261,"../encoding":263,"../fielddef":264,"../mark":266,"../scale":267,"../util":273,"./common":228}],259:[function(require,module,exports){
+"use strict";
+var util_1 = require('../util');
+var channel_1 = require('../channel');
+var timeunit_1 = require('../timeunit');
+function smallestUnit(timeUnit) {
+    if (!timeUnit) {
+        return undefined;
+    }
+    if (timeUnit.indexOf('second') > -1) {
+        return 'second';
+    }
+    if (timeUnit.indexOf('minute') > -1) {
+        return 'minute';
+    }
+    if (timeUnit.indexOf('hour') > -1) {
+        return 'hour';
+    }
+    if (timeUnit.indexOf('day') > -1 || timeUnit.indexOf('date') > -1) {
+        return 'day';
+    }
+    if (timeUnit.indexOf('month') > -1) {
+        return 'month';
+    }
+    if (timeUnit.indexOf('year') > -1) {
+        return 'year';
+    }
+    return undefined;
+}
+exports.smallestUnit = smallestUnit;
+function parseExpression(timeUnit, fieldRef, onlyRef) {
+    if (onlyRef === void 0) { onlyRef = false; }
+    var out = 'datetime(';
+    var timeString = timeUnit.toString();
+    function get(fun, addComma) {
+        if (addComma === void 0) { addComma = true; }
+        if (onlyRef) {
+            return fieldRef + (addComma ? ', ' : '');
+        }
+        else {
+            return fun + '(' + fieldRef + ')' + (addComma ? ', ' : '');
+        }
+    }
+    if (timeString.indexOf('year') > -1) {
+        out += get('year');
+    }
+    else {
+        out += '2006, ';
+    }
+    if (timeString.indexOf('month') > -1) {
+        out += get('month');
+    }
+    else {
+        out += '0, ';
+    }
+    if (timeString.indexOf('day') > -1) {
+        out += get('day', false) + '+1, ';
+    }
+    else if (timeString.indexOf('date') > -1) {
+        out += get('date');
+    }
+    else {
+        out += '1, ';
+    }
+    if (timeString.indexOf('hours') > -1) {
+        out += get('hours');
+    }
+    else {
+        out += '0, ';
+    }
+    if (timeString.indexOf('minutes') > -1) {
+        out += get('minutes');
+    }
+    else {
+        out += '0, ';
+    }
+    if (timeString.indexOf('seconds') > -1) {
+        out += get('seconds');
+    }
+    else {
+        out += '0, ';
+    }
+    if (timeString.indexOf('milliseconds') > -1) {
+        out += get('milliseconds', false);
+    }
+    else {
+        out += '0';
+    }
+    return out + ')';
+}
+exports.parseExpression = parseExpression;
+function rawDomain(timeUnit, channel) {
+    if (util_1.contains([channel_1.ROW, channel_1.COLUMN, channel_1.SHAPE, channel_1.COLOR], channel)) {
+        return null;
+    }
+    switch (timeUnit) {
+        case timeunit_1.TimeUnit.SECONDS:
+            return util_1.range(0, 60);
+        case timeunit_1.TimeUnit.MINUTES:
+            return util_1.range(0, 60);
+        case timeunit_1.TimeUnit.HOURS:
+            return util_1.range(0, 24);
+        case timeunit_1.TimeUnit.DAY:
+            return util_1.range(0, 7);
+        case timeunit_1.TimeUnit.DATE:
+            return util_1.range(1, 32);
+        case timeunit_1.TimeUnit.MONTH:
+            return util_1.range(0, 12);
+    }
+    return null;
+}
+exports.rawDomain = rawDomain;
+
+},{"../channel":226,"../timeunit":271,"../util":273}],260:[function(require,module,exports){
+"use strict";
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+};
+var aggregate_1 = require('../aggregate');
+var channel_1 = require('../channel');
+var config_1 = require('../config');
+var data_1 = require('../data');
+var vlEncoding = require('../encoding');
+var fielddef_1 = require('../fielddef');
+var mark_1 = require('../mark');
+var scale_1 = require('../scale');
+var type_1 = require('../type');
+var util_1 = require('../util');
+var axis_1 = require('./axis');
+var common_1 = require('./common');
+var config_2 = require('./config');
+var data_2 = require('./data/data');
+var legend_1 = require('./legend');
+var layout_1 = require('./layout');
+var model_1 = require('./model');
+var mark_2 = require('./mark/mark');
+var scale_2 = require('./scale');
+var stack_1 = require('./stack');
+var UnitModel = (function (_super) {
+    __extends(UnitModel, _super);
+    function UnitModel(spec, parent, parentGivenName) {
+        _super.call(this, spec, parent, parentGivenName);
+        var mark = this._mark = spec.mark;
+        var encoding = this._encoding = this._initEncoding(mark, spec.encoding || {});
+        var config = this._config = this._initConfig(spec.config, parent, mark, encoding);
+        var scale = this._scale = this._initScale(mark, encoding, config);
+        this._axis = this._initAxis(encoding, config);
+        this._legend = this._initLegend(encoding, config);
+        this._stack = stack_1.compileStackProperties(mark, encoding, scale, config);
+    }
+    UnitModel.prototype._initEncoding = function (mark, encoding) {
+        encoding = util_1.duplicate(encoding);
+        vlEncoding.forEach(encoding, function (fieldDef, channel) {
+            if (!channel_1.supportMark(channel, mark)) {
+                console.warn(channel, 'dropped as it is incompatible with', mark);
+                delete fieldDef.field;
+                return;
+            }
+            if (fieldDef.type) {
+                fieldDef.type = type_1.getFullName(fieldDef.type);
+            }
+            if ((channel === channel_1.PATH || channel === channel_1.ORDER) && !fieldDef.aggregate && fieldDef.type === type_1.QUANTITATIVE) {
+                fieldDef.aggregate = aggregate_1.AggregateOp.MIN;
+            }
+        });
+        return encoding;
+    };
+    UnitModel.prototype._initConfig = function (specConfig, parent, mark, encoding) {
+        var config = util_1.mergeDeep(util_1.duplicate(config_1.defaultConfig), parent ? parent.config() : {}, specConfig);
+        config.mark = config_2.initMarkConfig(mark, encoding, config);
+        return config;
+    };
+    UnitModel.prototype._initScale = function (mark, encoding, config) {
+        return channel_1.UNIT_SCALE_CHANNELS.reduce(function (_scale, channel) {
+            if (vlEncoding.has(encoding, channel)) {
+                var scaleSpec = encoding[channel].scale || {};
+                var channelDef = encoding[channel];
+                var _scaleType = scale_2.scaleType(scaleSpec, channelDef, channel, mark);
+                _scale[channel] = util_1.extend({
+                    type: _scaleType,
+                    round: config.scale.round,
+                    padding: config.scale.padding,
+                    useRawDomain: config.scale.useRawDomain,
+                    bandSize: channel === channel_1.X && _scaleType === scale_1.ScaleType.ORDINAL && mark === mark_1.TEXT ?
+                        config.scale.textBandWidth : config.scale.bandSize
+                }, scaleSpec);
+            }
+            return _scale;
+        }, {});
+    };
+    UnitModel.prototype._initAxis = function (encoding, config) {
+        return [channel_1.X, channel_1.Y].reduce(function (_axis, channel) {
+            if (vlEncoding.has(encoding, channel)) {
+                var axisSpec = encoding[channel].axis;
+                if (axisSpec !== false) {
+                    _axis[channel] = util_1.extend({}, config.axis, axisSpec === true ? {} : axisSpec || {});
+                }
+            }
+            return _axis;
+        }, {});
+    };
+    UnitModel.prototype._initLegend = function (encoding, config) {
+        return channel_1.NONSPATIAL_SCALE_CHANNELS.reduce(function (_legend, channel) {
+            if (vlEncoding.has(encoding, channel)) {
+                var legendSpec = encoding[channel].legend;
+                if (legendSpec !== false) {
+                    _legend[channel] = util_1.extend({}, config.legend, legendSpec === true ? {} : legendSpec || {});
+                }
+            }
+            return _legend;
+        }, {});
+    };
+    UnitModel.prototype.parseData = function () {
+        this.component.data = data_2.parseUnitData(this);
+    };
+    UnitModel.prototype.parseSelectionData = function () {
+    };
+    UnitModel.prototype.parseLayoutData = function () {
+        this.component.layout = layout_1.parseUnitLayout(this);
+    };
+    UnitModel.prototype.parseScale = function () {
+        this.component.scale = scale_2.parseScaleComponent(this);
+    };
+    UnitModel.prototype.parseMark = function () {
+        this.component.mark = mark_2.parseMark(this);
+    };
+    UnitModel.prototype.parseAxis = function () {
+        this.component.axis = axis_1.parseAxisComponent(this, [channel_1.X, channel_1.Y]);
+    };
+    UnitModel.prototype.parseAxisGroup = function () {
+        return null;
+    };
+    UnitModel.prototype.parseGridGroup = function () {
+        return null;
+    };
+    UnitModel.prototype.parseLegend = function () {
+        this.component.legend = legend_1.parseLegendComponent(this);
+    };
+    UnitModel.prototype.assembleData = function (data) {
+        return data_2.assembleData(this, data);
+    };
+    UnitModel.prototype.assembleLayout = function (layoutData) {
+        return layout_1.assembleLayout(this, layoutData);
+    };
+    UnitModel.prototype.assembleMarks = function () {
+        return this.component.mark;
+    };
+    UnitModel.prototype.assembleParentGroupProperties = function (cellConfig) {
+        return common_1.applyConfig({}, cellConfig, common_1.FILL_STROKE_CONFIG.concat(['clip']));
+    };
+    UnitModel.prototype.channels = function () {
+        return channel_1.UNIT_CHANNELS;
+    };
+    UnitModel.prototype.mapping = function () {
+        return this.encoding();
+    };
+    UnitModel.prototype.stack = function () {
+        return this._stack;
+    };
+    UnitModel.prototype.toSpec = function (excludeConfig, excludeData) {
+        var encoding = util_1.duplicate(this._encoding);
+        var spec;
+        spec = {
+            mark: this._mark,
+            encoding: encoding
+        };
+        if (!excludeConfig) {
+            spec.config = util_1.duplicate(this._config);
+        }
+        if (!excludeData) {
+            spec.data = util_1.duplicate(this._data);
+        }
+        return spec;
+    };
+    UnitModel.prototype.mark = function () {
+        return this._mark;
+    };
+    UnitModel.prototype.has = function (channel) {
+        return vlEncoding.has(this._encoding, channel);
+    };
+    UnitModel.prototype.encoding = function () {
+        return this._encoding;
+    };
+    UnitModel.prototype.fieldDef = function (channel) {
+        return this._encoding[channel] || {};
+    };
+    UnitModel.prototype.field = function (channel, opt) {
+        if (opt === void 0) { opt = {}; }
+        var fieldDef = this.fieldDef(channel);
+        if (fieldDef.bin) {
+            opt = util_1.extend({
+                binSuffix: this.scale(channel).type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
+            }, opt);
+        }
+        return fielddef_1.field(fieldDef, opt);
+    };
+    UnitModel.prototype.dataTable = function () {
+        return this.dataName(vlEncoding.isAggregate(this._encoding) ? data_1.SUMMARY : data_1.SOURCE);
+    };
+    UnitModel.prototype.isUnit = function () {
+        return true;
+    };
+    return UnitModel;
+}(model_1.Model));
+exports.UnitModel = UnitModel;
+
+},{"../aggregate":223,"../channel":226,"../config":261,"../data":262,"../encoding":263,"../fielddef":264,"../mark":266,"../scale":267,"../type":272,"../util":273,"./axis":227,"./common":228,"./config":230,"./data/data":233,"./layout":246,"./legend":247,"./mark/mark":251,"./model":256,"./scale":257,"./stack":258}],261:[function(require,module,exports){
+"use strict";
+var scale_1 = require('./scale');
+var axis_1 = require('./axis');
+var legend_1 = require('./legend');
+exports.defaultCellConfig = {
+    width: 200,
+    height: 200
+};
+exports.defaultFacetCellConfig = {
+    stroke: '#ccc',
+    strokeWidth: 1
+};
+var defaultFacetGridConfig = {
+    color: '#000000',
+    opacity: 0.4,
+    offset: 0
+};
+exports.defaultFacetConfig = {
+    scale: scale_1.defaultFacetScaleConfig,
+    axis: axis_1.defaultFacetAxisConfig,
+    grid: defaultFacetGridConfig,
+    cell: exports.defaultFacetCellConfig
+};
+(function (FontWeight) {
+    FontWeight[FontWeight["NORMAL"] = 'normal'] = "NORMAL";
+    FontWeight[FontWeight["BOLD"] = 'bold'] = "BOLD";
+})(exports.FontWeight || (exports.FontWeight = {}));
+var FontWeight = exports.FontWeight;
+(function (Shape) {
+    Shape[Shape["CIRCLE"] = 'circle'] = "CIRCLE";
+    Shape[Shape["SQUARE"] = 'square'] = "SQUARE";
+    Shape[Shape["CROSS"] = 'cross'] = "CROSS";
+    Shape[Shape["DIAMOND"] = 'diamond'] = "DIAMOND";
+    Shape[Shape["TRIANGLEUP"] = 'triangle-up'] = "TRIANGLEUP";
+    Shape[Shape["TRIANGLEDOWN"] = 'triangle-down'] = "TRIANGLEDOWN";
+})(exports.Shape || (exports.Shape = {}));
+var Shape = exports.Shape;
+(function (HorizontalAlign) {
+    HorizontalAlign[HorizontalAlign["LEFT"] = 'left'] = "LEFT";
+    HorizontalAlign[HorizontalAlign["RIGHT"] = 'right'] = "RIGHT";
+    HorizontalAlign[HorizontalAlign["CENTER"] = 'center'] = "CENTER";
+})(exports.HorizontalAlign || (exports.HorizontalAlign = {}));
+var HorizontalAlign = exports.HorizontalAlign;
+(function (VerticalAlign) {
+    VerticalAlign[VerticalAlign["TOP"] = 'top'] = "TOP";
+    VerticalAlign[VerticalAlign["MIDDLE"] = 'middle'] = "MIDDLE";
+    VerticalAlign[VerticalAlign["BOTTOM"] = 'bottom'] = "BOTTOM";
+})(exports.VerticalAlign || (exports.VerticalAlign = {}));
+var VerticalAlign = exports.VerticalAlign;
+(function (FontStyle) {
+    FontStyle[FontStyle["NORMAL"] = 'normal'] = "NORMAL";
+    FontStyle[FontStyle["ITALIC"] = 'italic'] = "ITALIC";
+})(exports.FontStyle || (exports.FontStyle = {}));
+var FontStyle = exports.FontStyle;
+(function (StackOffset) {
+    StackOffset[StackOffset["ZERO"] = 'zero'] = "ZERO";
+    StackOffset[StackOffset["CENTER"] = 'center'] = "CENTER";
+    StackOffset[StackOffset["NORMALIZE"] = 'normalize'] = "NORMALIZE";
+    StackOffset[StackOffset["NONE"] = 'none'] = "NONE";
+})(exports.StackOffset || (exports.StackOffset = {}));
+var StackOffset = exports.StackOffset;
+(function (Interpolate) {
+    Interpolate[Interpolate["LINEAR"] = 'linear'] = "LINEAR";
+    Interpolate[Interpolate["LINEAR_CLOSED"] = 'linear-closed'] = "LINEAR_CLOSED";
+    Interpolate[Interpolate["STEP"] = 'step'] = "STEP";
+    Interpolate[Interpolate["STEP_BEFORE"] = 'step-before'] = "STEP_BEFORE";
+    Interpolate[Interpolate["STEP_AFTER"] = 'step-after'] = "STEP_AFTER";
+    Interpolate[Interpolate["BASIS"] = 'basis'] = "BASIS";
+    Interpolate[Interpolate["BASIS_OPEN"] = 'basis-open'] = "BASIS_OPEN";
+    Interpolate[Interpolate["BASIS_CLOSED"] = 'basis-closed'] = "BASIS_CLOSED";
+    Interpolate[Interpolate["CARDINAL"] = 'cardinal'] = "CARDINAL";
+    Interpolate[Interpolate["CARDINAL_OPEN"] = 'cardinal-open'] = "CARDINAL_OPEN";
+    Interpolate[Interpolate["CARDINAL_CLOSED"] = 'cardinal-closed'] = "CARDINAL_CLOSED";
+    Interpolate[Interpolate["BUNDLE"] = 'bundle'] = "BUNDLE";
+    Interpolate[Interpolate["MONOTONE"] = 'monotone'] = "MONOTONE";
+})(exports.Interpolate || (exports.Interpolate = {}));
+var Interpolate = exports.Interpolate;
+exports.defaultMarkConfig = {
+    color: '#4682b4',
+    shape: Shape.CIRCLE,
+    strokeWidth: 2,
+    size: 30,
+    barThinSize: 2,
+    ruleSize: 1,
+    tickThickness: 1,
+    fontSize: 10,
+    baseline: VerticalAlign.MIDDLE,
+    text: 'Abc',
+    shortTimeLabels: false,
+    applyColorToBackground: false
+};
+exports.defaultConfig = {
+    numberFormat: 's',
+    timeFormat: '%Y-%m-%d',
+    cell: exports.defaultCellConfig,
+    mark: exports.defaultMarkConfig,
+    scale: scale_1.defaultScaleConfig,
+    axis: axis_1.defaultAxisConfig,
+    legend: legend_1.defaultLegendConfig,
+    facet: exports.defaultFacetConfig,
+};
+
+},{"./axis":224,"./legend":265,"./scale":267}],262:[function(require,module,exports){
+"use strict";
+var type_1 = require('./type');
+(function (DataFormat) {
+    DataFormat[DataFormat["JSON"] = 'json'] = "JSON";
+    DataFormat[DataFormat["CSV"] = 'csv'] = "CSV";
+    DataFormat[DataFormat["TSV"] = 'tsv'] = "TSV";
+})(exports.DataFormat || (exports.DataFormat = {}));
+var DataFormat = exports.DataFormat;
+(function (DataTable) {
+    DataTable[DataTable["SOURCE"] = 'source'] = "SOURCE";
+    DataTable[DataTable["SUMMARY"] = 'summary'] = "SUMMARY";
+    DataTable[DataTable["STACKED_SCALE"] = 'stacked_scale'] = "STACKED_SCALE";
+    DataTable[DataTable["LAYOUT"] = 'layout'] = "LAYOUT";
+})(exports.DataTable || (exports.DataTable = {}));
+var DataTable = exports.DataTable;
+exports.SUMMARY = DataTable.SUMMARY;
+exports.SOURCE = DataTable.SOURCE;
+exports.STACKED_SCALE = DataTable.STACKED_SCALE;
+exports.LAYOUT = DataTable.LAYOUT;
+exports.types = {
+    'boolean': type_1.Type.NOMINAL,
+    'number': type_1.Type.QUANTITATIVE,
+    'integer': type_1.Type.QUANTITATIVE,
+    'date': type_1.Type.TEMPORAL,
+    'string': type_1.Type.NOMINAL
+};
+
+},{"./type":272}],263:[function(require,module,exports){
+"use strict";
+var channel_1 = require('./channel');
+var util_1 = require('./util');
+function countRetinal(encoding) {
+    var count = 0;
+    if (encoding.color) {
+        count++;
+    }
+    if (encoding.opacity) {
+        count++;
+    }
+    if (encoding.size) {
+        count++;
+    }
+    if (encoding.shape) {
+        count++;
+    }
+    return count;
+}
+exports.countRetinal = countRetinal;
+function channels(encoding) {
+    return channel_1.CHANNELS.filter(function (channel) {
+        return has(encoding, channel);
+    });
+}
+exports.channels = channels;
+function has(encoding, channel) {
+    var channelEncoding = encoding && encoding[channel];
+    return channelEncoding && (channelEncoding.field !== undefined ||
+        (util_1.isArray(channelEncoding) && channelEncoding.length > 0));
+}
+exports.has = has;
+function isAggregate(encoding) {
+    return util_1.any(channel_1.CHANNELS, function (channel) {
+        if (has(encoding, channel) && encoding[channel].aggregate) {
+            return true;
+        }
+        return false;
+    });
+}
+exports.isAggregate = isAggregate;
+function fieldDefs(encoding) {
+    var arr = [];
+    channel_1.CHANNELS.forEach(function (channel) {
+        if (has(encoding, channel)) {
+            if (util_1.isArray(encoding[channel])) {
+                encoding[channel].forEach(function (fieldDef) {
+                    arr.push(fieldDef);
+                });
+            }
+            else {
+                arr.push(encoding[channel]);
+            }
+        }
+    });
+    return arr;
+}
+exports.fieldDefs = fieldDefs;
+;
+function forEach(encoding, f, thisArg) {
+    channelMappingForEach(channel_1.CHANNELS, encoding, f, thisArg);
+}
+exports.forEach = forEach;
+function channelMappingForEach(channels, mapping, f, thisArg) {
+    var i = 0;
+    channels.forEach(function (channel) {
+        if (has(mapping, channel)) {
+            if (util_1.isArray(mapping[channel])) {
+                mapping[channel].forEach(function (fieldDef) {
+                    f.call(thisArg, fieldDef, channel, i++);
+                });
+            }
+            else {
+                f.call(thisArg, mapping[channel], channel, i++);
+            }
+        }
+    });
+}
+exports.channelMappingForEach = channelMappingForEach;
+function map(encoding, f, thisArg) {
+    return channelMappingMap(channel_1.CHANNELS, encoding, f, thisArg);
+}
+exports.map = map;
+function channelMappingMap(channels, mapping, f, thisArg) {
+    var arr = [];
+    channels.forEach(function (channel) {
+        if (has(mapping, channel)) {
+            if (util_1.isArray(mapping[channel])) {
+                mapping[channel].forEach(function (fieldDef) {
+                    arr.push(f.call(thisArg, fieldDef, channel));
+                });
+            }
+            else {
+                arr.push(f.call(thisArg, mapping[channel], channel));
+            }
+        }
+    });
+    return arr;
+}
+exports.channelMappingMap = channelMappingMap;
+function reduce(encoding, f, init, thisArg) {
+    return channelMappingReduce(channel_1.CHANNELS, encoding, f, init, thisArg);
+}
+exports.reduce = reduce;
+function channelMappingReduce(channels, mapping, f, init, thisArg) {
+    var r = init;
+    channel_1.CHANNELS.forEach(function (channel) {
+        if (has(mapping, channel)) {
+            if (util_1.isArray(mapping[channel])) {
+                mapping[channel].forEach(function (fieldDef) {
+                    r = f.call(thisArg, r, fieldDef, channel);
+                });
+            }
+            else {
+                r = f.call(thisArg, r, mapping[channel], channel);
+            }
+        }
+    });
+    return r;
+}
+exports.channelMappingReduce = channelMappingReduce;
+
+},{"./channel":226,"./util":273}],264:[function(require,module,exports){
+"use strict";
+var aggregate_1 = require('./aggregate');
+var scale_1 = require('./scale');
+var timeunit_1 = require('./timeunit');
+var type_1 = require('./type');
+var util_1 = require('./util');
+exports.aggregate = {
+    type: 'string',
+    enum: aggregate_1.AGGREGATE_OPS,
+    supportedEnums: {
+        quantitative: aggregate_1.AGGREGATE_OPS,
+        ordinal: ['median', 'min', 'max'],
+        nominal: [],
+        temporal: ['mean', 'median', 'min', 'max'],
+        '': ['count']
+    },
+    supportedTypes: util_1.toMap([type_1.QUANTITATIVE, type_1.NOMINAL, type_1.ORDINAL, type_1.TEMPORAL, ''])
+};
+function field(fieldDef, opt) {
+    if (opt === void 0) { opt = {}; }
+    var prefix = (opt.datum ? 'datum.' : '') + (opt.prefn || '');
+    var suffix = opt.suffix || '';
+    var field = fieldDef.field;
+    if (isCount(fieldDef)) {
+        return prefix + 'count' + suffix;
+    }
+    else if (opt.fn) {
+        return prefix + opt.fn + '_' + field + suffix;
+    }
+    else if (!opt.nofn && fieldDef.bin) {
+        var binSuffix = opt.binSuffix || (opt.scaleType === scale_1.ScaleType.ORDINAL ?
+            '_range' :
+            '_start');
+        return prefix + 'bin_' + field + binSuffix;
+    }
+    else if (!opt.nofn && !opt.noAggregate && fieldDef.aggregate) {
+        return prefix + fieldDef.aggregate + '_' + field + suffix;
+    }
+    else if (!opt.nofn && fieldDef.timeUnit) {
+        return prefix + fieldDef.timeUnit + '_' + field + suffix;
+    }
+    else {
+        return prefix + field;
+    }
+}
+exports.field = field;
+function _isFieldDimension(fieldDef) {
+    return util_1.contains([type_1.NOMINAL, type_1.ORDINAL], fieldDef.type) || !!fieldDef.bin ||
+        (fieldDef.type === type_1.TEMPORAL && !!fieldDef.timeUnit);
+}
+function isDimension(fieldDef) {
+    return fieldDef && fieldDef.field && _isFieldDimension(fieldDef);
+}
+exports.isDimension = isDimension;
+function isMeasure(fieldDef) {
+    return fieldDef && fieldDef.field && !_isFieldDimension(fieldDef);
+}
+exports.isMeasure = isMeasure;
+exports.COUNT_TITLE = 'Number of Records';
+function count() {
+    return { field: '*', aggregate: aggregate_1.AggregateOp.COUNT, type: type_1.QUANTITATIVE, title: exports.COUNT_TITLE };
+}
+exports.count = count;
+function isCount(fieldDef) {
+    return fieldDef.aggregate === aggregate_1.AggregateOp.COUNT;
+}
+exports.isCount = isCount;
+function cardinality(fieldDef, stats, filterNull) {
+    if (filterNull === void 0) { filterNull = {}; }
+    var stat = stats[fieldDef.field], type = fieldDef.type;
+    if (fieldDef.bin) {
+        var bin_1 = fieldDef.bin;
+        var maxbins = (typeof bin_1 === 'boolean') ? undefined : bin_1.maxbins;
+        if (maxbins === undefined) {
+            maxbins = 10;
+        }
+        var bins = util_1.getbins(stat, maxbins);
+        return (bins.stop - bins.start) / bins.step;
+    }
+    if (type === type_1.TEMPORAL) {
+        var timeUnit = fieldDef.timeUnit;
+        switch (timeUnit) {
+            case timeunit_1.TimeUnit.SECONDS: return 60;
+            case timeunit_1.TimeUnit.MINUTES: return 60;
+            case timeunit_1.TimeUnit.HOURS: return 24;
+            case timeunit_1.TimeUnit.DAY: return 7;
+            case timeunit_1.TimeUnit.DATE: return 31;
+            case timeunit_1.TimeUnit.MONTH: return 12;
+            case timeunit_1.TimeUnit.YEAR:
+                var yearstat = stats['year_' + fieldDef.field];
+                if (!yearstat) {
+                    return null;
+                }
+                return yearstat.distinct -
+                    (stat.missing > 0 && filterNull[type] ? 1 : 0);
+        }
+    }
+    if (fieldDef.aggregate) {
+        return 1;
+    }
+    return stat.distinct -
+        (stat.missing > 0 && filterNull[type] ? 1 : 0);
+}
+exports.cardinality = cardinality;
+function title(fieldDef) {
+    if (fieldDef.title != null) {
+        return fieldDef.title;
+    }
+    if (isCount(fieldDef)) {
+        return exports.COUNT_TITLE;
+    }
+    var fn = fieldDef.aggregate || fieldDef.timeUnit || (fieldDef.bin && 'bin');
+    if (fn) {
+        return fn.toString().toUpperCase() + '(' + fieldDef.field + ')';
+    }
+    else {
+        return fieldDef.field;
+    }
+}
+exports.title = title;
+
+},{"./aggregate":223,"./scale":267,"./timeunit":271,"./type":272,"./util":273}],265:[function(require,module,exports){
+"use strict";
+exports.defaultLegendConfig = {
+    orient: undefined,
+    shortTimeLabels: false
+};
+
+},{}],266:[function(require,module,exports){
+"use strict";
+(function (Mark) {
+    Mark[Mark["AREA"] = 'area'] = "AREA";
+    Mark[Mark["BAR"] = 'bar'] = "BAR";
+    Mark[Mark["LINE"] = 'line'] = "LINE";
+    Mark[Mark["POINT"] = 'point'] = "POINT";
+    Mark[Mark["TEXT"] = 'text'] = "TEXT";
+    Mark[Mark["TICK"] = 'tick'] = "TICK";
+    Mark[Mark["RULE"] = 'rule'] = "RULE";
+    Mark[Mark["CIRCLE"] = 'circle'] = "CIRCLE";
+    Mark[Mark["SQUARE"] = 'square'] = "SQUARE";
+})(exports.Mark || (exports.Mark = {}));
+var Mark = exports.Mark;
+exports.AREA = Mark.AREA;
+exports.BAR = Mark.BAR;
+exports.LINE = Mark.LINE;
+exports.POINT = Mark.POINT;
+exports.TEXT = Mark.TEXT;
+exports.TICK = Mark.TICK;
+exports.RULE = Mark.RULE;
+exports.CIRCLE = Mark.CIRCLE;
+exports.SQUARE = Mark.SQUARE;
+
+},{}],267:[function(require,module,exports){
+"use strict";
+(function (ScaleType) {
+    ScaleType[ScaleType["LINEAR"] = 'linear'] = "LINEAR";
+    ScaleType[ScaleType["LOG"] = 'log'] = "LOG";
+    ScaleType[ScaleType["POW"] = 'pow'] = "POW";
+    ScaleType[ScaleType["SQRT"] = 'sqrt'] = "SQRT";
+    ScaleType[ScaleType["QUANTILE"] = 'quantile'] = "QUANTILE";
+    ScaleType[ScaleType["QUANTIZE"] = 'quantize'] = "QUANTIZE";
+    ScaleType[ScaleType["ORDINAL"] = 'ordinal'] = "ORDINAL";
+    ScaleType[ScaleType["TIME"] = 'time'] = "TIME";
+    ScaleType[ScaleType["UTC"] = 'utc'] = "UTC";
+})(exports.ScaleType || (exports.ScaleType = {}));
+var ScaleType = exports.ScaleType;
+(function (NiceTime) {
+    NiceTime[NiceTime["SECOND"] = 'second'] = "SECOND";
+    NiceTime[NiceTime["MINUTE"] = 'minute'] = "MINUTE";
+    NiceTime[NiceTime["HOUR"] = 'hour'] = "HOUR";
+    NiceTime[NiceTime["DAY"] = 'day'] = "DAY";
+    NiceTime[NiceTime["WEEK"] = 'week'] = "WEEK";
+    NiceTime[NiceTime["MONTH"] = 'month'] = "MONTH";
+    NiceTime[NiceTime["YEAR"] = 'year'] = "YEAR";
+})(exports.NiceTime || (exports.NiceTime = {}));
+var NiceTime = exports.NiceTime;
+exports.defaultScaleConfig = {
+    round: true,
+    textBandWidth: 90,
+    bandSize: 21,
+    padding: 1,
+    useRawDomain: false,
+    opacity: [0.3, 0.8],
+    nominalColorRange: 'category10',
+    sequentialColorRange: ['#AFC6A3', '#09622A'],
+    shapeRange: 'shapes',
+    fontSizeRange: [8, 40],
+    ruleSizeRange: [1, 5],
+    tickSizeRange: [1, 20]
+};
+exports.defaultFacetScaleConfig = {
+    round: true,
+    padding: 16
+};
+
+},{}],268:[function(require,module,exports){
+"use strict";
+var aggregate_1 = require('./aggregate');
+var timeunit_1 = require('./timeunit');
+var type_1 = require('./type');
+var vlEncoding = require('./encoding');
+var mark_1 = require('./mark');
+exports.DELIM = '|';
+exports.ASSIGN = '=';
+exports.TYPE = ',';
+exports.FUNC = '_';
+function shorten(spec) {
+    return 'mark' + exports.ASSIGN + spec.mark +
+        exports.DELIM + shortenEncoding(spec.encoding);
+}
+exports.shorten = shorten;
+function parse(shorthand, data, config) {
+    var split = shorthand.split(exports.DELIM), mark = split.shift().split(exports.ASSIGN)[1].trim(), encoding = parseEncoding(split.join(exports.DELIM));
+    var spec = {
+        mark: mark_1.Mark[mark],
+        encoding: encoding
+    };
+    if (data !== undefined) {
+        spec.data = data;
+    }
+    if (config !== undefined) {
+        spec.config = config;
+    }
+    return spec;
+}
+exports.parse = parse;
+function shortenEncoding(encoding) {
+    return vlEncoding.map(encoding, function (fieldDef, channel) {
+        return channel + exports.ASSIGN + shortenFieldDef(fieldDef);
+    }).join(exports.DELIM);
+}
+exports.shortenEncoding = shortenEncoding;
+function parseEncoding(encodingShorthand) {
+    return encodingShorthand.split(exports.DELIM).reduce(function (m, e) {
+        var split = e.split(exports.ASSIGN), enctype = split[0].trim(), fieldDefShorthand = split[1];
+        m[enctype] = parseFieldDef(fieldDefShorthand);
+        return m;
+    }, {});
+}
+exports.parseEncoding = parseEncoding;
+function shortenFieldDef(fieldDef) {
+    return (fieldDef.aggregate ? fieldDef.aggregate + exports.FUNC : '') +
+        (fieldDef.timeUnit ? fieldDef.timeUnit + exports.FUNC : '') +
+        (fieldDef.bin ? 'bin' + exports.FUNC : '') +
+        (fieldDef.field || '') + exports.TYPE + type_1.SHORT_TYPE[fieldDef.type];
+}
+exports.shortenFieldDef = shortenFieldDef;
+function shortenFieldDefs(fieldDefs, delim) {
+    if (delim === void 0) { delim = exports.DELIM; }
+    return fieldDefs.map(shortenFieldDef).join(delim);
+}
+exports.shortenFieldDefs = shortenFieldDefs;
+function parseFieldDef(fieldDefShorthand) {
+    var split = fieldDefShorthand.split(exports.TYPE);
+    var fieldDef = {
+        field: split[0].trim(),
+        type: type_1.TYPE_FROM_SHORT_TYPE[split[1].trim()]
+    };
+    for (var i = 0; i < aggregate_1.AGGREGATE_OPS.length; i++) {
+        var a = aggregate_1.AGGREGATE_OPS[i];
+        if (fieldDef.field.indexOf(a + '_') === 0) {
+            fieldDef.field = fieldDef.field.substr(a.toString().length + 1);
+            if (a === aggregate_1.AggregateOp.COUNT && fieldDef.field.length === 0) {
+                fieldDef.field = '*';
+            }
+            fieldDef.aggregate = a;
+            break;
+        }
+    }
+    for (var i = 0; i < timeunit_1.TIMEUNITS.length; i++) {
+        var tu = timeunit_1.TIMEUNITS[i];
+        if (fieldDef.field && fieldDef.field.indexOf(tu + '_') === 0) {
+            fieldDef.field = fieldDef.field.substr(fieldDef.field.length + 1);
+            fieldDef.timeUnit = tu;
+            break;
+        }
+    }
+    if (fieldDef.field && fieldDef.field.indexOf('bin_') === 0) {
+        fieldDef.field = fieldDef.field.substr(4);
+        fieldDef.bin = true;
+    }
+    return fieldDef;
+}
+exports.parseFieldDef = parseFieldDef;
+
+},{"./aggregate":223,"./encoding":263,"./mark":266,"./timeunit":271,"./type":272}],269:[function(require,module,exports){
+"use strict";
+(function (SortOrder) {
+    SortOrder[SortOrder["ASCENDING"] = 'ascending'] = "ASCENDING";
+    SortOrder[SortOrder["DESCENDING"] = 'descending'] = "DESCENDING";
+    SortOrder[SortOrder["NONE"] = 'none'] = "NONE";
+})(exports.SortOrder || (exports.SortOrder = {}));
+var SortOrder = exports.SortOrder;
+
+},{}],270:[function(require,module,exports){
+"use strict";
+var encoding_1 = require('./encoding');
+var channel_1 = require('./channel');
+var vlEncoding = require('./encoding');
+var mark_1 = require('./mark');
+var util_1 = require('./util');
+function isFacetSpec(spec) {
+    return spec['facet'] !== undefined;
+}
+exports.isFacetSpec = isFacetSpec;
+function isExtendedUnitSpec(spec) {
+    if (isSomeUnitSpec(spec)) {
+        var hasRow = encoding_1.has(spec.encoding, channel_1.ROW);
+        var hasColumn = encoding_1.has(spec.encoding, channel_1.COLUMN);
+        return hasRow || hasColumn;
+    }
+    return false;
+}
+exports.isExtendedUnitSpec = isExtendedUnitSpec;
+function isUnitSpec(spec) {
+    if (isSomeUnitSpec(spec)) {
+        return !isExtendedUnitSpec(spec);
+    }
+    return false;
+}
+exports.isUnitSpec = isUnitSpec;
+function isSomeUnitSpec(spec) {
+    return spec['mark'] !== undefined;
+}
+exports.isSomeUnitSpec = isSomeUnitSpec;
+function isLayerSpec(spec) {
+    return spec['layers'] !== undefined;
+}
+exports.isLayerSpec = isLayerSpec;
+function normalize(spec) {
+    if (isExtendedUnitSpec(spec)) {
+        var hasRow = encoding_1.has(spec.encoding, channel_1.ROW);
+        var hasColumn = encoding_1.has(spec.encoding, channel_1.COLUMN);
+        var encoding = util_1.duplicate(spec.encoding);
+        delete encoding.column;
+        delete encoding.row;
+        return util_1.extend(spec.name ? { name: spec.name } : {}, spec.description ? { description: spec.description } : {}, { data: spec.data }, spec.transform ? { transform: spec.transform } : {}, {
+            facet: util_1.extend(hasRow ? { row: spec.encoding.row } : {}, hasColumn ? { column: spec.encoding.column } : {}),
+            spec: {
+                mark: spec.mark,
+                encoding: encoding
+            }
+        }, spec.config ? { config: spec.config } : {});
+    }
+    return spec;
+}
+exports.normalize = normalize;
+function alwaysNoOcclusion(spec) {
+    return vlEncoding.isAggregate(spec.encoding);
+}
+exports.alwaysNoOcclusion = alwaysNoOcclusion;
+function fieldDefs(spec) {
+    return vlEncoding.fieldDefs(spec.encoding);
+}
+exports.fieldDefs = fieldDefs;
+;
+function getCleanSpec(spec) {
+    return spec;
+}
+exports.getCleanSpec = getCleanSpec;
+function isStack(spec) {
+    return (vlEncoding.has(spec.encoding, channel_1.COLOR) || vlEncoding.has(spec.encoding, channel_1.SHAPE)) &&
+        (spec.mark === mark_1.BAR || spec.mark === mark_1.AREA) &&
+        (!spec.config || !spec.config.mark.stacked !== false) &&
+        vlEncoding.isAggregate(spec.encoding);
+}
+exports.isStack = isStack;
+function transpose(spec) {
+    var oldenc = spec.encoding;
+    var encoding = util_1.duplicate(spec.encoding);
+    encoding.x = oldenc.y;
+    encoding.y = oldenc.x;
+    encoding.row = oldenc.column;
+    encoding.column = oldenc.row;
+    spec.encoding = encoding;
+    return spec;
+}
+exports.transpose = transpose;
+
+},{"./channel":226,"./encoding":263,"./mark":266,"./util":273}],271:[function(require,module,exports){
+"use strict";
+(function (TimeUnit) {
+    TimeUnit[TimeUnit["YEAR"] = 'year'] = "YEAR";
+    TimeUnit[TimeUnit["MONTH"] = 'month'] = "MONTH";
+    TimeUnit[TimeUnit["DAY"] = 'day'] = "DAY";
+    TimeUnit[TimeUnit["DATE"] = 'date'] = "DATE";
+    TimeUnit[TimeUnit["HOURS"] = 'hours'] = "HOURS";
+    TimeUnit[TimeUnit["MINUTES"] = 'minutes'] = "MINUTES";
+    TimeUnit[TimeUnit["SECONDS"] = 'seconds'] = "SECONDS";
+    TimeUnit[TimeUnit["MILLISECONDS"] = 'milliseconds'] = "MILLISECONDS";
+    TimeUnit[TimeUnit["YEARMONTH"] = 'yearmonth'] = "YEARMONTH";
+    TimeUnit[TimeUnit["YEARMONTHDAY"] = 'yearmonthday'] = "YEARMONTHDAY";
+    TimeUnit[TimeUnit["YEARMONTHDATE"] = 'yearmonthdate'] = "YEARMONTHDATE";
+    TimeUnit[TimeUnit["YEARDAY"] = 'yearday'] = "YEARDAY";
+    TimeUnit[TimeUnit["YEARDATE"] = 'yeardate'] = "YEARDATE";
+    TimeUnit[TimeUnit["YEARMONTHDAYHOURS"] = 'yearmonthdayhours'] = "YEARMONTHDAYHOURS";
+    TimeUnit[TimeUnit["YEARMONTHDAYHOURSMINUTES"] = 'yearmonthdayhoursminutes'] = "YEARMONTHDAYHOURSMINUTES";
+    TimeUnit[TimeUnit["YEARMONTHDAYHOURSMINUTESSECONDS"] = 'yearmonthdayhoursminutesseconds'] = "YEARMONTHDAYHOURSMINUTESSECONDS";
+    TimeUnit[TimeUnit["HOURSMINUTES"] = 'hoursminutes'] = "HOURSMINUTES";
+    TimeUnit[TimeUnit["HOURSMINUTESSECONDS"] = 'hoursminutesseconds'] = "HOURSMINUTESSECONDS";
+    TimeUnit[TimeUnit["MINUTESSECONDS"] = 'minutesseconds'] = "MINUTESSECONDS";
+    TimeUnit[TimeUnit["SECONDSMILLISECONDS"] = 'secondsmilliseconds'] = "SECONDSMILLISECONDS";
+})(exports.TimeUnit || (exports.TimeUnit = {}));
+var TimeUnit = exports.TimeUnit;
+exports.TIMEUNITS = [
+    TimeUnit.YEAR,
+    TimeUnit.MONTH,
+    TimeUnit.DAY,
+    TimeUnit.DATE,
+    TimeUnit.HOURS,
+    TimeUnit.MINUTES,
+    TimeUnit.SECONDS,
+    TimeUnit.MILLISECONDS,
+    TimeUnit.YEARMONTH,
+    TimeUnit.YEARMONTHDAY,
+    TimeUnit.YEARMONTHDATE,
+    TimeUnit.YEARDAY,
+    TimeUnit.YEARDATE,
+    TimeUnit.YEARMONTHDAYHOURS,
+    TimeUnit.YEARMONTHDAYHOURSMINUTES,
+    TimeUnit.YEARMONTHDAYHOURSMINUTESSECONDS,
+    TimeUnit.HOURSMINUTES,
+    TimeUnit.HOURSMINUTESSECONDS,
+    TimeUnit.MINUTESSECONDS,
+    TimeUnit.SECONDSMILLISECONDS,
+];
+function format(timeUnit, abbreviated) {
+    if (abbreviated === void 0) { abbreviated = false; }
+    if (!timeUnit) {
+        return undefined;
+    }
+    var timeString = timeUnit.toString();
+    var dateComponents = [];
+    if (timeString.indexOf('year') > -1) {
+        dateComponents.push(abbreviated ? '%y' : '%Y');
+    }
+    if (timeString.indexOf('month') > -1) {
+        dateComponents.push(abbreviated ? '%b' : '%B');
+    }
+    if (timeString.indexOf('day') > -1) {
+        dateComponents.push(abbreviated ? '%a' : '%A');
+    }
+    else if (timeString.indexOf('date') > -1) {
+        dateComponents.push('%d');
+    }
+    var timeComponents = [];
+    if (timeString.indexOf('hours') > -1) {
+        timeComponents.push('%H');
+    }
+    if (timeString.indexOf('minutes') > -1) {
+        timeComponents.push('%M');
+    }
+    if (timeString.indexOf('seconds') > -1) {
+        timeComponents.push('%S');
+    }
+    if (timeString.indexOf('milliseconds') > -1) {
+        timeComponents.push('%L');
+    }
+    var out = [];
+    if (dateComponents.length > 0) {
+        out.push(dateComponents.join('-'));
+    }
+    if (timeComponents.length > 0) {
+        out.push(timeComponents.join(':'));
+    }
+    return out.length > 0 ? out.join(' ') : undefined;
+}
+exports.format = format;
+
+},{}],272:[function(require,module,exports){
+"use strict";
+(function (Type) {
+    Type[Type["QUANTITATIVE"] = 'quantitative'] = "QUANTITATIVE";
+    Type[Type["ORDINAL"] = 'ordinal'] = "ORDINAL";
+    Type[Type["TEMPORAL"] = 'temporal'] = "TEMPORAL";
+    Type[Type["NOMINAL"] = 'nominal'] = "NOMINAL";
+})(exports.Type || (exports.Type = {}));
+var Type = exports.Type;
+exports.QUANTITATIVE = Type.QUANTITATIVE;
+exports.ORDINAL = Type.ORDINAL;
+exports.TEMPORAL = Type.TEMPORAL;
+exports.NOMINAL = Type.NOMINAL;
+exports.SHORT_TYPE = {
+    quantitative: 'Q',
+    temporal: 'T',
+    nominal: 'N',
+    ordinal: 'O'
+};
+exports.TYPE_FROM_SHORT_TYPE = {
+    Q: exports.QUANTITATIVE,
+    T: exports.TEMPORAL,
+    O: exports.ORDINAL,
+    N: exports.NOMINAL
+};
+function getFullName(type) {
+    var typeString = type;
+    return exports.TYPE_FROM_SHORT_TYPE[typeString.toUpperCase()] ||
+        typeString.toLowerCase();
+}
+exports.getFullName = getFullName;
+
+},{}],273:[function(require,module,exports){
+"use strict";
+var stringify = require('json-stable-stringify');
+var util_1 = require('datalib/src/util');
+exports.keys = util_1.keys;
+exports.extend = util_1.extend;
+exports.duplicate = util_1.duplicate;
+exports.isArray = util_1.isArray;
+exports.vals = util_1.vals;
+exports.truncate = util_1.truncate;
+exports.toMap = util_1.toMap;
+exports.isObject = util_1.isObject;
+exports.isString = util_1.isString;
+exports.isNumber = util_1.isNumber;
+exports.isBoolean = util_1.isBoolean;
+var generate_1 = require('datalib/src/generate');
+exports.range = generate_1.range;
+var encoding_1 = require('./encoding');
+exports.has = encoding_1.has;
+var channel_1 = require('./channel');
+exports.Channel = channel_1.Channel;
+var util_2 = require('datalib/src/util');
+function hash(a) {
+    if (util_2.isString(a) || util_2.isNumber(a) || util_2.isBoolean(a)) {
+        return String(a);
+    }
+    return stringify(a);
+}
+exports.hash = hash;
+function contains(array, item) {
+    return array.indexOf(item) > -1;
+}
+exports.contains = contains;
+function without(array, excludedItems) {
+    return array.filter(function (item) {
+        return !contains(excludedItems, item);
+    });
+}
+exports.without = without;
+function union(array, other) {
+    return array.concat(without(other, array));
+}
+exports.union = union;
+function forEach(obj, f, thisArg) {
+    if (obj.forEach) {
+        obj.forEach.call(thisArg, f);
+    }
+    else {
+        for (var k in obj) {
+            if (obj.hasOwnProperty(k)) {
+                f.call(thisArg, obj[k], k, obj);
+            }
+        }
+    }
+}
+exports.forEach = forEach;
+function reduce(obj, f, init, thisArg) {
+    if (obj.reduce) {
+        return obj.reduce.call(thisArg, f, init);
+    }
+    else {
+        for (var k in obj) {
+            if (obj.hasOwnProperty(k)) {
+                init = f.call(thisArg, init, obj[k], k, obj);
+            }
+        }
+        return init;
+    }
+}
+exports.reduce = reduce;
+function map(obj, f, thisArg) {
+    if (obj.map) {
+        return obj.map.call(thisArg, f);
+    }
+    else {
+        var output = [];
+        for (var k in obj) {
+            if (obj.hasOwnProperty(k)) {
+                output.push(f.call(thisArg, obj[k], k, obj));
+            }
+        }
+        return output;
+    }
+}
+exports.map = map;
+function any(arr, f) {
+    var i = 0;
+    for (var k = 0; k < arr.length; k++) {
+        if (f(arr[k], k, i++)) {
+            return true;
+        }
+    }
+    return false;
+}
+exports.any = any;
+function all(arr, f) {
+    var i = 0;
+    for (var k = 0; k < arr.length; k++) {
+        if (!f(arr[k], k, i++)) {
+            return false;
+        }
+    }
+    return true;
+}
+exports.all = all;
+function flatten(arrays) {
+    return [].concat.apply([], arrays);
+}
+exports.flatten = flatten;
+function mergeDeep(dest) {
+    var src = [];
+    for (var _i = 1; _i < arguments.length; _i++) {
+        src[_i - 1] = arguments[_i];
+    }
+    for (var i = 0; i < src.length; i++) {
+        dest = deepMerge_(dest, src[i]);
+    }
+    return dest;
+}
+exports.mergeDeep = mergeDeep;
+;
+function deepMerge_(dest, src) {
+    if (typeof src !== 'object' || src === null) {
+        return dest;
+    }
+    for (var p in src) {
+        if (!src.hasOwnProperty(p)) {
+            continue;
+        }
+        if (src[p] === undefined) {
+            continue;
+        }
+        if (typeof src[p] !== 'object' || src[p] === null) {
+            dest[p] = src[p];
+        }
+        else if (typeof dest[p] !== 'object' || dest[p] === null) {
+            dest[p] = mergeDeep(src[p].constructor === Array ? [] : {}, src[p]);
+        }
+        else {
+            mergeDeep(dest[p], src[p]);
+        }
+    }
+    return dest;
+}
+var dlBin = require('datalib/src/bins/bins');
+function getbins(stats, maxbins) {
+    return dlBin({
+        min: stats.min,
+        max: stats.max,
+        maxbins: maxbins
+    });
+}
+exports.getbins = getbins;
+function unique(values, f) {
+    var results = [];
+    var u = {}, v, i, n;
+    for (i = 0, n = values.length; i < n; ++i) {
+        v = f ? f(values[i]) : values[i];
+        if (v in u) {
+            continue;
+        }
+        u[v] = 1;
+        results.push(values[i]);
+    }
+    return results;
+}
+exports.unique = unique;
+;
+function warning(message) {
+    console.warn('[VL Warning]', message);
+}
+exports.warning = warning;
+function error(message) {
+    console.error('[VL Error]', message);
+}
+exports.error = error;
+function differ(dict, other) {
+    for (var key in dict) {
+        if (dict.hasOwnProperty(key)) {
+            if (other[key] && dict[key] && other[key] !== dict[key]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+exports.differ = differ;
+
+},{"./channel":226,"./encoding":263,"datalib/src/bins/bins":13,"datalib/src/generate":17,"datalib/src/util":31,"json-stable-stringify":222}],274:[function(require,module,exports){
+"use strict";
+var util_1 = require('./util');
+var mark_1 = require('./mark');
+exports.DEFAULT_REQUIRED_CHANNEL_MAP = {
+    text: ['text'],
+    line: ['x', 'y'],
+    area: ['x', 'y']
+};
+exports.DEFAULT_SUPPORTED_CHANNEL_TYPE = {
+    bar: util_1.toMap(['row', 'column', 'x', 'y', 'size', 'color', 'detail']),
+    line: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'detail']),
+    area: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'detail']),
+    tick: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'detail']),
+    circle: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'size', 'detail']),
+    square: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'size', 'detail']),
+    point: util_1.toMap(['row', 'column', 'x', 'y', 'color', 'size', 'detail', 'shape']),
+    text: util_1.toMap(['row', 'column', 'size', 'color', 'text'])
+};
+function getEncodingMappingError(spec, requiredChannelMap, supportedChannelMap) {
+    if (requiredChannelMap === void 0) { requiredChannelMap = exports.DEFAULT_REQUIRED_CHANNEL_MAP; }
+    if (supportedChannelMap === void 0) { supportedChannelMap = exports.DEFAULT_SUPPORTED_CHANNEL_TYPE; }
+    var mark = spec.mark;
+    var encoding = spec.encoding;
+    var requiredChannels = requiredChannelMap[mark];
+    var supportedChannels = supportedChannelMap[mark];
+    for (var i in requiredChannels) {
+        if (!(requiredChannels[i] in encoding)) {
+            return 'Missing encoding channel \"' + requiredChannels[i] +
+                '\" for mark \"' + mark + '\"';
+        }
+    }
+    for (var channel in encoding) {
+        if (!supportedChannels[channel]) {
+            return 'Encoding channel \"' + channel +
+                '\" is not supported by mark type \"' + mark + '\"';
+        }
+    }
+    if (mark === mark_1.BAR && !encoding.x && !encoding.y) {
+        return 'Missing both x and y for bar';
+    }
+    return null;
+}
+exports.getEncodingMappingError = getEncodingMappingError;
+
+},{"./mark":266,"./util":273}],275:[function(require,module,exports){
+"use strict";
+var util_1 = require('./util');
+function isUnionedDomain(domain) {
+    if (!util_1.isArray(domain)) {
+        return 'fields' in domain;
+    }
+    return false;
+}
+exports.isUnionedDomain = isUnionedDomain;
+function isDataRefDomain(domain) {
+    if (!util_1.isArray(domain)) {
+        return 'data' in domain;
+    }
+    return false;
+}
+exports.isDataRefDomain = isDataRefDomain;
+
+},{"./util":273}],276:[function(require,module,exports){
+"use strict";
+var vlBin = require('./bin');
+var vlChannel = require('./channel');
+var vlConfig = require('./config');
+var vlData = require('./data');
+var vlEncoding = require('./encoding');
+var vlFieldDef = require('./fielddef');
+var vlCompile = require('./compile/compile');
+var vlShorthand = require('./shorthand');
+var vlSpec = require('./spec');
+var vlTimeUnit = require('./timeunit');
+var vlType = require('./type');
+var vlValidate = require('./validate');
+var vlUtil = require('./util');
+exports.bin = vlBin;
+exports.channel = vlChannel;
+exports.compile = vlCompile.compile;
+exports.config = vlConfig;
+exports.data = vlData;
+exports.encoding = vlEncoding;
+exports.fieldDef = vlFieldDef;
+exports.shorthand = vlShorthand;
+exports.spec = vlSpec;
+exports.timeUnit = vlTimeUnit;
+exports.type = vlType;
+exports.util = vlUtil;
+exports.validate = vlValidate;
+exports.version = '1.0.11';
+
+},{"./bin":225,"./channel":226,"./compile/compile":229,"./config":261,"./data":262,"./encoding":263,"./fielddef":264,"./shorthand":268,"./spec":270,"./timeunit":271,"./type":272,"./util":273,"./validate":274}],277:[function(require,module,exports){
 var ts = Date.now();
 
 function write(msg) {
@@ -57385,7 +57365,7 @@ module.exports = {
   debug: (debug.enable = false, debug)
 };
 
-},{}],284:[function(require,module,exports){
+},{}],278:[function(require,module,exports){
 module.exports = {
   path:       require('./path'),
   render:     require('./render'),
@@ -57397,7 +57377,7 @@ module.exports = {
   toJSON:     require('./util/scene').toJSON,
   fromJSON:   require('./util/scene').fromJSON
 };
-},{"./path":286,"./render":306,"./util/Bounds":312,"./util/Gradient":314,"./util/Item":316,"./util/bound":317,"./util/canvas":318,"./util/scene":320}],285:[function(require,module,exports){
+},{"./path":280,"./render":300,"./util/Bounds":306,"./util/Gradient":308,"./util/Item":310,"./util/bound":311,"./util/canvas":312,"./util/scene":314}],279:[function(require,module,exports){
 var segmentCache = {},
     bezierCache = {},
     join = [].join;
@@ -57512,13 +57492,13 @@ module.exports = {
   }
 };
 
-},{}],286:[function(require,module,exports){
+},{}],280:[function(require,module,exports){
 module.exports = {
   parse:  require('./parse'),
   render: require('./render')
 };
 
-},{"./parse":287,"./render":288}],287:[function(require,module,exports){
+},{"./parse":281,"./render":282}],281:[function(require,module,exports){
 // Path parsing and rendering code adapted from fabric.js -- Thanks!
 var cmdlen = { m:2, l:2, h:1, v:1, c:6, s:4, q:4, t:2, a:7 },
     regexp = [/([MLHVCSQTAZmlhvcsqtaz])/g, /###/, /(\d)([-+])/g, /\s|,|###/];
@@ -57569,7 +57549,7 @@ module.exports = function(pathstr) {
   return result;
 };
 
-},{}],288:[function(require,module,exports){
+},{}],282:[function(require,module,exports){
 var arc = require('./arc');
 
 module.exports = function(g, path, l, t) {
@@ -57865,7 +57845,7 @@ function drawArc(g, x, y, coords) {
   }
 }
 
-},{"./arc":285}],289:[function(require,module,exports){
+},{"./arc":279}],283:[function(require,module,exports){
 function Handler() {
   this._active = null;
   this._handlers = {};
@@ -57915,7 +57895,7 @@ prototype.eventName = function(name) {
 };
 
 module.exports = Handler;
-},{}],290:[function(require,module,exports){
+},{}],284:[function(require,module,exports){
 function Renderer() {
   this._el = null;
   this._bgcolor = null;
@@ -57957,7 +57937,7 @@ prototype.render = function(/*scene, items*/) {
 };
 
 module.exports = Renderer;
-},{}],291:[function(require,module,exports){
+},{}],285:[function(require,module,exports){
 var DOM = require('../../util/dom'),
     Handler = require('../Handler'),
     marks = require('./marks');
@@ -58146,7 +58126,7 @@ prototype.pick = function(scene, x, y, gx, gy) {
 
 module.exports = CanvasHandler;
 
-},{"../../util/dom":319,"../Handler":289,"./marks":298}],292:[function(require,module,exports){
+},{"../../util/dom":313,"../Handler":283,"./marks":292}],286:[function(require,module,exports){
 var DOM = require('../../util/dom'),
     Bounds = require('../../util/Bounds'),
     ImageLoader = require('../../util/ImageLoader'),
@@ -58284,12 +58264,12 @@ prototype.renderAsync = function(scene) {
 
 module.exports = CanvasRenderer;
 
-},{"../../util/Bounds":312,"../../util/ImageLoader":315,"../../util/canvas":318,"../../util/dom":319,"../Renderer":290,"./marks":298}],293:[function(require,module,exports){
+},{"../../util/Bounds":306,"../../util/ImageLoader":309,"../../util/canvas":312,"../../util/dom":313,"../Renderer":284,"./marks":292}],287:[function(require,module,exports){
 module.exports = {
   Handler:  require('./CanvasHandler'),
   Renderer: require('./CanvasRenderer')
 };
-},{"./CanvasHandler":291,"./CanvasRenderer":292}],294:[function(require,module,exports){
+},{"./CanvasHandler":285,"./CanvasRenderer":286}],288:[function(require,module,exports){
 var util = require('./util');
 var halfpi = Math.PI / 2;
 
@@ -58311,7 +58291,7 @@ module.exports = {
   draw: util.drawAll(path),
   pick: util.pickPath(path)
 };
-},{"./util":305}],295:[function(require,module,exports){
+},{"./util":299}],289:[function(require,module,exports){
 var util = require('./util'),
     parse = require('../../../path/parse'),
     render = require('../../../path/render'),
@@ -58346,7 +58326,7 @@ module.exports = {
   nested: true
 };
 
-},{"../../../path/parse":287,"../../../path/render":288,"../../../util/svg":321,"./util":305}],296:[function(require,module,exports){
+},{"../../../path/parse":281,"../../../path/render":282,"../../../util/svg":315,"./util":299}],290:[function(require,module,exports){
 var util = require('./util'),
     EMPTY = [];
 
@@ -58485,7 +58465,7 @@ module.exports = {
   pick: pick
 };
 
-},{"./util":305}],297:[function(require,module,exports){
+},{"./util":299}],291:[function(require,module,exports){
 var util = require('./util');
 
 function draw(g, scene, bounds) {
@@ -58523,7 +58503,7 @@ module.exports = {
   draw: draw,
   pick: util.pick()
 };
-},{"./util":305}],298:[function(require,module,exports){
+},{"./util":299}],292:[function(require,module,exports){
 module.exports = {
   arc:    require('./arc'),
   area:   require('./area'),
@@ -58537,7 +58517,7 @@ module.exports = {
   text:   require('./text')
 };
 
-},{"./arc":294,"./area":295,"./group":296,"./image":297,"./line":299,"./path":300,"./rect":301,"./rule":302,"./symbol":303,"./text":304}],299:[function(require,module,exports){
+},{"./arc":288,"./area":289,"./group":290,"./image":291,"./line":293,"./path":294,"./rect":295,"./rule":296,"./symbol":297,"./text":298}],293:[function(require,module,exports){
 var util = require('./util'),
     parse = require('../../../path/parse'),
     render = require('../../../path/render'),
@@ -58572,7 +58552,7 @@ module.exports = {
   nested: true
 };
 
-},{"../../../path/parse":287,"../../../path/render":288,"../../../util/svg":321,"./util":305}],300:[function(require,module,exports){
+},{"../../../path/parse":281,"../../../path/render":282,"../../../util/svg":315,"./util":299}],294:[function(require,module,exports){
 var util = require('./util'),
     parse = require('../../../path/parse'),
     render = require('../../../path/render');
@@ -58588,7 +58568,7 @@ module.exports = {
   pick: util.pickPath(path)
 };
 
-},{"../../../path/parse":287,"../../../path/render":288,"./util":305}],301:[function(require,module,exports){
+},{"../../../path/parse":281,"../../../path/render":282,"./util":299}],295:[function(require,module,exports){
 var util = require('./util');
 
 function draw(g, scene, bounds) {
@@ -58623,7 +58603,7 @@ module.exports = {
   draw: draw,
   pick: util.pick()
 };
-},{"./util":305}],302:[function(require,module,exports){
+},{"./util":299}],296:[function(require,module,exports){
 var util = require('./util');
 
 function draw(g, scene, bounds) {
@@ -58680,7 +58660,7 @@ module.exports = {
   pick: util.pick(hit)
 };
 
-},{"./util":305}],303:[function(require,module,exports){
+},{"./util":299}],297:[function(require,module,exports){
 var util = require('./util');
 
 var sqrt3 = Math.sqrt(3),
@@ -58754,7 +58734,7 @@ module.exports = {
   draw: util.drawAll(path),
   pick: util.pickPath(path)
 };
-},{"./util":305}],304:[function(require,module,exports){
+},{"./util":299}],298:[function(require,module,exports){
 var Bounds = require('../../../util/Bounds'),
     textBounds = require('../../../util/bound').text,
     text = require('../../../util/text'),
@@ -58829,7 +58809,7 @@ module.exports = {
   pick: util.pick(hit)
 };
 
-},{"../../../util/Bounds":312,"../../../util/bound":317,"../../../util/text":322,"./util":305}],305:[function(require,module,exports){
+},{"../../../util/Bounds":306,"../../../util/bound":311,"../../../util/text":316,"./util":299}],299:[function(require,module,exports){
 function drawPathOne(path, g, o, items) {
   if (path(g, items)) return;
 
@@ -58978,13 +58958,13 @@ module.exports = {
   gradient: gradient
 };
 
-},{}],306:[function(require,module,exports){
+},{}],300:[function(require,module,exports){
 module.exports = {
   'canvas': require('./canvas'),
   'svg':    require('./svg')
 };
 
-},{"./canvas":293,"./svg":310}],307:[function(require,module,exports){
+},{"./canvas":287,"./svg":304}],301:[function(require,module,exports){
 var DOM = require('../../util/dom'),
     Handler = require('../Handler');
 
@@ -59050,7 +59030,7 @@ prototype.off = function(type, handler) {
 
 module.exports = SVGHandler;
 
-},{"../../util/dom":319,"../Handler":289}],308:[function(require,module,exports){
+},{"../../util/dom":313,"../Handler":283}],302:[function(require,module,exports){
 var ImageLoader = require('../../util/ImageLoader'),
     Renderer = require('../Renderer'),
     text = require('../../util/text'),
@@ -59475,7 +59455,7 @@ function href() {
 
 module.exports = SVGRenderer;
 
-},{"../../util/ImageLoader":315,"../../util/dom":319,"../../util/svg":321,"../../util/text":322,"../Renderer":290,"./marks":311}],309:[function(require,module,exports){
+},{"../../util/ImageLoader":309,"../../util/dom":313,"../../util/svg":315,"../../util/text":316,"../Renderer":284,"./marks":305}],303:[function(require,module,exports){
 var Renderer = require('../Renderer'),
     ImageLoader = require('../../util/ImageLoader'),
     SVG = require('../../util/svg'),
@@ -59719,7 +59699,7 @@ function escape_text(s) {
 
 module.exports = SVGStringRenderer;
 
-},{"../../util/ImageLoader":315,"../../util/dom":319,"../../util/svg":321,"../../util/text":322,"../Renderer":290,"./marks":311}],310:[function(require,module,exports){
+},{"../../util/ImageLoader":309,"../../util/dom":313,"../../util/svg":315,"../../util/text":316,"../Renderer":284,"./marks":305}],304:[function(require,module,exports){
 module.exports = {
   Handler:  require('./SVGHandler'),
   Renderer: require('./SVGRenderer'),
@@ -59727,7 +59707,7 @@ module.exports = {
     Renderer : require('./SVGStringRenderer')
   }
 };
-},{"./SVGHandler":307,"./SVGRenderer":308,"./SVGStringRenderer":309}],311:[function(require,module,exports){
+},{"./SVGHandler":301,"./SVGRenderer":302,"./SVGStringRenderer":303}],305:[function(require,module,exports){
 var text = require('../../util/text'),
     SVG = require('../../util/svg'),
     textAlign = SVG.textAlign,
@@ -59874,7 +59854,7 @@ module.exports = {
   }
 };
 
-},{"../../util/svg":321,"../../util/text":322}],312:[function(require,module,exports){
+},{"../../util/svg":315,"../../util/text":316}],306:[function(require,module,exports){
 function Bounds(b) {
   this.clear();
   if (b) this.union(b);
@@ -60003,7 +59983,7 @@ prototype.height = function() {
 
 module.exports = Bounds;
 
-},{}],313:[function(require,module,exports){
+},{}],307:[function(require,module,exports){
 module.exports = function(b) {
   function noop() { }
   function add(x,y) { b.add(x, y); }
@@ -60029,7 +60009,7 @@ module.exports = function(b) {
   };
 };
 
-},{}],314:[function(require,module,exports){
+},{}],308:[function(require,module,exports){
 var gradient_id = 0;
 
 function Gradient(type) {
@@ -60053,7 +60033,7 @@ prototype.stop = function(offset, color) {
 };
 
 module.exports = Gradient;
-},{}],315:[function(require,module,exports){
+},{}],309:[function(require,module,exports){
 (function (global){
 var load = require('datalib/src/import/load');
 
@@ -60132,7 +60112,7 @@ prototype.loadImage = function(uri, callback) {
 module.exports = ImageLoader;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"datalib/src/import/load":257}],316:[function(require,module,exports){
+},{"datalib/src/import/load":23}],310:[function(require,module,exports){
 function Item(mark) {
   this.mark = mark;
 }
@@ -60181,7 +60161,7 @@ prototype.touch = function() {
 };
 
 module.exports = Item;
-},{}],317:[function(require,module,exports){
+},{}],311:[function(require,module,exports){
 var BoundsContext = require('./BoundsContext'),
     Bounds = require('./Bounds'),
     canvas = require('./canvas'),
@@ -60478,7 +60458,7 @@ module.exports = {
   group: group
 };
 
-},{"../path":286,"./Bounds":312,"./BoundsContext":313,"./canvas":318,"./svg":321,"./text":322}],318:[function(require,module,exports){
+},{"../path":280,"./Bounds":306,"./BoundsContext":307,"./canvas":312,"./svg":315,"./text":316}],312:[function(require,module,exports){
 (function (global){
 function instance(w, h) {
   w = w || 1;
@@ -60571,7 +60551,7 @@ module.exports = {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],319:[function(require,module,exports){
+},{}],313:[function(require,module,exports){
 // create a new DOM element
 function create(doc, tag, ns) {
   return ns ? doc.createElementNS(ns, tag) : doc.createElement(tag);
@@ -60649,7 +60629,7 @@ module.exports = {
   }
 };
 
-},{}],320:[function(require,module,exports){
+},{}],314:[function(require,module,exports){
 var bound = require('../util/bound');
 
 var sets = [
@@ -60707,7 +60687,7 @@ module.exports = {
   toJSON:   toJSON,
   fromJSON: fromJSON
 };
-},{"../util/bound":317}],321:[function(require,module,exports){
+},{"../util/bound":311}],315:[function(require,module,exports){
 (function (global){
 var d3_svg = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null).svg;
 
@@ -60781,7 +60761,7 @@ module.exports = {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],322:[function(require,module,exports){
+},{}],316:[function(require,module,exports){
 function size(item) {
   return item.fontSize != null ? item.fontSize : 11;
 }
@@ -60816,7 +60796,29 @@ module.exports = {
   }
 };
 
-},{}],323:[function(require,module,exports){
+},{}],317:[function(require,module,exports){
+module.exports = {
+  version: '2.5.2',
+  dataflow: require('vega-dataflow'),
+  parse: require('./src/parse/'),
+  scene: {
+    Bounder: require('./src/scene/Bounder'),
+    Builder: require('./src/scene/Builder'),
+    Encoder: require('./src/scene/Encoder'),
+    GroupBuilder: require('./src/scene/GroupBuilder'),
+    visit: require('./src/scene/visit')
+  },
+  transforms: require('./src/transforms'),
+  Transform: require('./src/transforms/Transform'),
+  BatchTransform: require('./src/transforms/BatchTransform'),
+  Parameter: require('./src/transforms/Parameter'),
+  schema: require('./src/core/schema'),
+  config: require('./src/core/config'),
+  util: require('./src/util'),
+  logging: require('vega-logging'),
+  debug: require('vega-logging').debug
+};
+},{"./src/core/config":321,"./src/core/schema":322,"./src/parse/":327,"./src/scene/Bounder":339,"./src/scene/Builder":340,"./src/scene/Encoder":341,"./src/scene/GroupBuilder":342,"./src/scene/visit":347,"./src/transforms":375,"./src/transforms/BatchTransform":349,"./src/transforms/Parameter":365,"./src/transforms/Transform":370,"./src/util":378,"vega-dataflow":215,"vega-logging":277}],318:[function(require,module,exports){
 var sg = require('vega-scenegraph').render,
     canvas = sg.canvas,
     svg = sg.svg.string,
@@ -60880,7 +60882,7 @@ prototype.initialize = function() {
 };
 
 module.exports = HeadlessView;
-},{"./View":325,"vega-scenegraph":284}],324:[function(require,module,exports){
+},{"./View":320,"vega-scenegraph":278}],319:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     ChangeSet = df.ChangeSet,
@@ -61043,7 +61045,7 @@ prototype.fire = function(cs) {
 };
 
 module.exports = Model;
-},{"../parse/expr":331,"../scene/GroupBuilder":347,"../scene/visit":352,"./config":326,"datalib":261,"vega-dataflow":276}],325:[function(require,module,exports){
+},{"../parse/expr":326,"../scene/GroupBuilder":342,"../scene/visit":347,"./config":321,"datalib":27,"vega-dataflow":215}],320:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -61535,7 +61537,7 @@ View.factory = function(model) {
 
 module.exports = View;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../parse/streams":342,"../scene/Encoder":346,"../scene/Transition":349,"./HeadlessView":323,"datalib":261,"vega-dataflow":276,"vega-logging":283,"vega-scenegraph":284}],326:[function(require,module,exports){
+},{"../parse/streams":337,"../scene/Encoder":341,"../scene/Transition":344,"./HeadlessView":318,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],321:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     config = {};
@@ -61653,7 +61655,7 @@ config.range = {
 
 module.exports = config;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],327:[function(require,module,exports){
+},{}],322:[function(require,module,exports){
 var dl = require('datalib'),
     parse = require('../parse'),
     Scale = require('../scene/Scale'),
@@ -61700,7 +61702,7 @@ module.exports = function(opt) {
 
   return schema;
 };
-},{"../parse":332,"../scene/Scale":348,"./config":326,"datalib":261}],328:[function(require,module,exports){
+},{"../parse":327,"../scene/Scale":343,"./config":321,"datalib":27}],323:[function(require,module,exports){
 var dl = require('datalib'),
     axs = require('../scene/axis');
 
@@ -61786,7 +61788,7 @@ function parseAxis(config, def, index, axis, group) {
 }
 
 module.exports = parseAxes;
-},{"../scene/axis":350,"datalib":261}],329:[function(require,module,exports){
+},{"../scene/axis":345,"datalib":27}],324:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null);
 
@@ -61799,7 +61801,7 @@ function parseBg(bg) {
 
 module.exports = parseBg;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],330:[function(require,module,exports){
+},{}],325:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     parseTransforms = require('./transforms'),
@@ -61868,7 +61870,7 @@ parseData.datasource = function(model, d) {
 };
 
 module.exports = parseData;
-},{"./modify":336,"./transforms":343,"datalib":261,"vega-logging":283}],331:[function(require,module,exports){
+},{"./modify":331,"./transforms":338,"datalib":27,"vega-logging":277}],326:[function(require,module,exports){
 var dl = require('datalib'),
     template = dl.template,
     expr = require('vega-expression'),
@@ -61993,7 +61995,7 @@ function wrap(model) {
 wrap.scale = scale;
 wrap.codegen = compile.codegen;
 module.exports = wrap;
-},{"datalib":261,"vega-expression":281}],332:[function(require,module,exports){
+},{"datalib":27,"vega-expression":220}],327:[function(require,module,exports){
 module.exports = {
   axes:       require('./axes'),
   background: require('./background'),
@@ -62012,7 +62014,7 @@ module.exports = {
   streams:    require('./streams'),
   transforms: require('./transforms')
 };
-},{"./axes":328,"./background":329,"./data":330,"./expr":331,"./legends":333,"./mark":334,"./marks":335,"./modify":336,"./padding":337,"./predicates":338,"./properties":339,"./signals":340,"./spec":341,"./streams":342,"./transforms":343,"vega-event-selector":277}],333:[function(require,module,exports){
+},{"./axes":323,"./background":324,"./data":325,"./expr":326,"./legends":328,"./mark":329,"./marks":330,"./modify":331,"./padding":332,"./predicates":333,"./properties":334,"./signals":335,"./spec":336,"./streams":337,"./transforms":338,"vega-event-selector":216}],328:[function(require,module,exports){
 var lgnd = require('../scene/legend');
 
 function parseLegends(model, spec, legends, group) {
@@ -62055,7 +62057,7 @@ function parseLegend(def, index, legend, group) {
 }
 
 module.exports = parseLegends;
-},{"../scene/legend":351}],334:[function(require,module,exports){
+},{"../scene/legend":346}],329:[function(require,module,exports){
 var dl = require('datalib'),
     parseProperties = require('./properties');
 
@@ -62082,7 +62084,7 @@ function parseMark(model, mark) {
 }
 
 module.exports = parseMark;
-},{"./properties":339,"datalib":261}],335:[function(require,module,exports){
+},{"./properties":334,"datalib":27}],330:[function(require,module,exports){
 var parseMark = require('./mark'),
     parseProperties = require('./properties');
 
@@ -62123,7 +62125,7 @@ function defaults(spec, model) {
 }
 
 module.exports = parseRootMark;
-},{"./mark":334,"./properties":339}],336:[function(require,module,exports){
+},{"./mark":329,"./properties":334}],331:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     df = require('vega-dataflow'),
@@ -62274,7 +62276,7 @@ function parseModify(model, def, ds) {
 }
 
 module.exports = parseModify;
-},{"datalib":261,"vega-dataflow":276,"vega-logging":283}],337:[function(require,module,exports){
+},{"datalib":27,"vega-dataflow":215,"vega-logging":277}],332:[function(require,module,exports){
 var dl = require('datalib');
 
 function parsePadding(pad) {
@@ -62285,7 +62287,7 @@ function parsePadding(pad) {
 }
 
 module.exports = parsePadding;
-},{"datalib":261}],338:[function(require,module,exports){
+},{"datalib":27}],333:[function(require,module,exports){
 var dl = require('datalib');
 
 var types = {
@@ -62480,7 +62482,7 @@ function parseScale(spec, ops) {
 }
 
 module.exports = parsePredicates;
-},{"datalib":261}],339:[function(require,module,exports){
+},{"datalib":27}],334:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -62866,7 +62868,7 @@ function scaleRef(ref) {
 
 module.exports = properties;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"datalib":261,"vega-dataflow":276,"vega-logging":283}],340:[function(require,module,exports){
+},{"datalib":27,"vega-dataflow":215,"vega-logging":277}],335:[function(require,module,exports){
 var dl = require('datalib'),
     expr = require('./expr'),
     SIGNALS = require('vega-dataflow').Dependencies.SIGNALS;
@@ -62934,7 +62936,7 @@ parseSignals.scale = function scale(model, spec, value, datum, evt) {
 };
 
 module.exports = parseSignals;
-},{"./expr":331,"datalib":261,"vega-dataflow":276}],341:[function(require,module,exports){
+},{"./expr":326,"datalib":27,"vega-dataflow":215}],336:[function(require,module,exports){
 var dl  = require('datalib'),
     log = require('vega-logging'),
     Model = require('../core/Model'),
@@ -63039,7 +63041,7 @@ var dl  = require('datalib'),
 }
 
 module.exports = parseSpec;
-},{"../core/Model":324,"../core/View":325,"./":332,"datalib":261,"vega-logging":283}],342:[function(require,module,exports){
+},{"../core/Model":319,"../core/View":320,"./":327,"datalib":27,"vega-logging":277}],337:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -63276,7 +63278,7 @@ function parseStreams(view) {
 
 module.exports = parseStreams;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./signals":340,"datalib":261,"vega-dataflow":276,"vega-event-selector":277}],343:[function(require,module,exports){
+},{"./signals":335,"datalib":27,"vega-dataflow":215,"vega-event-selector":216}],338:[function(require,module,exports){
 var dl = require('datalib'),
     transforms = require('../transforms/index');
 
@@ -63300,7 +63302,7 @@ function parseTransforms(model, def) {
 }
 
 module.exports = parseTransforms;
-},{"../transforms/index":380,"datalib":261}],344:[function(require,module,exports){
+},{"../transforms/index":375,"datalib":27}],339:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     scene = require('vega-scenegraph'),
@@ -63369,7 +63371,7 @@ proto.evaluate = function(input) {
 };
 
 module.exports = Bounder;
-},{"./Encoder":346,"datalib":261,"vega-dataflow":276,"vega-logging":283,"vega-scenegraph":284}],345:[function(require,module,exports){
+},{"./Encoder":341,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],340:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     Item = require('vega-scenegraph').Item,
@@ -63677,7 +63679,7 @@ function keyFunction(key) {
 }
 
 module.exports = Builder;
-},{"../parse/data":330,"./Bounder":344,"./Encoder":346,"datalib":261,"vega-dataflow":276,"vega-logging":283,"vega-scenegraph":284}],346:[function(require,module,exports){
+},{"../parse/data":325,"./Bounder":339,"./Encoder":341,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],341:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     df = require('vega-dataflow'),
@@ -63864,7 +63866,7 @@ Encoder.update = function(graph, trans, request, items, dirty) {
 };
 
 module.exports = Encoder;
-},{"./Builder":345,"datalib":261,"vega-dataflow":276,"vega-logging":283,"vega-scenegraph":284}],347:[function(require,module,exports){
+},{"./Builder":340,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],342:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     Node  = df.Node, // jshint ignore:line
@@ -64153,7 +64155,7 @@ function buildLegends(input, group) {
 }
 
 module.exports = GroupBuilder;
-},{"../parse/axes":328,"../parse/legends":333,"./Builder":345,"./Scale":348,"datalib":261,"vega-dataflow":276,"vega-logging":283}],348:[function(require,module,exports){
+},{"../parse/axes":323,"../parse/legends":328,"./Builder":340,"./Scale":343,"datalib":27,"vega-dataflow":215,"vega-logging":277}],343:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -64664,7 +64666,7 @@ function range(group) {
 
 module.exports = Scale;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../transforms/Aggregate":353,"datalib":261,"vega-dataflow":276,"vega-logging":283}],349:[function(require,module,exports){
+},{"../transforms/Aggregate":348,"datalib":27,"vega-dataflow":215,"vega-logging":277}],344:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     bound = require('vega-scenegraph').bound,
@@ -64770,7 +64772,7 @@ function step(elapsed) {
 
 module.exports = Transition;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Builder":345,"vega-dataflow":276,"vega-scenegraph":284}],350:[function(require,module,exports){
+},{"./Builder":340,"vega-dataflow":215,"vega-scenegraph":278}],345:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     parseMark = require('../parse/mark'),
@@ -65348,7 +65350,7 @@ function axisDomain(config) {
 }
 
 module.exports = axs;
-},{"../parse/mark":334,"../util":383,"datalib":261,"vega-dataflow":276,"vega-scenegraph":284}],351:[function(require,module,exports){
+},{"../parse/mark":329,"../util":378,"datalib":27,"vega-dataflow":215,"vega-scenegraph":278}],346:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -65897,7 +65899,7 @@ function hLegendLabels(config) {
 
 module.exports = lgnd;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../parse/mark":334,"../parse/properties":339,"../util":383,"datalib":261,"vega-scenegraph":284}],352:[function(require,module,exports){
+},{"../parse/mark":329,"../parse/properties":334,"../util":378,"datalib":27,"vega-scenegraph":278}],347:[function(require,module,exports){
 module.exports = function visit(node, func) {
   var i, n, s, m, items;
   if (func(node)) return true;
@@ -65911,7 +65913,7 @@ module.exports = function visit(node, func) {
     }
   }
 };
-},{}],353:[function(require,module,exports){
+},{}],348:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     log = require('vega-logging'),
@@ -66124,7 +66126,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Aggregate;
-},{"./Facetor":359,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],354:[function(require,module,exports){
+},{"./Facetor":354,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],349:[function(require,module,exports){
 var Base = require('./Transform').prototype;
 
 function BatchTransform() {
@@ -66149,7 +66151,7 @@ prototype.batchTransform = function(/* input, data, reset */) {
 };
 
 module.exports = BatchTransform;
-},{"./Transform":375}],355:[function(require,module,exports){
+},{"./Transform":370}],350:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -66234,7 +66236,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Bin;
-},{"./BatchTransform":354,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],356:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],351:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Tuple = df.Tuple,
     log = require('vega-logging'),
@@ -66359,7 +66361,7 @@ prototype._rem = function(tuples, get) {
 };
 
 module.exports = CountPattern;
-},{"./Transform":375,"vega-dataflow":276,"vega-logging":283}],357:[function(require,module,exports){
+},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],352:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     ChangeSet = df.ChangeSet,
@@ -66563,7 +66565,7 @@ prototype.batchTransform = function(input, data, reset) {
 };
 
 module.exports = Cross;
-},{"./BatchTransform":354,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],358:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],353:[function(require,module,exports){
 var Transform = require('./Transform'),
     Aggregate = require('./Aggregate');
 
@@ -66610,7 +66612,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Facet;
-},{"../parse/transforms":343,"./Aggregate":353,"./Transform":375}],359:[function(require,module,exports){
+},{"../parse/transforms":338,"./Aggregate":348,"./Transform":370}],354:[function(require,module,exports){
 var dl = require('datalib'),
     Aggregator = dl.Aggregator,
     Base = Aggregator.prototype,
@@ -66709,7 +66711,7 @@ prototype._on_keep = function(cell) {
 };
 
 module.exports = Facetor;
-},{"datalib":261,"vega-dataflow":276,"vega-logging":283}],360:[function(require,module,exports){
+},{"datalib":27,"vega-dataflow":215,"vega-logging":277}],355:[function(require,module,exports){
 var df = require('vega-dataflow'),
     log = require('vega-logging'),
     Transform = require('./Transform');
@@ -66762,7 +66764,7 @@ prototype.transform = function(input) {
 };
 
 module.exports = Filter;
-},{"./Transform":375,"vega-dataflow":276,"vega-logging":283}],361:[function(require,module,exports){
+},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],356:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Tuple = df.Tuple,
     log = require('vega-logging'),
@@ -66834,7 +66836,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Fold;
-},{"./Transform":375,"vega-dataflow":276,"vega-logging":283}],362:[function(require,module,exports){
+},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],357:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     df = require('vega-dataflow'),
@@ -67043,7 +67045,7 @@ prototype.update = function(active) {
 
 module.exports = Force;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Transform":375,"./screen":381,"vega-dataflow":276,"vega-logging":283}],363:[function(require,module,exports){
+},{"./Transform":370,"./screen":376,"vega-dataflow":215,"vega-logging":277}],358:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Tuple = df.Tuple,
     log = require('vega-logging'),
@@ -67083,7 +67085,7 @@ prototype.transform = function(input) {
 };
 
 module.exports = Formula;
-},{"./Transform":375,"vega-dataflow":276,"vega-logging":283}],364:[function(require,module,exports){
+},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],359:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -67173,7 +67175,7 @@ prototype.transform = function(input) {
 
 module.exports = Geo;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Transform":375,"./screen":381,"datalib":261,"vega-dataflow":276,"vega-logging":283}],365:[function(require,module,exports){
+},{"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow":215,"vega-logging":277}],360:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -67222,7 +67224,7 @@ prototype.transform = function(input) {
 
 module.exports = GeoPath;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Geo":364,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],366:[function(require,module,exports){
+},{"./Geo":359,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],361:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -67324,7 +67326,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Hierarchy;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":354,"./Transform":375,"./screen":381,"datalib":261,"vega-dataflow":276,"vega-logging":283}],367:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow":215,"vega-logging":277}],362:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     Tuple = require('vega-dataflow').Tuple,
@@ -67427,7 +67429,7 @@ function partition(data, groupby, orderby) {
 }
 
 module.exports = Impute;
-},{"./BatchTransform":354,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],368:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],363:[function(require,module,exports){
 var Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
     Transform = require('./Transform');
@@ -67554,7 +67556,7 @@ prototype.transform = function(input) {
 };
 
 module.exports = LinkPath;
-},{"./Transform":375,"vega-dataflow":276,"vega-logging":283}],369:[function(require,module,exports){
+},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],364:[function(require,module,exports){
 var Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
     Transform = require('./Transform');
@@ -67626,7 +67628,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Lookup;
-},{"./Transform":375,"vega-dataflow":276,"vega-logging":283}],370:[function(require,module,exports){
+},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],365:[function(require,module,exports){
 var dl = require('datalib'),
     Deps = require('vega-dataflow').Dependencies;
 
@@ -67754,7 +67756,7 @@ prototype.set = function(value) {
 };
 
 module.exports = Parameter;
-},{"datalib":261,"vega-dataflow":276}],371:[function(require,module,exports){
+},{"datalib":27,"vega-dataflow":215}],366:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -67820,7 +67822,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Pie;
-},{"./BatchTransform":354,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],372:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],367:[function(require,module,exports){
 var Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
     Transform = require('./Transform'),
@@ -67874,7 +67876,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Rank;
-},{"./BatchTransform":354,"./Transform":375,"vega-dataflow":276,"vega-logging":283}],373:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"vega-dataflow":215,"vega-logging":277}],368:[function(require,module,exports){
 var dl = require('datalib'),
     log  = require('vega-logging'),
     Transform = require('./Transform');
@@ -67898,7 +67900,7 @@ prototype.transform = function(input) {
 };
 
 module.exports = Sort;
-},{"./Transform":375,"datalib":261,"vega-logging":283}],374:[function(require,module,exports){
+},{"./Transform":370,"datalib":27,"vega-logging":277}],369:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -67996,7 +67998,7 @@ function partition(data, groupby, sortby, field) {
 }
 
 module.exports = Stack;
-},{"./BatchTransform":354,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],375:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],370:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Base = df.Node.prototype, // jshint ignore:line
     Deps = df.Dependencies,
@@ -68057,7 +68059,7 @@ prototype.output = function(map) {
 };
 
 module.exports = Transform;
-},{"./Parameter":370,"vega-dataflow":276}],376:[function(require,module,exports){
+},{"./Parameter":365,"vega-dataflow":215}],371:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -68122,7 +68124,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Treeify;
-},{"./BatchTransform":354,"./Transform":375,"datalib":261,"vega-dataflow":276,"vega-logging":283}],377:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],372:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -68211,7 +68213,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Treemap;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":354,"./Transform":375,"./screen":381,"datalib":261,"vega-dataflow":276,"vega-logging":283}],378:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow":215,"vega-logging":277}],373:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     Tuple = require('vega-dataflow/src/Tuple'),
@@ -68261,7 +68263,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Voronoi;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":354,"./Transform":375,"./screen":381,"vega-dataflow/src/Tuple":275,"vega-logging":283}],379:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"./screen":376,"vega-dataflow/src/Tuple":214,"vega-logging":277}],374:[function(require,module,exports){
 (function (global){
 var dl = require('datalib'),
     d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
@@ -68373,7 +68375,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Wordcloud;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":354,"./Transform":375,"./screen":381,"datalib":261,"vega-dataflow/src/Tuple":275,"vega-logging":283,"vega-scenegraph":284}],380:[function(require,module,exports){
+},{"./BatchTransform":349,"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow/src/Tuple":214,"vega-logging":277,"vega-scenegraph":278}],375:[function(require,module,exports){
 module.exports = {
   aggregate:    require('./Aggregate'),
   bin:          require('./Bin'),
@@ -68399,7 +68401,7 @@ module.exports = {
   voronoi:      require('./Voronoi'),
   wordcloud:    require('./Wordcloud')
 };
-},{"./Aggregate":353,"./Bin":355,"./CountPattern":356,"./Cross":357,"./Facet":358,"./Filter":360,"./Fold":361,"./Force":362,"./Formula":363,"./Geo":364,"./GeoPath":365,"./Hierarchy":366,"./Impute":367,"./LinkPath":368,"./Lookup":369,"./Pie":371,"./Rank":372,"./Sort":373,"./Stack":374,"./Treeify":376,"./Treemap":377,"./Voronoi":378,"./Wordcloud":379}],381:[function(require,module,exports){
+},{"./Aggregate":348,"./Bin":350,"./CountPattern":351,"./Cross":352,"./Facet":353,"./Filter":355,"./Fold":356,"./Force":357,"./Formula":358,"./Geo":359,"./GeoPath":360,"./Hierarchy":361,"./Impute":362,"./LinkPath":363,"./Lookup":364,"./Pie":366,"./Rank":367,"./Sort":368,"./Stack":369,"./Treeify":371,"./Treemap":372,"./Voronoi":373,"./Wordcloud":374}],376:[function(require,module,exports){
 module.exports = {
   size:   [{signal: 'width'}, {signal: 'height'}],
   mid:    [{expr: 'width/2'}, {expr: 'height/2'}],
@@ -68408,7 +68410,7 @@ module.exports = {
     {expr: '[width+padding.right, height+padding.bottom]'}
   ]
 };
-},{}],382:[function(require,module,exports){
+},{}],377:[function(require,module,exports){
 var dl = require('datalib');
 
 var TIME    = 'time',
@@ -68472,13 +68474,13 @@ function getFormatter(scale, tickCount, formatType, str) {
 module.exports = {
   getTickFormat: getTickFormat
 };
-},{"datalib":261}],383:[function(require,module,exports){
+},{"datalib":27}],378:[function(require,module,exports){
 var dl = require('datalib'),
     u  = {};
 
 dl.extend(u, require('./format'));
 module.exports = dl.extend(u, dl);
-},{"./format":382,"datalib":261}],384:[function(require,module,exports){
+},{"./format":377,"datalib":27}],379:[function(require,module,exports){
 (function (global){
 var _ = require('underscore');
 var d3 = require('d3');
@@ -69288,7 +69290,7 @@ function renderSpec(spec, regularVega) {
       ReactDOM.render(r, resultContainer, function () {
         var comp = this;
         var node = this.refs.content;
-        $(node).text('   rendering...');
+        $(node).html('&nbsp;&nbsp;&nbsp&nbsp;rendering...');
 
         vg.parse.spec(vgSpec, function (error, chart) {
           $(node).empty();
@@ -69739,18 +69741,16 @@ var viz = {
   heatMap: heatMap
 };
 
-// behave both as a browser library and a node module
+if (typeof module !== 'undefined' && module.exports) {
+  exports = module.exports = viz;
+}
+
 if (typeof window === 'object') {
-  global.viz = viz;
-} else {
-  if (typeof module !== 'undefined' && module.exports) {
-    exports = module.exports = viz;
-  }
-  exports.viz = viz;
+  window.viz = viz;
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./old":385,"./stats":386,"d3":1,"fs":387,"jquery":2,"md5":3,"react":172,"react-dom":7,"underscore":173,"vega":237,"vega-lite":236}],385:[function(require,module,exports){
+},{"./old":380,"./stats":381,"d3":7,"fs":382,"jquery":59,"md5":63,"react":203,"react-dom":65,"underscore":205,"vega":317,"vega-lite":276}],380:[function(require,module,exports){
 var fs = require('fs');
 
 var numPlots = 0;
@@ -70250,7 +70250,7 @@ function plotMarginals(labels, counts, resultDivSelector) {
 
 module.exports = { print: print };
 
-},{"fs":387}],386:[function(require,module,exports){
+},{"fs":382}],381:[function(require,module,exports){
 var _ = require('underscore');
 var d3 = require('d3');
 
@@ -70453,20 +70453,28 @@ module.exports = {
   kde2d: kde2d
 };
 
-},{"d3":1,"underscore":173}],387:[function(require,module,exports){
+},{"d3":7,"underscore":205}],382:[function(require,module,exports){
 
-},{}],388:[function(require,module,exports){
-arguments[4][387][0].apply(exports,arguments)
-},{"dup":387}],389:[function(require,module,exports){
+},{}],383:[function(require,module,exports){
+arguments[4][382][0].apply(exports,arguments)
+},{"dup":382}],384:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
+
+// cached from whatever global is present so that test runners that stub it don't break things.
+var cachedSetTimeout = setTimeout;
+var cachedClearTimeout = clearTimeout;
+
 var queue = [];
 var draining = false;
 var currentQueue;
 var queueIndex = -1;
 
 function cleanUpNextTick() {
+    if (!draining || !currentQueue) {
+        return;
+    }
     draining = false;
     if (currentQueue.length) {
         queue = currentQueue.concat(queue);
@@ -70482,7 +70490,7 @@ function drainQueue() {
     if (draining) {
         return;
     }
-    var timeout = setTimeout(cleanUpNextTick);
+    var timeout = cachedSetTimeout(cleanUpNextTick);
     draining = true;
 
     var len = queue.length;
@@ -70499,7 +70507,7 @@ function drainQueue() {
     }
     currentQueue = null;
     draining = false;
-    clearTimeout(timeout);
+    cachedClearTimeout(timeout);
 }
 
 process.nextTick = function (fun) {
@@ -70511,7 +70519,7 @@ process.nextTick = function (fun) {
     }
     queue.push(new Item(fun, args));
     if (queue.length === 1 && !draining) {
-        setTimeout(drainQueue, 0);
+        cachedSetTimeout(drainQueue, 0);
     }
 };
 
@@ -70550,4 +70558,4 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}]},{},[384]);
+},{}]},{},[379]);
