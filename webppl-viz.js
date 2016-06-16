@@ -68490,6 +68490,7 @@ global.d3 = d3;
 
 var vl = require('vega-lite');
 var vg = require('vega');
+global.vg = vg;
 
 var React = require('react');
 var ReactDOM = require('react-dom');
@@ -68505,6 +68506,12 @@ function runningInBrowser() {
 function isErp(x) {
   // TODO: take from dippl
   return x.support && x.score;
+}
+
+function getScores(erp) {
+  return _.map(erp.support(), function (state) {
+    return scorer(erp, state);
+  });
 }
 
 function scorer(erp, val) {
@@ -68655,7 +68662,9 @@ kindPrinter.r = function (types, support, scores) {
     return _.extend({ prob: Math.exp(x[1]) }, x[0]);
   });
 
-  var densityEstimates = kde(values);
+  var probs = _.pluck(data, 'prob');
+
+  var densityEstimates = kde(values, { weights: probs });
 
   var vlSpec = {
     "data": { "values": densityEstimates },
@@ -69257,19 +69266,95 @@ var GraphComponent = React.createClass({
 function renderSpec(spec, regularVega) {
   // OPTIMIZE: don't mutate spec (but probably don't just want to clone either, since
   // data can be large)
-  if (!_.has(spec, 'config')) {
-    spec.config = { numberFormat: '.1e' };
-  } else {
-    if (!_.has(spec.config, 'numberFormat')) {
-      spec.config.numberFormat = '.1e';
-    }
-  }
-
-  // TODO:
-  // for each quantitative field that is displayed, pick a better number format
-  // (ideally, do this to the axis labels, not all the data)
 
   var vgSpec = regularVega ? spec : vl.compile(spec).spec;
+
+  var formatterKeys = [',r',
+  //',g',
+  ',.1r', ',.2r', ',.3r', ',.4r', ',.5r', ',.6r',
+  //',.1g',',.2g',',.3g',',.4g',',.5g',',.6g',
+  '.1e'];
+  var formatters = _.object(formatterKeys, _.map(formatterKeys, function (s) {
+    return d3.format(s);
+  }));
+
+  // format axes: try to guess a good number formatter and format
+  // axes so they don't overlap
+  var allData = vgSpec.data;
+  _.each(vgSpec.marks, function (mark) {
+    var scales = mark.scales;
+    _.each(mark.axes, function (axis) {
+      var scale = _.findWhere(scales, { name: axis.scale }),
+          dataSource = scale.domain.data,
+          dataField = scale.domain.field;
+      var values = _.pluck(_.findWhere(allData, { name: dataSource }).values, dataField);
+      // get tick values
+      var sc = d3.scale.linear();
+      sc.domain(values);
+      sc.range([scale.rangeMin, scale.rangeMax]);
+      if (scale.nice) {
+        sc.nice();
+      }
+      var ticks = sc.ticks(axis.ticks);
+
+      // score formatters by the length of the longest string they produce on ticks
+      var scores = _.map(formatterKeys, function (key) {
+        var f = formatters[key];
+        var strings = _.map(ticks, function (tick) {
+          return f(tick);
+        });
+        var stringsAdjusted;
+        // require that formatter produces different strings for different ticks
+        var score;
+        if (_.unique(strings).length < strings.length) {
+          score = 9999999999;
+        } else {
+          // don't penalize for commas
+          stringsAdjusted = _.map(strings, function (s) {
+            return s.replace(',', '');
+          });
+          var lengths = _.pluck(stringsAdjusted, 'length');
+          score = _.max(lengths);
+        };
+        return { key: key,
+          score: score + (key == '.1e' ? 1 : 0),
+          strings: strings,
+          stringsAdjusted
+        }; // extra penalty for .1e
+      });
+
+      // get best formatter
+      var bestScore = _.min(_.pluck(scores, 'score'));
+      var bestKeys = _.pluck(_.where(scores, { score: bestScore }), 'key');
+
+      // break ties: prefer, in this order:
+      // ,r > ,g >  ,.Xr > ,.Xg > ,.1e
+
+      var bestKey = _.find(bestKeys, function (key) {
+        return key == ',r';
+      }) || _.find(bestKeys, function (key) {
+        return key == ',g';
+      }) || _.find(bestKeys, function (key) {
+        return key.indexOf('g') > -1;
+      }) || _.find(bestKeys, function (key) {
+        return key.indexOf('r') > -1;
+      }) || bestKeys[0];
+
+      axis.format = bestKey;
+
+      if (axis.type == 'x') {
+        axis.properties = {
+          labels: {
+            // TODO: the actual strings that show up in the picture can differ
+            // from what we compute here, so i'm just using a large constant angle
+            // as a temporary hack
+            angle: { "value": bestScore < 4 ? 0 : 30 },
+            align: { "value": 'left' }
+          }
+        };
+      }
+    });
+  });
 
   var resultContainer;
 
@@ -69609,19 +69694,27 @@ function heatMap(samples) {
 
 // TODO: should you be able to pass this an erp too?
 // TODO: rename as kde
-function density(samples, options) {
+function density(x, options) {
   options = _.defaults(options || {}, { bounds: 'auto' });
+
+  function extractNumber(z) {
+    return _.isNumber(z) ? z : _.values(z)[0];
+  }
+
+  var xIsErp = isErp(x);
+  var support = xIsErp ? _.map(x.support(), extractNumber) : x,
+      weights = xIsErp ? _.map(getScores(x), Math.exp) : false;
 
   var min, max;
   if (options.bounds == 'auto') {
-    min = _.min(samples);
-    max = _.max(samples);
+    min = _.min(support);
+    max = _.max(support);
   } else {
     min = options.bounds[0];
     max = options.bounds[1];
   }
 
-  var densityEstimate = kde(samples, options);
+  var densityEstimate = kde(support, _.extend({ weights: weights }, options));
 
   var vlSpec = {
     "data": { values: densityEstimate },
@@ -69697,7 +69790,9 @@ function table(obj, options) {
     return;
   }
 
-  options = _.defaults(options || {}, { log: false });
+  options = _.defaults(options || {}, { log: false,
+    top: false
+  });
 
   var erp;
   if (_.isArray(obj)) {
@@ -69716,6 +69811,10 @@ function table(obj, options) {
   var sortedZipped = _.sortBy(_.zip(support, scores), function (z) {
     return -z[1];
   });
+
+  if (options.top) {
+    sortedZipped = sortedZipped.slice(0, options.top);
+  }
 
   var tableString = '<table class="wviz-table"><tr><th>state</th><th>' + (options.log ? 'log probability' : 'probability') + '</th>';
 
@@ -70255,11 +70354,13 @@ var _ = require('underscore');
 var d3 = require('d3');
 
 // input: a list of samples and, optionally, a kernel function
-// output: a list of estimated densities (range is min to max and number of bins is 100)
-// TODO: make numBins and bandwidth options (with visible vega knobs?)
+// output: a list of estimated densities
 function kde(samps, options) {
   options = _.defaults(options || {}, { bounds: 'auto',
-    kernel: 'epanechnikov'
+    bandwidth: 'auto',
+    kernel: 'epanechnikov',
+    numPoints: 100,
+    weights: false
   });
 
   var kernel;
@@ -70272,20 +70373,39 @@ function kde(samps, options) {
     kernel = options.kernel;
   }
 
+  // add weights
+  var isWeighted = _.isArray(options.weights),
+      weights = options.weights;
+
   // get optimal bandwidth
   // HT http://en.wikipedia.org/wiki/Kernel_density_estimation#Practical_estimation_of_the_bandwidth
   // to support ERP as argument, we need to know the number of samples from an ERP
   // (TODO: submit PR for webppl where Histogram.prototype.toERP preserves this info)
-  var n = samps.length;
-  var mean = samps.reduce(function (x, y) {
-    return x + y;
-  }) / n;
+  var mean = 0,
+      n = samps.length;
+  var sumWeights = 0;
+  if (isWeighted) {
+    for (var i = 0; i < n; i++) {
+      sumWeights += weights[i];
+      mean += weights[i] * samps[i];
+    }
+    mean = mean / sumWeights;
+  } else {
+    mean = samps.reduce(function (x, y) {
+      return x + y;
+    }) / n;
+  }
 
-  var s = Math.sqrt(samps.reduce(function (acc, x) {
-    return acc + Math.pow(x - mean, 2);
-  }) / (n - 1));
-
-  var bandwidth = 1.06 * s * Math.pow(n, -0.2);
+  var bandwidth;
+  if (options.bandwidth == 'auto') {
+    var s = Math.sqrt(samps.reduce(function (acc, x, i) {
+      return acc + (isWeighted ? weights[i] : 1) * Math.pow(x - mean, 2);
+    }, 0) / (isWeighted ? sumWeights : n - 1));
+    // TODO: silverman's rule can fail
+    bandwidth = 1.06 * s * Math.pow(n, -0.2);
+  } else {
+    bandwidth = options.bandwidth;
+  }
 
   var min, max;
   if (options.bounds == 'auto') {
@@ -70296,18 +70416,22 @@ function kde(samps, options) {
     max = options.bounds[1];
   }
 
-  var numBins = 100;
-  var binWidth = (max - min) / numBins;
+  var numPoints = options.numPoints;
+  var binWidth = (max - min) / numPoints;
 
   var results = [];
 
-  for (var i = 0; i <= numBins; i++) {
+  for (var i = 0; i <= numPoints; i++) {
     var x = min + i * binWidth;
     var kernelSum = 0;
     for (var j = 0, jj = samps.length; j < jj; j++) {
-      kernelSum += kernel((x - samps[j]) / bandwidth);
+      var w = isWeighted ? weights[j] : 1;
+      kernelSum += w * kernel((x - samps[j]) / bandwidth);
     }
-    results.push({ item: x, density: kernelSum / (n * bandwidth) });
+    results.push({
+      item: x,
+      density: kernelSum / ((isWeighted ? sumWeights : n) * bandwidth)
+    });
   }
   return results;
 }
