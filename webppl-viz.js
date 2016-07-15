@@ -13161,7 +13161,7 @@ load.headers = {};
 
 module.exports = load;
 
-},{"../util":31,"fs":384,"request":384,"sync-request":384,"url":384}],24:[function(require,module,exports){
+},{"../util":31,"fs":411,"request":411,"sync-request":411,"url":411}],24:[function(require,module,exports){
 var util = require('../util'),
   type = require('./type'),
   formats = require('./formats'),
@@ -14816,7 +14816,7 @@ function truncateOnWord(s, len, rev) {
 var truncate_word_re = /([\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u180E\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u2028\u2029\u3000\uFEFF])/;
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":384}],32:[function(require,module,exports){
+},{"buffer":411}],32:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -14902,7 +14902,7 @@ var EventListener = {
 
 module.exports = EventListener;
 }).call(this,require('_process'))
-},{"./emptyFunction":39,"_process":385}],33:[function(require,module,exports){
+},{"./emptyFunction":39,"_process":412}],33:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -15179,7 +15179,7 @@ function createArrayFromMixed(obj) {
 
 module.exports = createArrayFromMixed;
 }).call(this,require('_process'))
-},{"./invariant":47,"_process":385}],38:[function(require,module,exports){
+},{"./invariant":47,"_process":412}],38:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -15265,7 +15265,7 @@ function createNodesFromMarkup(markup, handleScript) {
 
 module.exports = createNodesFromMarkup;
 }).call(this,require('_process'))
-},{"./ExecutionEnvironment":33,"./createArrayFromMixed":37,"./getMarkupWrap":43,"./invariant":47,"_process":385}],39:[function(require,module,exports){
+},{"./ExecutionEnvironment":33,"./createArrayFromMixed":37,"./getMarkupWrap":43,"./invariant":47,"_process":412}],39:[function(require,module,exports){
 "use strict";
 
 /**
@@ -15326,7 +15326,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = emptyObject;
 }).call(this,require('_process'))
-},{"_process":385}],41:[function(require,module,exports){
+},{"_process":412}],41:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -15485,7 +15485,7 @@ function getMarkupWrap(nodeName) {
 
 module.exports = getMarkupWrap;
 }).call(this,require('_process'))
-},{"./ExecutionEnvironment":33,"./invariant":47,"_process":385}],44:[function(require,module,exports){
+},{"./ExecutionEnvironment":33,"./invariant":47,"_process":412}],44:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -15648,7 +15648,7 @@ function invariant(condition, format, a, b, c, d, e, f) {
 
 module.exports = invariant;
 }).call(this,require('_process'))
-},{"_process":385}],48:[function(require,module,exports){
+},{"_process":412}],48:[function(require,module,exports){
 'use strict';
 
 /**
@@ -15746,7 +15746,7 @@ var keyMirror = function keyMirror(obj) {
 
 module.exports = keyMirror;
 }).call(this,require('_process'))
-},{"./invariant":47,"_process":385}],51:[function(require,module,exports){
+},{"./invariant":47,"_process":412}],51:[function(require,module,exports){
 "use strict";
 
 /**
@@ -16045,7 +16045,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = warning;
 }).call(this,require('_process'))
-},{"./emptyFunction":39,"_process":385}],58:[function(require,module,exports){
+},{"./emptyFunction":39,"_process":412}],58:[function(require,module,exports){
 /**
  * Determine if an object is Buffer
  *
@@ -27338,7 +27338,7 @@ var CSSPropertyOperations = {
 
 module.exports = CSSPropertyOperations;
 }).call(this,require('_process'))
-},{"./CSSProperty":68,"./ReactInstrumentation":135,"./dangerousStyleValue":178,"_process":385,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/camelizeStyleName":35,"fbjs/lib/hyphenateStyleName":46,"fbjs/lib/memoizeStringOnly":53,"fbjs/lib/warning":57}],70:[function(require,module,exports){
+},{"./CSSProperty":68,"./ReactInstrumentation":135,"./dangerousStyleValue":178,"_process":412,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/camelizeStyleName":35,"fbjs/lib/hyphenateStyleName":46,"fbjs/lib/memoizeStringOnly":53,"fbjs/lib/warning":57}],70:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -27446,7 +27446,7 @@ PooledClass.addPoolingTo(CallbackQueue);
 
 module.exports = CallbackQueue;
 }).call(this,require('_process'))
-},{"./PooledClass":90,"_process":385,"fbjs/lib/invariant":47,"object-assign":64}],71:[function(require,module,exports){
+},{"./PooledClass":90,"_process":412,"fbjs/lib/invariant":47,"object-assign":64}],71:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -27969,7 +27969,7 @@ var DOMChildrenOperations = {
 
 module.exports = DOMChildrenOperations;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":73,"./Danger":77,"./ReactDOMComponentTree":106,"./ReactInstrumentation":135,"./ReactMultiChildUpdateTypes":140,"./createMicrosoftUnsafeLocalFunction":177,"./setInnerHTML":198,"./setTextContent":199,"_process":385}],73:[function(require,module,exports){
+},{"./DOMLazyTree":73,"./Danger":77,"./ReactDOMComponentTree":106,"./ReactInstrumentation":135,"./ReactMultiChildUpdateTypes":140,"./createMicrosoftUnsafeLocalFunction":177,"./setInnerHTML":198,"./setTextContent":199,"_process":412}],73:[function(require,module,exports){
 /**
  * Copyright 2015-present, Facebook, Inc.
  * All rights reserved.
@@ -28324,7 +28324,7 @@ var DOMProperty = {
 
 module.exports = DOMProperty;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],76:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],76:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -28549,7 +28549,7 @@ var DOMPropertyOperations = {
 
 module.exports = DOMPropertyOperations;
 }).call(this,require('_process'))
-},{"./DOMProperty":75,"./ReactDOMComponentTree":106,"./ReactDOMInstrumentation":114,"./ReactInstrumentation":135,"./quoteAttributeValueForBrowser":196,"_process":385,"fbjs/lib/warning":57}],77:[function(require,module,exports){
+},{"./DOMProperty":75,"./ReactDOMComponentTree":106,"./ReactDOMInstrumentation":114,"./ReactInstrumentation":135,"./quoteAttributeValueForBrowser":196,"_process":412,"fbjs/lib/warning":57}],77:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -28696,7 +28696,7 @@ var Danger = {
 
 module.exports = Danger;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":73,"_process":385,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/createNodesFromMarkup":38,"fbjs/lib/emptyFunction":39,"fbjs/lib/getMarkupWrap":43,"fbjs/lib/invariant":47}],78:[function(require,module,exports){
+},{"./DOMLazyTree":73,"_process":412,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/createNodesFromMarkup":38,"fbjs/lib/emptyFunction":39,"fbjs/lib/getMarkupWrap":43,"fbjs/lib/invariant":47}],78:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -29217,7 +29217,7 @@ var EventPluginHub = {
 
 module.exports = EventPluginHub;
 }).call(this,require('_process'))
-},{"./EventPluginRegistry":83,"./EventPluginUtils":84,"./ReactErrorUtils":128,"./accumulateInto":174,"./forEachAccumulated":182,"_process":385,"fbjs/lib/invariant":47}],83:[function(require,module,exports){
+},{"./EventPluginRegistry":83,"./EventPluginUtils":84,"./ReactErrorUtils":128,"./accumulateInto":174,"./forEachAccumulated":182,"_process":412,"fbjs/lib/invariant":47}],83:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -29461,7 +29461,7 @@ var EventPluginRegistry = {
 
 module.exports = EventPluginRegistry;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],84:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],84:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -29691,7 +29691,7 @@ var EventPluginUtils = {
 
 module.exports = EventPluginUtils;
 }).call(this,require('_process'))
-},{"./EventConstants":81,"./ReactErrorUtils":128,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],85:[function(require,module,exports){
+},{"./EventConstants":81,"./ReactErrorUtils":128,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],85:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -29831,7 +29831,7 @@ var EventPropagators = {
 
 module.exports = EventPropagators;
 }).call(this,require('_process'))
-},{"./EventConstants":81,"./EventPluginHub":82,"./EventPluginUtils":84,"./accumulateInto":174,"./forEachAccumulated":182,"_process":385,"fbjs/lib/warning":57}],86:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPluginHub":82,"./EventPluginUtils":84,"./accumulateInto":174,"./forEachAccumulated":182,"_process":412,"fbjs/lib/warning":57}],86:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30332,7 +30332,7 @@ var LinkedValueUtils = {
 
 module.exports = LinkedValueUtils;
 }).call(this,require('_process'))
-},{"./ReactPropTypeLocations":147,"./ReactPropTypes":148,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],90:[function(require,module,exports){
+},{"./ReactPropTypeLocations":147,"./ReactPropTypes":148,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],90:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -30454,7 +30454,7 @@ var PooledClass = {
 
 module.exports = PooledClass;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],91:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],91:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -30544,7 +30544,7 @@ var React = {
 
 module.exports = React;
 }).call(this,require('_process'))
-},{"./ReactChildren":94,"./ReactClass":95,"./ReactComponent":96,"./ReactDOMFactories":110,"./ReactElement":125,"./ReactElementValidator":126,"./ReactPropTypes":148,"./ReactVersion":155,"./onlyChild":195,"_process":385,"fbjs/lib/warning":57,"object-assign":64}],92:[function(require,module,exports){
+},{"./ReactChildren":94,"./ReactClass":95,"./ReactComponent":96,"./ReactDOMFactories":110,"./ReactElement":125,"./ReactElementValidator":126,"./ReactPropTypes":148,"./ReactVersion":155,"./onlyChild":195,"_process":412,"fbjs/lib/warning":57,"object-assign":64}],92:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -30990,7 +30990,7 @@ var ReactChildReconciler = {
 
 module.exports = ReactChildReconciler;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":88,"./ReactReconciler":150,"./instantiateReactComponent":192,"./shouldUpdateReactComponent":200,"./traverseAllChildren":201,"_process":385,"fbjs/lib/warning":57}],94:[function(require,module,exports){
+},{"./KeyEscapeUtils":88,"./ReactReconciler":150,"./instantiateReactComponent":192,"./shouldUpdateReactComponent":200,"./traverseAllChildren":201,"_process":412,"fbjs/lib/warning":57}],94:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -31909,7 +31909,7 @@ var ReactClass = {
 
 module.exports = ReactClass;
 }).call(this,require('_process'))
-},{"./ReactComponent":96,"./ReactElement":125,"./ReactNoopUpdateQueue":144,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"_process":385,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/keyMirror":50,"fbjs/lib/keyOf":51,"fbjs/lib/warning":57,"object-assign":64}],96:[function(require,module,exports){
+},{"./ReactComponent":96,"./ReactElement":125,"./ReactNoopUpdateQueue":144,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"_process":412,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/keyMirror":50,"fbjs/lib/keyOf":51,"fbjs/lib/warning":57,"object-assign":64}],96:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -32033,7 +32033,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactComponent;
 }).call(this,require('_process'))
-},{"./ReactInstrumentation":135,"./ReactNoopUpdateQueue":144,"./canDefineProperty":176,"_process":385,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],97:[function(require,module,exports){
+},{"./ReactInstrumentation":135,"./ReactNoopUpdateQueue":144,"./canDefineProperty":176,"_process":412,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],97:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -32127,7 +32127,7 @@ var ReactComponentEnvironment = {
 
 module.exports = ReactComponentEnvironment;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],99:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],99:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -32275,7 +32275,7 @@ var ReactComponentTreeDevtool = {
 
 module.exports = ReactComponentTreeDevtool;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],100:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],100:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -33201,7 +33201,7 @@ var ReactCompositeComponent = {
 
 module.exports = ReactCompositeComponent;
 }).call(this,require('_process'))
-},{"./ReactComponentEnvironment":98,"./ReactCurrentOwner":101,"./ReactElement":125,"./ReactErrorUtils":128,"./ReactInstanceMap":134,"./ReactInstrumentation":135,"./ReactNodeTypes":143,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"./ReactReconciler":150,"./ReactUpdateQueue":153,"./shouldUpdateReactComponent":200,"_process":385,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],101:[function(require,module,exports){
+},{"./ReactComponentEnvironment":98,"./ReactCurrentOwner":101,"./ReactElement":125,"./ReactErrorUtils":128,"./ReactInstanceMap":134,"./ReactInstrumentation":135,"./ReactNodeTypes":143,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"./ReactReconciler":150,"./ReactUpdateQueue":153,"./shouldUpdateReactComponent":200,"_process":412,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],101:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -33337,7 +33337,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = React;
 }).call(this,require('_process'))
-},{"./ReactDOMComponentTree":106,"./ReactDefaultInjection":124,"./ReactMount":138,"./ReactReconciler":150,"./ReactUpdates":154,"./ReactVersion":155,"./findDOMNode":180,"./getNativeComponentFromComposite":188,"./renderSubtreeIntoContainer":197,"_process":385,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/warning":57}],103:[function(require,module,exports){
+},{"./ReactDOMComponentTree":106,"./ReactDefaultInjection":124,"./ReactMount":138,"./ReactReconciler":150,"./ReactUpdates":154,"./ReactVersion":155,"./findDOMNode":180,"./getNativeComponentFromComposite":188,"./renderSubtreeIntoContainer":197,"_process":412,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/warning":57}],103:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -34314,7 +34314,7 @@ _assign(ReactDOMComponent.prototype, ReactDOMComponent.Mixin, ReactMultiChild.Mi
 
 module.exports = ReactDOMComponent;
 }).call(this,require('_process'))
-},{"./AutoFocusUtils":66,"./CSSPropertyOperations":69,"./DOMLazyTree":73,"./DOMNamespaces":74,"./DOMProperty":75,"./DOMPropertyOperations":76,"./EventConstants":81,"./EventPluginHub":82,"./EventPluginRegistry":83,"./ReactBrowserEventEmitter":92,"./ReactComponentBrowserEnvironment":97,"./ReactDOMButton":103,"./ReactDOMComponentFlags":105,"./ReactDOMComponentTree":106,"./ReactDOMInput":113,"./ReactDOMOption":115,"./ReactDOMSelect":116,"./ReactDOMTextarea":119,"./ReactInstrumentation":135,"./ReactMultiChild":139,"./ReactServerRenderingTransaction":152,"./escapeTextContentForBrowser":179,"./isEventSupported":193,"./validateDOMNesting":202,"_process":385,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47,"fbjs/lib/keyOf":51,"fbjs/lib/shallowEqual":56,"fbjs/lib/warning":57,"object-assign":64}],105:[function(require,module,exports){
+},{"./AutoFocusUtils":66,"./CSSPropertyOperations":69,"./DOMLazyTree":73,"./DOMNamespaces":74,"./DOMProperty":75,"./DOMPropertyOperations":76,"./EventConstants":81,"./EventPluginHub":82,"./EventPluginRegistry":83,"./ReactBrowserEventEmitter":92,"./ReactComponentBrowserEnvironment":97,"./ReactDOMButton":103,"./ReactDOMComponentFlags":105,"./ReactDOMComponentTree":106,"./ReactDOMInput":113,"./ReactDOMOption":115,"./ReactDOMSelect":116,"./ReactDOMTextarea":119,"./ReactInstrumentation":135,"./ReactMultiChild":139,"./ReactServerRenderingTransaction":152,"./escapeTextContentForBrowser":179,"./isEventSupported":193,"./validateDOMNesting":202,"_process":412,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47,"fbjs/lib/keyOf":51,"fbjs/lib/shallowEqual":56,"fbjs/lib/warning":57,"object-assign":64}],105:[function(require,module,exports){
 /**
  * Copyright 2015-present, Facebook, Inc.
  * All rights reserved.
@@ -34522,7 +34522,7 @@ var ReactDOMComponentTree = {
 
 module.exports = ReactDOMComponentTree;
 }).call(this,require('_process'))
-},{"./DOMProperty":75,"./ReactDOMComponentFlags":105,"_process":385,"fbjs/lib/invariant":47}],107:[function(require,module,exports){
+},{"./DOMProperty":75,"./ReactDOMComponentFlags":105,"_process":412,"fbjs/lib/invariant":47}],107:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -34558,7 +34558,7 @@ function ReactDOMContainerInfo(topLevelWrapper, node) {
 
 module.exports = ReactDOMContainerInfo;
 }).call(this,require('_process'))
-},{"./validateDOMNesting":202,"_process":385}],108:[function(require,module,exports){
+},{"./validateDOMNesting":202,"_process":412}],108:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -34622,7 +34622,7 @@ ReactDOMDebugTool.addDevtool(ReactDOMUnknownPropertyDevtool);
 
 module.exports = ReactDOMDebugTool;
 }).call(this,require('_process'))
-},{"./ReactDOMUnknownPropertyDevtool":121,"_process":385,"fbjs/lib/warning":57}],109:[function(require,module,exports){
+},{"./ReactDOMUnknownPropertyDevtool":121,"_process":412,"fbjs/lib/warning":57}],109:[function(require,module,exports){
 /**
  * Copyright 2014-present, Facebook, Inc.
  * All rights reserved.
@@ -34862,7 +34862,7 @@ var ReactDOMFactories = mapObject({
 
 module.exports = ReactDOMFactories;
 }).call(this,require('_process'))
-},{"./ReactElement":125,"./ReactElementValidator":126,"_process":385,"fbjs/lib/mapObject":52}],111:[function(require,module,exports){
+},{"./ReactElement":125,"./ReactElementValidator":126,"_process":412,"fbjs/lib/mapObject":52}],111:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35125,7 +35125,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMInput;
 }).call(this,require('_process'))
-},{"./DOMPropertyOperations":76,"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],114:[function(require,module,exports){
+},{"./DOMPropertyOperations":76,"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],114:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35254,7 +35254,7 @@ var ReactDOMOption = {
 
 module.exports = ReactDOMOption;
 }).call(this,require('_process'))
-},{"./ReactChildren":94,"./ReactDOMComponentTree":106,"./ReactDOMSelect":116,"_process":385,"fbjs/lib/warning":57,"object-assign":64}],116:[function(require,module,exports){
+},{"./ReactChildren":94,"./ReactDOMComponentTree":106,"./ReactDOMSelect":116,"_process":412,"fbjs/lib/warning":57,"object-assign":64}],116:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -35470,7 +35470,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMSelect;
 }).call(this,require('_process'))
-},{"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":385,"fbjs/lib/warning":57,"object-assign":64}],117:[function(require,module,exports){
+},{"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":412,"fbjs/lib/warning":57,"object-assign":64}],117:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -35856,7 +35856,7 @@ _assign(ReactDOMTextComponent.prototype, {
 
 module.exports = ReactDOMTextComponent;
 }).call(this,require('_process'))
-},{"./DOMChildrenOperations":72,"./DOMLazyTree":73,"./ReactDOMComponentTree":106,"./ReactInstrumentation":135,"./escapeTextContentForBrowser":179,"./validateDOMNesting":202,"_process":385,"fbjs/lib/invariant":47,"object-assign":64}],119:[function(require,module,exports){
+},{"./DOMChildrenOperations":72,"./DOMLazyTree":73,"./ReactDOMComponentTree":106,"./ReactInstrumentation":135,"./escapeTextContentForBrowser":179,"./validateDOMNesting":202,"_process":412,"fbjs/lib/invariant":47,"object-assign":64}],119:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -36001,7 +36001,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMTextarea;
 }).call(this,require('_process'))
-},{"./DOMPropertyOperations":76,"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],120:[function(require,module,exports){
+},{"./DOMPropertyOperations":76,"./DisabledInputUtils":79,"./LinkedValueUtils":89,"./ReactDOMComponentTree":106,"./ReactUpdates":154,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],120:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -36138,7 +36138,7 @@ module.exports = {
   traverseEnterLeave: traverseEnterLeave
 };
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],121:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],121:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -36205,7 +36205,7 @@ var ReactDOMUnknownPropertyDevtool = {
 
 module.exports = ReactDOMUnknownPropertyDevtool;
 }).call(this,require('_process'))
-},{"./DOMProperty":75,"./EventPluginRegistry":83,"_process":385,"fbjs/lib/warning":57}],122:[function(require,module,exports){
+},{"./DOMProperty":75,"./EventPluginRegistry":83,"_process":412,"fbjs/lib/warning":57}],122:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -36458,7 +36458,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactDebugTool;
 }).call(this,require('_process'))
-},{"./ReactComponentTreeDevtool":99,"./ReactInvalidSetStateWarningDevTool":136,"./ReactNativeOperationHistoryDevtool":142,"_process":385,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/performanceNow":55,"fbjs/lib/warning":57}],123:[function(require,module,exports){
+},{"./ReactComponentTreeDevtool":99,"./ReactInvalidSetStateWarningDevTool":136,"./ReactNativeOperationHistoryDevtool":142,"_process":412,"fbjs/lib/ExecutionEnvironment":33,"fbjs/lib/performanceNow":55,"fbjs/lib/warning":57}],123:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -36928,7 +36928,7 @@ ReactElement.isValidElement = function (object) {
 
 module.exports = ReactElement;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":101,"./canDefineProperty":176,"_process":385,"fbjs/lib/warning":57,"object-assign":64}],126:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./canDefineProperty":176,"_process":412,"fbjs/lib/warning":57,"object-assign":64}],126:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -37212,7 +37212,7 @@ var ReactElementValidator = {
 
 module.exports = ReactElementValidator;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":101,"./ReactElement":125,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"./canDefineProperty":176,"./getIteratorFn":187,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],127:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./ReactElement":125,"./ReactPropTypeLocationNames":146,"./ReactPropTypeLocations":147,"./canDefineProperty":176,"./getIteratorFn":187,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],127:[function(require,module,exports){
 /**
  * Copyright 2014-present, Facebook, Inc.
  * All rights reserved.
@@ -37322,7 +37322,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactErrorUtils;
 }).call(this,require('_process'))
-},{"_process":385}],129:[function(require,module,exports){
+},{"_process":412}],129:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -37803,7 +37803,7 @@ var ReactInvalidSetStateWarningDevTool = {
 
 module.exports = ReactInvalidSetStateWarningDevTool;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/warning":57}],137:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/warning":57}],137:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -38350,7 +38350,7 @@ var ReactMount = {
 
 module.exports = ReactMount;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":73,"./DOMProperty":75,"./ReactBrowserEventEmitter":92,"./ReactCurrentOwner":101,"./ReactDOMComponentTree":106,"./ReactDOMContainerInfo":107,"./ReactDOMFeatureFlags":111,"./ReactElement":125,"./ReactFeatureFlags":131,"./ReactInstrumentation":135,"./ReactMarkupChecksum":137,"./ReactReconciler":150,"./ReactUpdateQueue":153,"./ReactUpdates":154,"./instantiateReactComponent":192,"./setInnerHTML":198,"./shouldUpdateReactComponent":200,"_process":385,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],139:[function(require,module,exports){
+},{"./DOMLazyTree":73,"./DOMProperty":75,"./ReactBrowserEventEmitter":92,"./ReactCurrentOwner":101,"./ReactDOMComponentTree":106,"./ReactDOMContainerInfo":107,"./ReactDOMFeatureFlags":111,"./ReactElement":125,"./ReactFeatureFlags":131,"./ReactInstrumentation":135,"./ReactMarkupChecksum":137,"./ReactReconciler":150,"./ReactUpdateQueue":153,"./ReactUpdates":154,"./instantiateReactComponent":192,"./setInnerHTML":198,"./shouldUpdateReactComponent":200,"_process":412,"fbjs/lib/emptyObject":40,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],139:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -38776,7 +38776,7 @@ var ReactMultiChild = {
 
 module.exports = ReactMultiChild;
 }).call(this,require('_process'))
-},{"./ReactChildReconciler":93,"./ReactComponentEnvironment":98,"./ReactCurrentOwner":101,"./ReactInstrumentation":135,"./ReactMultiChildUpdateTypes":140,"./ReactReconciler":150,"./flattenChildren":181,"_process":385,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47}],140:[function(require,module,exports){
+},{"./ReactChildReconciler":93,"./ReactComponentEnvironment":98,"./ReactCurrentOwner":101,"./ReactInstrumentation":135,"./ReactMultiChildUpdateTypes":140,"./ReactReconciler":150,"./flattenChildren":181,"_process":412,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47}],140:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -38907,7 +38907,7 @@ var ReactNativeComponent = {
 
 module.exports = ReactNativeComponent;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47,"object-assign":64}],142:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47,"object-assign":64}],142:[function(require,module,exports){
 /**
  * Copyright 2016-present, Facebook, Inc.
  * All rights reserved.
@@ -38985,7 +38985,7 @@ var ReactNodeTypes = {
 
 module.exports = ReactNodeTypes;
 }).call(this,require('_process'))
-},{"./ReactElement":125,"_process":385,"fbjs/lib/invariant":47}],144:[function(require,module,exports){
+},{"./ReactElement":125,"_process":412,"fbjs/lib/invariant":47}],144:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -39083,7 +39083,7 @@ var ReactNoopUpdateQueue = {
 
 module.exports = ReactNoopUpdateQueue;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/warning":57}],145:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/warning":57}],145:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -39178,7 +39178,7 @@ var ReactOwner = {
 
 module.exports = ReactOwner;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],146:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],146:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -39205,7 +39205,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactPropTypeLocationNames;
 }).call(this,require('_process'))
-},{"_process":385}],147:[function(require,module,exports){
+},{"_process":412}],147:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -39946,7 +39946,7 @@ var ReactReconciler = {
 
 module.exports = ReactReconciler;
 }).call(this,require('_process'))
-},{"./ReactInstrumentation":135,"./ReactRef":151,"_process":385,"fbjs/lib/invariant":47}],151:[function(require,module,exports){
+},{"./ReactInstrumentation":135,"./ReactRef":151,"_process":412,"fbjs/lib/invariant":47}],151:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -40317,7 +40317,7 @@ var ReactUpdateQueue = {
 
 module.exports = ReactUpdateQueue;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":101,"./ReactInstanceMap":134,"./ReactUpdates":154,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],154:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./ReactInstanceMap":134,"./ReactUpdates":154,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],154:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -40579,7 +40579,7 @@ var ReactUpdates = {
 
 module.exports = ReactUpdates;
 }).call(this,require('_process'))
-},{"./CallbackQueue":70,"./PooledClass":90,"./ReactFeatureFlags":131,"./ReactInstrumentation":135,"./ReactReconciler":150,"./Transaction":172,"_process":385,"fbjs/lib/invariant":47,"object-assign":64}],155:[function(require,module,exports){
+},{"./CallbackQueue":70,"./PooledClass":90,"./ReactFeatureFlags":131,"./ReactInstrumentation":135,"./ReactReconciler":150,"./Transaction":172,"_process":412,"fbjs/lib/invariant":47,"object-assign":64}],155:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -41722,7 +41722,7 @@ var SimpleEventPlugin = {
 
 module.exports = SimpleEventPlugin;
 }).call(this,require('_process'))
-},{"./EventConstants":81,"./EventPropagators":85,"./ReactDOMComponentTree":106,"./SyntheticAnimationEvent":159,"./SyntheticClipboardEvent":160,"./SyntheticDragEvent":162,"./SyntheticEvent":163,"./SyntheticFocusEvent":164,"./SyntheticKeyboardEvent":166,"./SyntheticMouseEvent":167,"./SyntheticTouchEvent":168,"./SyntheticTransitionEvent":169,"./SyntheticUIEvent":170,"./SyntheticWheelEvent":171,"./getEventCharCode":183,"_process":385,"fbjs/lib/EventListener":32,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47,"fbjs/lib/keyOf":51}],159:[function(require,module,exports){
+},{"./EventConstants":81,"./EventPropagators":85,"./ReactDOMComponentTree":106,"./SyntheticAnimationEvent":159,"./SyntheticClipboardEvent":160,"./SyntheticDragEvent":162,"./SyntheticEvent":163,"./SyntheticFocusEvent":164,"./SyntheticKeyboardEvent":166,"./SyntheticMouseEvent":167,"./SyntheticTouchEvent":168,"./SyntheticTransitionEvent":169,"./SyntheticUIEvent":170,"./SyntheticWheelEvent":171,"./getEventCharCode":183,"_process":412,"fbjs/lib/EventListener":32,"fbjs/lib/emptyFunction":39,"fbjs/lib/invariant":47,"fbjs/lib/keyOf":51}],159:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -42139,7 +42139,7 @@ function getPooledWarningPropertyDefinition(propName, getVal) {
   }
 }
 }).call(this,require('_process'))
-},{"./PooledClass":90,"_process":385,"fbjs/lib/emptyFunction":39,"fbjs/lib/warning":57,"object-assign":64}],164:[function(require,module,exports){
+},{"./PooledClass":90,"_process":412,"fbjs/lib/emptyFunction":39,"fbjs/lib/warning":57,"object-assign":64}],164:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -42807,7 +42807,7 @@ var Transaction = {
 
 module.exports = Transaction;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],173:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],173:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -42897,7 +42897,7 @@ function accumulateInto(current, next) {
 
 module.exports = accumulateInto;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/invariant":47}],175:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/invariant":47}],175:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -42968,7 +42968,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = canDefineProperty;
 }).call(this,require('_process'))
-},{"_process":385}],177:[function(require,module,exports){
+},{"_process":412}],177:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -43081,7 +43081,7 @@ function dangerousStyleValue(name, value, component) {
 
 module.exports = dangerousStyleValue;
 }).call(this,require('_process'))
-},{"./CSSProperty":68,"_process":385,"fbjs/lib/warning":57}],179:[function(require,module,exports){
+},{"./CSSProperty":68,"_process":412,"fbjs/lib/warning":57}],179:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -43181,7 +43181,7 @@ function findDOMNode(componentOrElement) {
 
 module.exports = findDOMNode;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":101,"./ReactDOMComponentTree":106,"./ReactInstanceMap":134,"./getNativeComponentFromComposite":188,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],181:[function(require,module,exports){
+},{"./ReactCurrentOwner":101,"./ReactDOMComponentTree":106,"./ReactInstanceMap":134,"./getNativeComponentFromComposite":188,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],181:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -43233,7 +43233,7 @@ function flattenChildren(children) {
 
 module.exports = flattenChildren;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":88,"./traverseAllChildren":201,"_process":385,"fbjs/lib/warning":57}],182:[function(require,module,exports){
+},{"./KeyEscapeUtils":88,"./traverseAllChildren":201,"_process":412,"fbjs/lib/warning":57}],182:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -43928,7 +43928,7 @@ function instantiateReactComponent(node) {
 
 module.exports = instantiateReactComponent;
 }).call(this,require('_process'))
-},{"./ReactCompositeComponent":100,"./ReactEmptyComponent":127,"./ReactInstrumentation":135,"./ReactNativeComponent":141,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],193:[function(require,module,exports){
+},{"./ReactCompositeComponent":100,"./ReactEmptyComponent":127,"./ReactInstrumentation":135,"./ReactNativeComponent":141,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57,"object-assign":64}],193:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -44070,7 +44070,7 @@ function onlyChild(children) {
 
 module.exports = onlyChild;
 }).call(this,require('_process'))
-},{"./ReactElement":125,"_process":385,"fbjs/lib/invariant":47}],196:[function(require,module,exports){
+},{"./ReactElement":125,"_process":412,"fbjs/lib/invariant":47}],196:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -44442,7 +44442,7 @@ function traverseAllChildren(children, callback, traverseContext) {
 
 module.exports = traverseAllChildren;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":88,"./ReactCurrentOwner":101,"./ReactElement":125,"./getIteratorFn":187,"_process":385,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],202:[function(require,module,exports){
+},{"./KeyEscapeUtils":88,"./ReactCurrentOwner":101,"./ReactElement":125,"./getIteratorFn":187,"_process":412,"fbjs/lib/invariant":47,"fbjs/lib/warning":57}],202:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -44814,7 +44814,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = validateDOMNesting;
 }).call(this,require('_process'))
-},{"_process":385,"fbjs/lib/emptyFunction":39,"fbjs/lib/warning":57,"object-assign":64}],203:[function(require,module,exports){
+},{"_process":412,"fbjs/lib/emptyFunction":39,"fbjs/lib/warning":57,"object-assign":64}],203:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./lib/React');
@@ -47001,7 +47001,7 @@ prototype.evaluate = function(input) {
 };
 
 module.exports = Collector;
-},{"./ChangeSet":206,"./Node":212,"./Tuple":214,"vega-logging":277}],208:[function(require,module,exports){
+},{"./ChangeSet":206,"./Node":212,"./Tuple":214,"vega-logging":279}],208:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     ChangeSet = require('./ChangeSet'),
@@ -47309,7 +47309,7 @@ function DataSourceListener(ds) {
 
 module.exports = DataSource;
 
-},{"./ChangeSet":206,"./Collector":207,"./Node":212,"./Tuple":214,"datalib":27,"vega-logging":277}],209:[function(require,module,exports){
+},{"./ChangeSet":206,"./Collector":207,"./Node":212,"./Tuple":214,"datalib":27,"vega-logging":279}],209:[function(require,module,exports){
 var deps = module.exports = {
   ALL: ['data', 'fields', 'scales', 'signals']
 };
@@ -47651,7 +47651,7 @@ prototype.evaluate = function(pulse, node) {
 
 module.exports = Graph;
 
-},{"./ChangeSet":206,"./Collector":207,"./DataSource":208,"./Dependencies":209,"./Heap":211,"./Signal":213,"./Tuple":214,"datalib":27,"vega-logging":277}],211:[function(require,module,exports){
+},{"./ChangeSet":206,"./Collector":207,"./DataSource":208,"./Dependencies":209,"./Heap":211,"./Signal":213,"./Tuple":214,"datalib":27,"vega-logging":279}],211:[function(require,module,exports){
 function Heap(comparator) {
   this.cmp = comparator;
   this.nodes = [];
@@ -48106,7 +48106,7 @@ module.exports = {
   debug:        require('vega-logging').debug
 };
 
-},{"./ChangeSet":206,"./Collector":207,"./DataSource":208,"./Dependencies":209,"./Graph":210,"./Node":212,"./Signal":213,"./Tuple":214,"vega-logging":277}],216:[function(require,module,exports){
+},{"./ChangeSet":206,"./Collector":207,"./DataSource":208,"./Dependencies":209,"./Graph":210,"./Node":212,"./Signal":213,"./Tuple":214,"vega-logging":279}],216:[function(require,module,exports){
 module.exports = (function() {
   "use strict";
 
@@ -52048,6 +52048,11 @@ exports.AGGREGATE_OPS = [
     AggregateOp.ARGMIN,
     AggregateOp.ARGMAX,
 ];
+exports.SUM_OPS = [
+    AggregateOp.COUNT,
+    AggregateOp.SUM,
+    AggregateOp.DISTINCT
+];
 exports.SHARED_DOMAIN_OPS = [
     AggregateOp.MEAN,
     AggregateOp.AVERAGE,
@@ -52106,6 +52111,8 @@ var util_1 = require('./util');
 (function (Channel) {
     Channel[Channel["X"] = 'x'] = "X";
     Channel[Channel["Y"] = 'y'] = "Y";
+    Channel[Channel["X2"] = 'x2'] = "X2";
+    Channel[Channel["Y2"] = 'y2'] = "Y2";
     Channel[Channel["ROW"] = 'row'] = "ROW";
     Channel[Channel["COLUMN"] = 'column'] = "COLUMN";
     Channel[Channel["SHAPE"] = 'shape'] = "SHAPE";
@@ -52121,6 +52128,8 @@ var util_1 = require('./util');
 var Channel = exports.Channel;
 exports.X = Channel.X;
 exports.Y = Channel.Y;
+exports.X2 = Channel.X2;
+exports.Y2 = Channel.Y2;
 exports.ROW = Channel.ROW;
 exports.COLUMN = Channel.COLUMN;
 exports.SHAPE = Channel.SHAPE;
@@ -52132,11 +52141,12 @@ exports.LABEL = Channel.LABEL;
 exports.PATH = Channel.PATH;
 exports.ORDER = Channel.ORDER;
 exports.OPACITY = Channel.OPACITY;
-exports.CHANNELS = [exports.X, exports.Y, exports.ROW, exports.COLUMN, exports.SIZE, exports.SHAPE, exports.COLOR, exports.PATH, exports.ORDER, exports.OPACITY, exports.TEXT, exports.DETAIL, exports.LABEL];
+exports.CHANNELS = [exports.X, exports.Y, exports.X2, exports.Y2, exports.ROW, exports.COLUMN, exports.SIZE, exports.SHAPE, exports.COLOR, exports.PATH, exports.ORDER, exports.OPACITY, exports.TEXT, exports.DETAIL, exports.LABEL];
 exports.UNIT_CHANNELS = util_1.without(exports.CHANNELS, [exports.ROW, exports.COLUMN]);
-exports.UNIT_SCALE_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.PATH, exports.ORDER, exports.DETAIL, exports.TEXT, exports.LABEL]);
-exports.NONSPATIAL_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.X, exports.Y]);
-exports.NONSPATIAL_SCALE_CHANNELS = util_1.without(exports.UNIT_SCALE_CHANNELS, [exports.X, exports.Y]);
+exports.UNIT_SCALE_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.PATH, exports.ORDER, exports.DETAIL, exports.TEXT, exports.LABEL, exports.X2, exports.Y2]);
+exports.NONSPATIAL_CHANNELS = util_1.without(exports.UNIT_CHANNELS, [exports.X, exports.Y, exports.X2, exports.Y2]);
+exports.NONSPATIAL_SCALE_CHANNELS = util_1.without(exports.UNIT_SCALE_CHANNELS, [exports.X, exports.Y, exports.X2, exports.Y2]);
+exports.STACK_GROUP_CHANNELS = [exports.COLOR, exports.DETAIL, exports.ORDER, exports.OPACITY, exports.SIZE];
 ;
 function supportMark(channel, mark) {
     return !!getSupportedMark(channel)[mark];
@@ -52155,6 +52165,11 @@ function getSupportedMark(channel) {
             return {
                 point: true, tick: true, rule: true, circle: true, square: true,
                 bar: true, line: true, area: true, text: true
+            };
+        case exports.X2:
+        case exports.Y2:
+            return {
+                rule: true, bar: true, area: true
             };
         case exports.SIZE:
             return {
@@ -52191,6 +52206,8 @@ function getSupportedRole(channel) {
                 measure: false,
                 dimension: true
             };
+        case exports.X2:
+        case exports.Y2:
         case exports.SIZE:
         case exports.TEXT:
             return {
@@ -52211,7 +52228,7 @@ function hasScale(channel) {
 }
 exports.hasScale = hasScale;
 
-},{"./util":273}],227:[function(require,module,exports){
+},{"./util":275}],227:[function(require,module,exports){
 "use strict";
 var axis_1 = require('../axis');
 var channel_1 = require('../channel');
@@ -52274,9 +52291,8 @@ function parseAxis(channel, model) {
         type: type,
         scale: model.scaleName(channel)
     };
-    util_1.extend(def, common_1.formatMixins(model, channel, model.axis(channel).format));
     [
-        'grid', 'layer', 'offset', 'orient', 'tickSize', 'ticks', 'tickSizeEnd', 'title', 'titleOffset',
+        'format', 'grid', 'layer', 'offset', 'orient', 'tickSize', 'ticks', 'tickSizeEnd', 'title', 'titleOffset',
         'tickPadding', 'tickSize', 'tickSizeMajor', 'tickSizeMinor', 'values', 'subdivide'
     ].forEach(function (property) {
         var method;
@@ -52303,6 +52319,10 @@ function parseAxis(channel, model) {
     return def;
 }
 exports.parseAxis = parseAxis;
+function format(model, channel) {
+    return common_1.numberFormat(model.fieldDef(channel), model.axis(channel).format, model.config());
+}
+exports.format = format;
 function offset(model, channel) {
     return model.axis(channel).offset;
 }
@@ -52377,7 +52397,7 @@ function title(model, channel) {
     if (axis.title !== undefined) {
         return axis.title;
     }
-    var fieldTitle = fielddef_1.title(model.fieldDef(channel));
+    var fieldTitle = fielddef_1.title(model.fieldDef(channel), model.config());
     var maxLength;
     if (axis.titleMaxLength) {
         maxLength = axis.titleMaxLength;
@@ -52420,6 +52440,7 @@ var properties;
     function labels(model, channel, labelsSpec, def) {
         var fieldDef = model.fieldDef(channel);
         var axis = model.axis(channel);
+        var config = model.config();
         if (!axis.labels) {
             return util_1.extend({
                 text: ''
@@ -52428,9 +52449,16 @@ var properties;
         if (util_1.contains([type_1.NOMINAL, type_1.ORDINAL], fieldDef.type) && axis.labelMaxLength) {
             labelsSpec = util_1.extend({
                 text: {
-                    template: '{{ datum.data | truncate:' + axis.labelMaxLength + '}}'
+                    template: '{{ datum.data | truncate:' + axis.labelMaxLength + ' }}'
                 }
             }, labelsSpec || {});
+        }
+        else if (fieldDef.type === type_1.TEMPORAL) {
+            labelsSpec = util_1.extend({
+                text: {
+                    template: common_1.timeTemplate('datum.data', fieldDef.timeUnit, axis.format, axis.shortTimeLabels, config)
+                }
+            }, labelsSpec);
         }
         if (axis.labelAngle !== undefined) {
             labelsSpec.angle = { value: axis.labelAngle };
@@ -52494,7 +52522,7 @@ var properties;
     properties.title = title;
 })(properties = exports.properties || (exports.properties = {}));
 
-},{"../axis":224,"../channel":226,"../fielddef":264,"../type":272,"../util":273,"./common":228}],228:[function(require,module,exports){
+},{"../axis":224,"../channel":226,"../fielddef":264,"../type":274,"../util":275,"./common":228}],228:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../channel');
 var fielddef_1 = require('../fielddef');
@@ -52586,68 +52614,30 @@ function applyMarkConfig(marksProperties, model, propsList) {
     return applyConfig(marksProperties, model.config().mark, propsList);
 }
 exports.applyMarkConfig = applyMarkConfig;
-function formatMixins(model, channel, format) {
-    var fieldDef = model.fieldDef(channel);
-    if (!util_1.contains([type_1.QUANTITATIVE, type_1.TEMPORAL], fieldDef.type)) {
-        return {};
+function numberFormat(fieldDef, format, config) {
+    if (fieldDef.type === type_1.QUANTITATIVE && !fieldDef.bin) {
+        return format || config.numberFormat;
     }
-    var def = {};
-    if (fieldDef.type === type_1.TEMPORAL) {
-        def.formatType = 'time';
-    }
-    if (format !== undefined) {
-        def.format = format;
-    }
-    else {
-        switch (fieldDef.type) {
-            case type_1.QUANTITATIVE:
-                def.format = model.config().numberFormat;
-                break;
-            case type_1.TEMPORAL:
-                def.format = timeFormat(model, channel) || model.config().timeFormat;
-                break;
-        }
-    }
-    if (channel === channel_1.TEXT) {
-        var filter = (def.formatType || 'number') + (def.format ? ':\'' + def.format + '\'' : '');
-        return {
-            text: {
-                template: '{{' + model.field(channel, { datum: true }) + ' | ' + filter + '}}'
-            }
-        };
-    }
-    return def;
+    return undefined;
 }
-exports.formatMixins = formatMixins;
-function isAbbreviated(model, channel, fieldDef) {
-    switch (channel) {
-        case channel_1.ROW:
-        case channel_1.COLUMN:
-        case channel_1.X:
-        case channel_1.Y:
-            return model.axis(channel).shortTimeLabels;
-        case channel_1.COLOR:
-        case channel_1.OPACITY:
-        case channel_1.SHAPE:
-        case channel_1.SIZE:
-            return model.legend(channel).shortTimeLabels;
-        case channel_1.TEXT:
-            return model.config().mark.shortTimeLabels;
-        case channel_1.LABEL:
-    }
-    return false;
-}
+exports.numberFormat = numberFormat;
 function sortField(orderChannelDef) {
-    return (orderChannelDef.sort === sort_1.SortOrder.DESCENDING ? '-' : '') + fielddef_1.field(orderChannelDef);
+    return (orderChannelDef.sort === sort_1.SortOrder.DESCENDING ? '-' : '') +
+        fielddef_1.field(orderChannelDef, { binSuffix: '_mid' });
 }
 exports.sortField = sortField;
-function timeFormat(model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    return timeunit_1.format(fieldDef.timeUnit, isAbbreviated(model, channel, fieldDef));
+function timeTemplate(templateField, timeUnit, format, shortTimeLabels, config) {
+    if (!timeUnit || format) {
+        var _format = format || config.timeFormat;
+        return '{{' + templateField + ' | time:\'' + _format + '\'}}';
+    }
+    else {
+        return timeunit_1.template(timeUnit, templateField, shortTimeLabels);
+    }
 }
-exports.timeFormat = timeFormat;
+exports.timeTemplate = timeTemplate;
 
-},{"../channel":226,"../fielddef":264,"../sort":269,"../spec":270,"../timeunit":271,"../type":272,"../util":273,"./facet":244,"./layer":245,"./unit":260}],229:[function(require,module,exports){
+},{"../channel":226,"../fielddef":264,"../sort":269,"../spec":270,"../timeunit":272,"../type":274,"../util":275,"./facet":244,"./layer":245,"./unit":259}],229:[function(require,module,exports){
 "use strict";
 var data_1 = require('../data');
 var spec_1 = require('../spec');
@@ -52691,7 +52681,7 @@ function assembleRootGroup(model) {
 }
 exports.assembleRootGroup = assembleRootGroup;
 
-},{"../data":262,"../spec":270,"../util":273,"./common":228}],230:[function(require,module,exports){
+},{"../data":261,"../spec":270,"../util":275,"./common":228}],230:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../channel');
 var encoding_1 = require('../encoding');
@@ -52708,15 +52698,20 @@ function initMarkConfig(mark, encoding, config) {
                 }
                 break;
             case 'opacity':
-                if (value === undefined && util_1.contains([mark_1.POINT, mark_1.TICK, mark_1.CIRCLE, mark_1.SQUARE], mark)) {
-                    if (!encoding_1.isAggregate(encoding) || encoding_1.has(encoding, channel_1.DETAIL)) {
+                if (value === undefined) {
+                    if (util_1.contains([mark_1.POINT, mark_1.TICK, mark_1.CIRCLE, mark_1.SQUARE], mark)) {
+                        if (!encoding_1.isAggregate(encoding) || encoding_1.has(encoding, channel_1.DETAIL)) {
+                            cfg[property] = 0.7;
+                        }
+                    }
+                    if (mark === mark_1.AREA) {
                         cfg[property] = 0.7;
                     }
                 }
                 break;
             case 'orient':
-                var xIsMeasure = fielddef_1.isMeasure(encoding.x);
-                var yIsMeasure = fielddef_1.isMeasure(encoding.y);
+                var xIsMeasure = fielddef_1.isMeasure(encoding.x) || fielddef_1.isMeasure(encoding.x2);
+                var yIsMeasure = fielddef_1.isMeasure(encoding.y) || fielddef_1.isMeasure(encoding.y2);
                 if (xIsMeasure && !yIsMeasure) {
                     if (mark === mark_1.TICK) {
                         cfg[property] = 'vertical';
@@ -52744,7 +52739,7 @@ function initMarkConfig(mark, encoding, config) {
 }
 exports.initMarkConfig = initMarkConfig;
 
-},{"../channel":226,"../encoding":263,"../fielddef":264,"../mark":266,"../util":273}],231:[function(require,module,exports){
+},{"../channel":226,"../encoding":262,"../fielddef":264,"../mark":266,"../util":275}],231:[function(require,module,exports){
 "use strict";
 var bin_1 = require('../../bin');
 var channel_1 = require('../../channel');
@@ -52814,7 +52809,7 @@ var bin;
     bin_2.assemble = assemble;
 })(bin = exports.bin || (exports.bin = {}));
 
-},{"../../bin":225,"../../channel":226,"../../fielddef":264,"../../util":273}],232:[function(require,module,exports){
+},{"../../bin":225,"../../channel":226,"../../fielddef":264,"../../util":275}],232:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../../channel');
 var type_1 = require('../../type');
@@ -52866,7 +52861,7 @@ var colorRank;
     colorRank.assemble = assemble;
 })(colorRank = exports.colorRank || (exports.colorRank = {}));
 
-},{"../../channel":226,"../../type":272,"../../util":273}],233:[function(require,module,exports){
+},{"../../channel":226,"../../type":274,"../../util":275}],233:[function(require,module,exports){
 "use strict";
 var util_1 = require('../../util');
 var source_1 = require('./source');
@@ -52971,7 +52966,7 @@ function assembleData(model, data) {
 }
 exports.assembleData = assembleData;
 
-},{"../../util":273,"./bin":231,"./colorrank":232,"./filter":234,"./formatparse":235,"./formula":236,"./nonpositivenullfilter":237,"./nullfilter":238,"./source":239,"./stackscale":240,"./summary":241,"./timeunit":242,"./timeunitdomain":243}],234:[function(require,module,exports){
+},{"../../util":275,"./bin":231,"./colorrank":232,"./filter":234,"./formatparse":235,"./formula":236,"./nonpositivenullfilter":237,"./nullfilter":238,"./source":239,"./stackscale":240,"./summary":241,"./timeunit":242,"./timeunitdomain":243}],234:[function(require,module,exports){
 "use strict";
 var filter;
 (function (filter_1) {
@@ -53063,7 +53058,7 @@ var formatParse;
     formatParse.parseLayer = parseLayer;
 })(formatParse = exports.formatParse || (exports.formatParse = {}));
 
-},{"../../fielddef":264,"../../type":272,"../../util":273}],236:[function(require,module,exports){
+},{"../../fielddef":264,"../../type":274,"../../util":275}],236:[function(require,module,exports){
 "use strict";
 var util_1 = require('../../util');
 var formula;
@@ -53106,7 +53101,7 @@ var formula;
     formula_1.assemble = assemble;
 })(formula = exports.formula || (exports.formula = {}));
 
-},{"../../util":273}],237:[function(require,module,exports){
+},{"../../util":275}],237:[function(require,module,exports){
 "use strict";
 var scale_1 = require('../../scale');
 var util_1 = require('../../util');
@@ -53158,7 +53153,7 @@ var nonPositiveFilter;
     nonPositiveFilter_1.assemble = assemble;
 })(nonPositiveFilter = exports.nonPositiveFilter || (exports.nonPositiveFilter = {}));
 
-},{"../../scale":267,"../../util":273}],238:[function(require,module,exports){
+},{"../../scale":267,"../../util":275}],238:[function(require,module,exports){
 "use strict";
 var util_1 = require('../../util');
 var DEFAULT_NULL_FILTERS = {
@@ -53213,14 +53208,15 @@ var nullFilter;
             [{
                     type: 'filter',
                     test: filteredFields.map(function (fieldName) {
-                        return 'datum.' + fieldName + '!==null';
+                        return '(datum.' + fieldName + '!==null' +
+                            ' && !isNaN(datum.' + fieldName + '))';
                     }).join(' && ')
                 }] : [];
     }
     nullFilter.assemble = assemble;
 })(nullFilter = exports.nullFilter || (exports.nullFilter = {}));
 
-},{"../../util":273}],239:[function(require,module,exports){
+},{"../../util":275}],239:[function(require,module,exports){
 "use strict";
 var data_1 = require('../../data');
 var util_1 = require('../../util');
@@ -53236,16 +53232,23 @@ var source;
         if (data) {
             var sourceData = { name: model.dataName(data_1.SOURCE) };
             if (data.values && data.values.length > 0) {
-                sourceData.values = model.data().values;
+                sourceData.values = data.values;
                 sourceData.format = { type: 'json' };
             }
             else if (data.url) {
                 sourceData.url = data.url;
                 var defaultExtension = /(?:\.([^.]+))?$/.exec(sourceData.url)[1];
-                if (!util_1.contains(['json', 'csv', 'tsv'], defaultExtension)) {
+                if (!util_1.contains(['json', 'csv', 'tsv', 'topojson'], defaultExtension)) {
                     defaultExtension = 'json';
                 }
-                sourceData.format = { type: model.data().formatType || defaultExtension };
+                var dataFormat = data.format || {};
+                var formatType = dataFormat.type || data['formatType'];
+                sourceData.format =
+                    util_1.extend({ type: formatType ? formatType : defaultExtension }, dataFormat.property ? { property: dataFormat.property } : {}, dataFormat.feature ?
+                        { feature: dataFormat.feature } :
+                        dataFormat.mesh ?
+                            { mesh: dataFormat.mesh } :
+                            {});
             }
             return sourceData;
         }
@@ -53299,7 +53302,7 @@ var source;
     source.assemble = assemble;
 })(source = exports.source || (exports.source = {}));
 
-},{"../../data":262,"../../util":273,"./bin":231,"./filter":234,"./formula":236,"./nullfilter":238,"./timeunit":242}],240:[function(require,module,exports){
+},{"../../data":261,"../../util":275,"./bin":231,"./filter":234,"./formula":236,"./nullfilter":238,"./timeunit":242}],240:[function(require,module,exports){
 "use strict";
 var data_1 = require('../../data');
 var fielddef_1 = require('../../fielddef');
@@ -53353,7 +53356,7 @@ var stackScale;
     stackScale.assemble = assemble;
 })(stackScale = exports.stackScale || (exports.stackScale = {}));
 
-},{"../../data":262,"../../fielddef":264}],241:[function(require,module,exports){
+},{"../../data":261,"../../fielddef":264}],241:[function(require,module,exports){
 "use strict";
 var aggregate_1 = require('../../aggregate');
 var data_1 = require('../../data');
@@ -53482,7 +53485,7 @@ var summary;
     summary.assemble = assemble;
 })(summary = exports.summary || (exports.summary = {}));
 
-},{"../../aggregate":223,"../../data":262,"../../fielddef":264,"../../util":273}],242:[function(require,module,exports){
+},{"../../aggregate":223,"../../data":261,"../../fielddef":264,"../../util":275}],242:[function(require,module,exports){
 "use strict";
 var fielddef_1 = require('../../fielddef');
 var type_1 = require('../../type');
@@ -53533,7 +53536,7 @@ var timeUnit;
     timeUnit.assemble = assemble;
 })(timeUnit = exports.timeUnit || (exports.timeUnit = {}));
 
-},{"../../fielddef":264,"../../type":272,"../../util":273,"./../time":259}],243:[function(require,module,exports){
+},{"../../fielddef":264,"../../type":274,"../../util":275,"./../time":258}],243:[function(require,module,exports){
 "use strict";
 var util_1 = require('../../util');
 var time_1 = require('./../time');
@@ -53582,7 +53585,7 @@ var timeUnitDomain;
     timeUnitDomain.assemble = assemble;
 })(timeUnitDomain = exports.timeUnitDomain || (exports.timeUnitDomain = {}));
 
-},{"../../util":273,"./../time":259}],244:[function(require,module,exports){
+},{"../../util":275,"./../time":258}],244:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -53960,7 +53963,7 @@ function getColumnGridGroups(model) {
         }];
 }
 
-},{"../axis":224,"../channel":226,"../config":261,"../data":262,"../encoding":263,"../fielddef":264,"../scale":267,"../type":272,"../util":273,"./axis":227,"./common":228,"./data/data":233,"./layout":246,"./model":256,"./scale":257}],245:[function(require,module,exports){
+},{"../axis":224,"../channel":226,"../config":260,"../data":261,"../encoding":262,"../fielddef":264,"../scale":267,"../type":274,"../util":275,"./axis":227,"./common":228,"./data/data":233,"./layout":246,"./model":256,"./scale":257}],245:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -54143,16 +54146,16 @@ var LayerModel = (function (_super) {
         return true;
     };
     LayerModel.prototype.compatibleSource = function (child) {
-        var sourceUrl = this.data().url;
+        var data = this.data();
         var childData = child.component.data;
-        var compatible = !childData.source || (sourceUrl && sourceUrl === childData.source.url);
+        var compatible = !childData.source || (data && data.url === childData.source.url);
         return compatible;
     };
     return LayerModel;
 }(model_1.Model));
 exports.LayerModel = LayerModel;
 
-},{"../config":261,"../util":273,"../vega.schema":275,"./common":228,"./data/data":233,"./layout":246,"./model":256}],246:[function(require,module,exports){
+},{"../config":260,"../util":275,"../vega.schema":277,"./common":228,"./data/data":233,"./layout":246,"./model":256}],246:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../channel');
 var data_1 = require('../data');
@@ -54209,7 +54212,7 @@ function parseUnitSizeLayout(model, channel) {
     };
 }
 function unitSizeExpr(model, channel, nonOrdinalSize) {
-    if (model.has(channel)) {
+    if (model.scale(channel)) {
         if (model.isOrdinalScale(channel)) {
             var scale = model.scale(channel);
             return '(' + cardinalityFormula(model, channel) +
@@ -54309,7 +54312,7 @@ function cardinalityFormula(model, channel) {
         model.field(channel, { datum: true, prefn: 'distinct_' });
 }
 
-},{"../channel":226,"../data":262,"../mark":266,"../scale":267,"../util":273,"./time":259}],247:[function(require,module,exports){
+},{"../channel":226,"../data":261,"../mark":266,"../scale":267,"../util":275,"./time":258}],247:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../channel');
 var fielddef_1 = require('../fielddef');
@@ -54345,11 +54348,14 @@ function getLegendDefWithScale(model, channel) {
 function parseLegend(model, channel) {
     var fieldDef = model.fieldDef(channel);
     var legend = model.legend(channel);
+    var config = model.config();
     var def = getLegendDefWithScale(model, channel);
-    def.title = title(legend, fieldDef);
-    def.offset = offset(legend, fieldDef);
-    util_1.extend(def, formatMixins(legend, model, channel));
-    ['orient', 'values'].forEach(function (property) {
+    def.title = title(legend, fieldDef, config);
+    var format = common_1.numberFormat(fieldDef, legend.format, config);
+    if (format) {
+        def.format = format;
+    }
+    ['offset', 'orient', 'values'].forEach(function (property) {
         var value = legend[property];
         if (value !== undefined) {
             def[property] = value;
@@ -54368,36 +54374,13 @@ function parseLegend(model, channel) {
     return def;
 }
 exports.parseLegend = parseLegend;
-function offset(legend, fieldDef) {
-    if (legend.offset !== undefined) {
-        return legend.offset;
-    }
-    return 0;
-}
-exports.offset = offset;
-function orient(legend, fieldDef) {
-    var orient = legend.orient;
-    if (orient) {
-        return orient;
-    }
-    return 'vertical';
-}
-exports.orient = orient;
-function title(legend, fieldDef) {
+function title(legend, fieldDef, config) {
     if (typeof legend !== 'boolean' && legend.title) {
         return legend.title;
     }
-    return fielddef_1.title(fieldDef);
+    return fielddef_1.title(fieldDef, config);
 }
 exports.title = title;
-function formatMixins(legend, model, channel) {
-    var fieldDef = model.fieldDef(channel);
-    if (fieldDef.bin) {
-        return {};
-    }
-    return common_1.formatMixins(model, channel, typeof legend !== 'boolean' ? legend.format : undefined);
-}
-exports.formatMixins = formatMixins;
 function useColorLegendScale(fieldDef) {
     return fieldDef.type === type_1.ORDINAL || fieldDef.bin || fieldDef.timeUnit;
 }
@@ -54471,6 +54454,7 @@ var properties;
     properties.symbols = symbols;
     function labels(fieldDef, labelsSpec, model, channel) {
         var legend = model.legend(channel);
+        var config = model.config();
         var labels = {};
         if (channel === channel_1.COLOR) {
             if (fieldDef.type === type_1.ORDINAL) {
@@ -54489,10 +54473,10 @@ var properties;
                     }
                 }, labelsSpec || {});
             }
-            else if (fieldDef.timeUnit) {
+            else if (fieldDef.type === type_1.TEMPORAL) {
                 labelsSpec = util_1.extend({
                     text: {
-                        template: '{{ datum.data | time:\'' + common_1.timeFormat(model, channel) + '\'}}'
+                        template: common_1.timeTemplate('datum.data', fieldDef.timeUnit, legend.format, legend.shortTimeLabels, config)
                     }
                 }, labelsSpec || {});
             }
@@ -54537,7 +54521,7 @@ var properties;
     properties.title = title;
 })(properties = exports.properties || (exports.properties = {}));
 
-},{"../channel":226,"../fielddef":264,"../mark":266,"../type":272,"../util":273,"./common":228,"./scale":257}],248:[function(require,module,exports){
+},{"../channel":226,"../fielddef":264,"../mark":266,"../type":274,"../util":275,"./common":228,"./scale":257}],248:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../../channel');
 var fielddef_1 = require('../../fielddef');
@@ -54550,79 +54534,162 @@ var area;
     area.markType = markType;
     function properties(model) {
         var p = {};
-        var orient = model.config().mark.orient;
-        if (orient !== undefined) {
+        var config = model.config();
+        var orient = config.mark.orient;
+        if (orient) {
             p.orient = { value: orient };
         }
         var stack = model.stack();
-        var xFieldDef = model.encoding().x;
-        if (stack && channel_1.X === stack.fieldChannel) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { suffix: '_start' })
-            };
+        var _x = x(model.encoding().x, model.scaleName(channel_1.X), orient, stack);
+        if (_x) {
+            p.x = _x;
         }
-        else if (fielddef_1.isMeasure(xFieldDef)) {
-            p.x = { scale: model.scaleName(channel_1.X), field: model.field(channel_1.X) };
+        var _y = y(model.encoding().y, model.scaleName(channel_1.Y), orient, stack);
+        if (_y) {
+            p.y = _y;
         }
-        else if (fielddef_1.isDimension(xFieldDef)) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
+        var _x2 = x2(model.encoding().x, model.encoding().x2, model.scaleName(channel_1.X), orient, stack);
+        if (_x2) {
+            p.x2 = _x2;
         }
-        if (orient === 'horizontal') {
-            if (stack && channel_1.X === stack.fieldChannel) {
-                p.x2 = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X, { suffix: '_end' })
-                };
-            }
-            else {
-                p.x2 = {
-                    scale: model.scaleName(channel_1.X),
-                    value: 0
-                };
-            }
-        }
-        var yFieldDef = model.encoding().y;
-        if (stack && channel_1.Y === stack.fieldChannel) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { suffix: '_start' })
-            };
-        }
-        else if (fielddef_1.isMeasure(yFieldDef)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y)
-            };
-        }
-        else if (fielddef_1.isDimension(yFieldDef)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        if (orient !== 'horizontal') {
-            if (stack && channel_1.Y === stack.fieldChannel) {
-                p.y2 = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y, { suffix: '_end' })
-                };
-            }
-            else {
-                p.y2 = {
-                    scale: model.scaleName(channel_1.Y),
-                    value: 0
-                };
-            }
+        var _y2 = y2(model.encoding().y, model.encoding().y2, model.scaleName(channel_1.Y), orient, stack);
+        if (_y2) {
+            p.y2 = _y2;
         }
         common_1.applyColorAndOpacity(p, model);
         common_1.applyMarkConfig(p, model, ['interpolate', 'tension']);
         return p;
     }
     area.properties = properties;
+    function x(fieldDef, scaleName, orient, stack) {
+        if (stack && channel_1.X === stack.fieldChannel) {
+            return {
+                scale: scaleName,
+                field: fielddef_1.field(fieldDef, { suffix: '_start' })
+            };
+        }
+        else if (fielddef_1.isMeasure(fieldDef)) {
+            if (orient === 'horizontal') {
+                if (fieldDef && fieldDef.field) {
+                    return {
+                        scale: scaleName,
+                        field: fielddef_1.field(fieldDef)
+                    };
+                }
+                else {
+                    return {
+                        scale: scaleName,
+                        value: 0
+                    };
+                }
+            }
+            else {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef)
+                };
+            }
+        }
+        else if (fielddef_1.isDimension(fieldDef)) {
+            return {
+                scale: scaleName,
+                field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+            };
+        }
+        return undefined;
+    }
+    area.x = x;
+    function x2(xFieldDef, x2FieldDef, scaleName, orient, stack) {
+        if (stack && channel_1.X === stack.fieldChannel) {
+            if (orient === 'horizontal') {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(xFieldDef, { suffix: '_end' })
+                };
+            }
+        }
+        else if (fielddef_1.isMeasure(x2FieldDef)) {
+            if (orient === 'horizontal') {
+                if (x2FieldDef && x2FieldDef.field) {
+                    return {
+                        scale: scaleName,
+                        field: fielddef_1.field(x2FieldDef)
+                    };
+                }
+                else {
+                    return {
+                        scale: scaleName,
+                        value: 0
+                    };
+                }
+            }
+        }
+        return undefined;
+    }
+    area.x2 = x2;
+    function y(fieldDef, scaleName, orient, stack) {
+        if (stack && channel_1.Y === stack.fieldChannel) {
+            return {
+                scale: scaleName,
+                field: fielddef_1.field(fieldDef, { suffix: '_start' })
+            };
+        }
+        else if (fielddef_1.isMeasure(fieldDef)) {
+            if (orient !== 'horizontal') {
+                if (fieldDef && fieldDef.field) {
+                    return {
+                        scale: scaleName,
+                        field: fielddef_1.field(fieldDef)
+                    };
+                }
+                else {
+                    return { field: { group: 'height' } };
+                }
+            }
+            else {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef)
+                };
+            }
+        }
+        else if (fielddef_1.isDimension(fieldDef)) {
+            return {
+                scale: scaleName,
+                field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+            };
+        }
+        return undefined;
+    }
+    area.y = y;
+    function y2(yFieldDef, y2FieldDef, scaleName, orient, stack) {
+        if (stack && channel_1.Y === stack.fieldChannel) {
+            if (orient !== 'horizontal') {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(yFieldDef, { suffix: '_end' })
+                };
+            }
+        }
+        else if (fielddef_1.isMeasure(yFieldDef)) {
+            if (orient !== 'horizontal') {
+                if (y2FieldDef && y2FieldDef.field) {
+                    return {
+                        scale: scaleName,
+                        field: fielddef_1.field(y2FieldDef)
+                    };
+                }
+                else {
+                    return {
+                        scale: scaleName,
+                        value: 0
+                    };
+                }
+            }
+        }
+        return undefined;
+    }
+    area.y2 = y2;
     function labels(model) {
         return undefined;
     }
@@ -54645,6 +54712,8 @@ var bar;
         var orient = model.config().mark.orient;
         var stack = model.stack();
         var xFieldDef = model.encoding().x;
+        var x2FieldDef = model.encoding().x2;
+        var xIsMeasure = fielddef_1.isMeasure(xFieldDef) || fielddef_1.isMeasure(x2FieldDef);
         if (stack && channel_1.X === stack.fieldChannel) {
             p.x = {
                 scale: model.scaleName(channel_1.X),
@@ -54655,16 +54724,32 @@ var bar;
                 field: model.field(channel_1.X, { suffix: '_end' })
             };
         }
-        else if (fielddef_1.isMeasure(xFieldDef)) {
+        else if (xIsMeasure) {
             if (orient === 'horizontal') {
-                p.x = {
-                    scale: model.scaleName(channel_1.X),
-                    field: model.field(channel_1.X)
-                };
-                p.x2 = {
-                    scale: model.scaleName(channel_1.X),
-                    value: 0
-                };
+                if (model.has(channel_1.X)) {
+                    p.x = {
+                        scale: model.scaleName(channel_1.X),
+                        field: model.field(channel_1.X)
+                    };
+                }
+                else {
+                    p.x = {
+                        scale: model.scaleName(channel_1.X),
+                        value: 0
+                    };
+                }
+                if (model.has(channel_1.X2)) {
+                    p.x2 = {
+                        scale: model.scaleName(channel_1.X),
+                        field: model.field(channel_1.X2)
+                    };
+                }
+                else {
+                    p.x2 = {
+                        scale: model.scaleName(channel_1.X),
+                        value: 0
+                    };
+                }
             }
             else {
                 p.xc = {
@@ -54715,6 +54800,8 @@ var bar;
             };
         }
         var yFieldDef = model.encoding().y;
+        var y2FieldDef = model.encoding().y2;
+        var yIsMeasure = fielddef_1.isMeasure(yFieldDef) || fielddef_1.isMeasure(y2FieldDef);
         if (stack && channel_1.Y === stack.fieldChannel) {
             p.y = {
                 scale: model.scaleName(channel_1.Y),
@@ -54725,16 +54812,32 @@ var bar;
                 field: model.field(channel_1.Y, { suffix: '_end' })
             };
         }
-        else if (fielddef_1.isMeasure(yFieldDef)) {
+        else if (yIsMeasure) {
             if (orient !== 'horizontal') {
-                p.y = {
-                    scale: model.scaleName(channel_1.Y),
-                    field: model.field(channel_1.Y)
-                };
-                p.y2 = {
-                    scale: model.scaleName(channel_1.Y),
-                    value: 0
-                };
+                if (model.has(channel_1.Y)) {
+                    p.y = {
+                        scale: model.scaleName(channel_1.Y),
+                        field: model.field(channel_1.Y)
+                    };
+                }
+                else {
+                    p.y = {
+                        scale: model.scaleName(channel_1.Y),
+                        value: 0
+                    };
+                }
+                if (model.has(channel_1.Y2)) {
+                    p.y2 = {
+                        scale: model.scaleName(channel_1.Y),
+                        field: model.field(channel_1.Y2)
+                    };
+                }
+                else {
+                    p.y2 = {
+                        scale: model.scaleName(channel_1.Y),
+                        value: 0
+                    };
+                }
             }
             else {
                 p.yc = {
@@ -54815,6 +54918,7 @@ var bar;
 },{"../../channel":226,"../../fielddef":264,"../common":228}],250:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../../channel');
+var fielddef_1 = require('../../fielddef');
 var common_1 = require('../common');
 var line;
 (function (line) {
@@ -54824,39 +54928,45 @@ var line;
     line.markType = markType;
     function properties(model) {
         var p = {};
-        if (model.has(channel_1.X)) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.x = { value: 0 };
-        }
-        if (model.has(channel_1.Y)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.y = { field: { group: 'height' } };
+        var config = model.config();
+        p.x = x(model.encoding().x, model.scaleName(channel_1.X), config);
+        p.y = y(model.encoding().y, model.scaleName(channel_1.Y), config);
+        var _size = size(model.encoding().size, config);
+        if (_size) {
+            p.strokeWidth = _size;
         }
         common_1.applyColorAndOpacity(p, model);
         common_1.applyMarkConfig(p, model, ['interpolate', 'tension']);
-        var size = sizeValue(model);
-        if (size) {
-            p.strokeWidth = { value: size };
-        }
         return p;
     }
     line.properties = properties;
-    function sizeValue(model) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
+    function x(fieldDef, scaleName, config) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+                };
+            }
         }
-        return model.config().mark.lineSize;
+        return { value: 0 };
+    }
+    function y(fieldDef, scaleName, config) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+                };
+            }
+        }
+        return { field: { group: 'height' } };
+    }
+    function size(fieldDef, config) {
+        if (fieldDef && fieldDef.value !== undefined) {
+            return { value: fieldDef.value };
+        }
+        return { value: config.mark.lineSize };
     }
     function labels(model) {
         return undefined;
@@ -54864,20 +54974,22 @@ var line;
     line.labels = labels;
 })(line = exports.line || (exports.line = {}));
 
-},{"../../channel":226,"../common":228}],251:[function(require,module,exports){
+},{"../../channel":226,"../../fielddef":264,"../common":228}],251:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../../channel');
+var encoding_1 = require('../../encoding');
+var fielddef_1 = require('../../fielddef');
 var mark_1 = require('../../mark');
-var stack_1 = require('../stack');
+var scale_1 = require('../../scale');
 var util_1 = require('../../util');
 var area_1 = require('./area');
 var bar_1 = require('./bar');
+var common_1 = require('../common');
 var line_1 = require('./line');
 var point_1 = require('./point');
+var rule_1 = require('./rule');
 var text_1 = require('./text');
 var tick_1 = require('./tick');
-var rule_1 = require('./rule');
-var common_1 = require('../common');
 var markCompiler = {
     area: area_1.area,
     bar: bar_1.bar,
@@ -54914,7 +55026,7 @@ function parsePathMark(model) {
     if (details.length > 0) {
         var facetTransform = { type: 'facet', groupby: details };
         var transform = mark === mark_1.AREA && model.stack() ?
-            [stack_1.imputeTransform(model), stack_1.stackTransform(model), facetTransform] :
+            stackTransforms(model, true).concat(facetTransform) :
             [].concat(facetTransform, model.has(channel_1.ORDER) ? [{ type: 'sort', by: sortBy(model) }] : []);
         return [{
                 name: model.name('pathgroup'),
@@ -54951,7 +55063,7 @@ function parseNonPathMark(model) {
         type: markCompiler[mark].markType()
     }, (!isFaceted || model.stack() || model.has(channel_1.ORDER)) ? {
         from: util_1.extend(isFaceted ? {} : dataFrom, model.stack() ?
-            { transform: [stack_1.stackTransform(model)] } :
+            { transform: stackTransforms(model, false) } :
             model.has(channel_1.ORDER) ?
                 { transform: [{ type: 'sort', by: sortBy(model) }] } :
                 {})
@@ -54990,7 +55102,7 @@ function sortPathBy(model) {
         }
     }
     else {
-        return '-' + model.field(model.config().mark.orient === 'horizontal' ? channel_1.Y : channel_1.X);
+        return '-' + model.field(model.config().mark.orient === 'horizontal' ? channel_1.Y : channel_1.X, { binSuffix: '_mid' });
     }
 }
 function detailFields(model) {
@@ -55001,8 +55113,71 @@ function detailFields(model) {
         return details;
     }, []);
 }
+function stackTransforms(model, impute) {
+    var stackByFields = getStackByFields(model);
+    if (impute) {
+        return [imputeTransform(model, stackByFields), stackTransform(model, stackByFields)];
+    }
+    return [stackTransform(model, stackByFields)];
+}
+function getStackByFields(model) {
+    var encoding = model.encoding();
+    return channel_1.STACK_GROUP_CHANNELS.reduce(function (fields, channel) {
+        var channelEncoding = encoding[channel];
+        if (encoding_1.has(encoding, channel)) {
+            if (util_1.isArray(channelEncoding)) {
+                channelEncoding.forEach(function (fieldDef) {
+                    fields.push(fielddef_1.field(fieldDef));
+                });
+            }
+            else {
+                var fieldDef = channelEncoding;
+                var scale = model.scale(channel);
+                fields.push(fielddef_1.field(fieldDef, {
+                    binSuffix: scale && scale.type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
+                }));
+            }
+        }
+        return fields;
+    }, []);
+}
+function imputeTransform(model, stackFields) {
+    var stack = model.stack();
+    return {
+        type: 'impute',
+        field: model.field(stack.fieldChannel),
+        groupby: stackFields,
+        orderby: [model.field(stack.groupbyChannel, { binSuffix: '_mid' })],
+        method: 'value',
+        value: 0
+    };
+}
+function stackTransform(model, stackFields) {
+    var stack = model.stack();
+    var encoding = model.encoding();
+    var sortby = model.has(channel_1.ORDER) ?
+        (util_1.isArray(encoding[channel_1.ORDER]) ? encoding[channel_1.ORDER] : [encoding[channel_1.ORDER]]).map(common_1.sortField) :
+        stackFields.map(function (field) {
+            return '-' + field;
+        });
+    var valName = model.field(stack.fieldChannel);
+    var transform = {
+        type: 'stack',
+        groupby: [model.field(stack.groupbyChannel, { binSuffix: '_mid' })],
+        field: model.field(stack.fieldChannel),
+        sortby: sortby,
+        output: {
+            start: valName + '_start',
+            end: valName + '_end'
+        }
+    };
+    if (stack.offset) {
+        transform.offset = stack.offset;
+    }
+    return transform;
+}
 
-},{"../../channel":226,"../../mark":266,"../../util":273,"../common":228,"../stack":258,"./area":248,"./bar":249,"./line":250,"./point":252,"./rule":253,"./text":254,"./tick":255}],252:[function(require,module,exports){
+},{"../../channel":226,"../../encoding":262,"../../fielddef":264,"../../mark":266,"../../scale":267,"../../util":275,"../common":228,"./area":248,"./bar":249,"./line":250,"./point":252,"./rule":253,"./text":254,"./tick":255}],252:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../../channel');
 var fielddef_1 = require('../../fielddef');
@@ -55121,19 +55296,63 @@ var rule;
     rule.markType = markType;
     function properties(model) {
         var p = {};
-        if (model.has(channel_1.X)) {
-            p.x = position(model, channel_1.X);
-            p.y = { value: 0 };
-            p.y2 = {
-                field: { group: 'height' }
-            };
+        if (model.config().mark.orient === 'vertical') {
+            if (model.has(channel_1.X)) {
+                p.x = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X, { binSuffix: '_mid' })
+                };
+            }
+            else {
+                p.x = { value: 0 };
+            }
+            if (model.has(channel_1.Y)) {
+                p.y = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y, { binSuffix: '_mid' })
+                };
+            }
+            else {
+                p.y = { field: { group: 'height' } };
+            }
+            if (model.has(channel_1.Y2)) {
+                p.y2 = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y2, { binSuffix: '_mid' })
+                };
+            }
+            else {
+                p.y2 = { value: 0 };
+            }
         }
-        if (model.has(channel_1.Y)) {
-            p.y = position(model, channel_1.Y);
-            p.x = { value: 0 };
-            p.x2 = {
-                field: { group: 'width' }
-            };
+        else {
+            if (model.has(channel_1.Y)) {
+                p.y = {
+                    scale: model.scaleName(channel_1.Y),
+                    field: model.field(channel_1.Y, { binSuffix: '_mid' })
+                };
+            }
+            else {
+                p.y = { value: 0 };
+            }
+            if (model.has(channel_1.X)) {
+                p.x = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X, { binSuffix: '_mid' })
+                };
+            }
+            else {
+                p.x = { value: 0 };
+            }
+            if (model.has(channel_1.X2)) {
+                p.x2 = {
+                    scale: model.scaleName(channel_1.X),
+                    field: model.field(channel_1.X2, { binSuffix: '_mid' })
+                };
+            }
+            else {
+                p.x2 = { field: { group: 'width' } };
+            }
         }
         common_1.applyColorAndOpacity(p, model);
         if (model.has(channel_1.SIZE)) {
@@ -55148,12 +55367,6 @@ var rule;
         return p;
     }
     rule.properties = properties;
-    function position(model, channel) {
-        return {
-            scale: model.scaleName(channel),
-            field: model.field(channel, { binSuffix: '_mid' })
-        };
-    }
     function sizeValue(model) {
         var fieldDef = model.fieldDef(channel_1.SIZE);
         if (fieldDef && fieldDef.value !== undefined) {
@@ -55171,14 +55384,14 @@ var rule;
 "use strict";
 var channel_1 = require('../../channel');
 var common_1 = require('../common');
-var util_1 = require('../../util');
+var fielddef_1 = require('../../fielddef');
 var type_1 = require('../../type');
 var text;
-(function (text) {
+(function (text_1) {
     function markType() {
         return 'text';
     }
-    text.markType = markType;
+    text_1.markType = markType;
     function background(model) {
         return {
             x: { value: 0 },
@@ -55191,44 +55404,17 @@ var text;
             }
         };
     }
-    text.background = background;
+    text_1.background = background;
     function properties(model) {
         var p = {};
         common_1.applyMarkConfig(p, model, ['angle', 'align', 'baseline', 'dx', 'dy', 'font', 'fontWeight',
             'fontStyle', 'radius', 'theta', 'text']);
-        var fieldDef = model.fieldDef(channel_1.TEXT);
-        if (model.has(channel_1.X)) {
-            p.x = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            if (model.has(channel_1.TEXT) && model.fieldDef(channel_1.TEXT).type === type_1.QUANTITATIVE) {
-                p.x = { field: { group: 'width' }, offset: -5 };
-            }
-            else {
-                p.x = { value: model.config().scale.textBandWidth / 2 };
-            }
-        }
-        if (model.has(channel_1.Y)) {
-            p.y = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.y = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.has(channel_1.SIZE)) {
-            p.fontSize = {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            };
-        }
-        else {
-            p.fontSize = { value: sizeValue(model) };
-        }
+        var config = model.config();
+        var textFieldDef = model.fieldDef(channel_1.TEXT);
+        p.x = x(model.encoding().x, model.scaleName(channel_1.X), config, textFieldDef);
+        p.y = y(model.encoding().y, model.scaleName(channel_1.Y), config);
+        p.fontSize = size(model.encoding().size, model.scaleName(channel_1.SIZE), config);
+        p.text = text(model.encoding().text, model.scaleName(channel_1.TEXT), config);
         if (model.config().mark.applyColorToBackground && !model.has(channel_1.X) && !model.has(channel_1.Y)) {
             p.fill = { value: 'black' };
             var opacity = model.config().mark.opacity;
@@ -55240,33 +55426,81 @@ var text;
         else {
             common_1.applyColorAndOpacity(p, model);
         }
-        if (model.has(channel_1.TEXT)) {
-            if (util_1.contains([type_1.QUANTITATIVE, type_1.TEMPORAL], model.fieldDef(channel_1.TEXT).type)) {
-                var format = model.config().mark.format;
-                util_1.extend(p, common_1.formatMixins(model, channel_1.TEXT, format));
-            }
-            else {
-                p.text = { field: model.field(channel_1.TEXT) };
-            }
-        }
-        else if (fieldDef.value) {
-            p.text = { value: fieldDef.value };
-        }
         return p;
     }
-    text.properties = properties;
-    function sizeValue(model) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
+    text_1.properties = properties;
+    function x(xFieldDef, scaleName, config, textFieldDef) {
+        if (xFieldDef) {
+            if (xFieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(xFieldDef, { binSuffix: '_mid' })
+                };
+            }
         }
-        return model.config().mark.fontSize;
+        if (textFieldDef && textFieldDef.type === type_1.QUANTITATIVE) {
+            return { field: { group: 'width' }, offset: -5 };
+        }
+        else {
+            return { value: config.scale.textBandWidth / 2 };
+        }
+    }
+    function y(yFieldDef, scaleName, config) {
+        if (yFieldDef) {
+            if (yFieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(yFieldDef, { binSuffix: '_mid' })
+                };
+            }
+        }
+        return { value: config.scale.bandSize / 2 };
+    }
+    function size(sizeFieldDef, scaleName, config) {
+        if (sizeFieldDef) {
+            if (sizeFieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(sizeFieldDef)
+                };
+            }
+            if (sizeFieldDef.value) {
+                return { value: sizeFieldDef.value };
+            }
+        }
+        return { value: config.mark.fontSize };
+    }
+    function text(textFieldDef, scaleName, config) {
+        if (textFieldDef) {
+            if (textFieldDef.field) {
+                if (type_1.QUANTITATIVE === textFieldDef.type) {
+                    var format = common_1.numberFormat(textFieldDef, config.mark.format, config);
+                    var filter = 'number' + (format ? ':\'' + format + '\'' : '');
+                    return {
+                        template: '{{' + fielddef_1.field(textFieldDef, { datum: true }) + ' | ' + filter + '}}'
+                    };
+                }
+                else if (type_1.TEMPORAL === textFieldDef.type) {
+                    return {
+                        template: common_1.timeTemplate(fielddef_1.field(textFieldDef, { datum: true }), textFieldDef.timeUnit, config.mark.format, config.mark.shortTimeLabels, config)
+                    };
+                }
+                else {
+                    return { field: textFieldDef.field };
+                }
+            }
+            else if (textFieldDef.value) {
+                return { value: textFieldDef.value };
+            }
+        }
+        return { value: config.mark.text };
     }
 })(text = exports.text || (exports.text = {}));
 
-},{"../../channel":226,"../../type":272,"../../util":273,"../common":228}],255:[function(require,module,exports){
+},{"../../channel":226,"../../fielddef":264,"../../type":274,"../common":228}],255:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../../channel');
+var fielddef_1 = require('../../fielddef');
 var common_1 = require('../common');
 var tick;
 (function (tick) {
@@ -55276,60 +55510,68 @@ var tick;
     tick.markType = markType;
     function properties(model) {
         var p = {};
-        if (model.has(channel_1.X)) {
-            p.xc = {
-                scale: model.scaleName(channel_1.X),
-                field: model.field(channel_1.X, { binSuffix: '_mid' })
-            };
+        var config = model.config();
+        p.xc = x(model.encoding().x, model.scaleName(channel_1.X), config);
+        p.yc = y(model.encoding().y, model.scaleName(channel_1.Y), config);
+        if (config.mark.orient === 'horizontal') {
+            p.width = size(model.encoding().size, model.scaleName(channel_1.SIZE), config, (model.scale(channel_1.X) || {}).bandSize);
+            p.height = { value: config.mark.tickThickness };
         }
         else {
-            p.xc = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.has(channel_1.Y)) {
-            p.yc = {
-                scale: model.scaleName(channel_1.Y),
-                field: model.field(channel_1.Y, { binSuffix: '_mid' })
-            };
-        }
-        else {
-            p.yc = { value: model.config().scale.bandSize / 2 };
-        }
-        if (model.config().mark.orient === 'horizontal') {
-            p.width = model.has(channel_1.SIZE) ? {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            } : {
-                value: sizeValue(model, channel_1.X)
-            };
-            p.height = { value: model.config().mark.tickThickness };
-        }
-        else {
-            p.width = { value: model.config().mark.tickThickness };
-            p.height = model.has(channel_1.SIZE) ? {
-                scale: model.scaleName(channel_1.SIZE),
-                field: model.field(channel_1.SIZE)
-            } : {
-                value: sizeValue(model, channel_1.Y)
-            };
+            p.width = { value: config.mark.tickThickness };
+            p.height = size(model.encoding().size, model.scaleName(channel_1.SIZE), config, (model.scale(channel_1.Y) || {}).bandSize);
         }
         common_1.applyColorAndOpacity(p, model);
         return p;
     }
     tick.properties = properties;
-    function sizeValue(model, channel) {
-        var fieldDef = model.fieldDef(channel_1.SIZE);
-        if (fieldDef && fieldDef.value !== undefined) {
-            return fieldDef.value;
+    function x(fieldDef, scaleName, config) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+                };
+            }
+            else if (fieldDef.value) {
+                return { value: fieldDef.value };
+            }
         }
-        var scaleConfig = model.config().scale;
-        var markConfig = model.config().mark;
-        if (markConfig.tickSize) {
-            return markConfig.tickSize;
+        return { value: config.scale.bandSize / 2 };
+    }
+    function y(fieldDef, scaleName, config) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fielddef_1.field(fieldDef, { binSuffix: '_mid' })
+                };
+            }
+            else if (fieldDef.value) {
+                return { value: fieldDef.value };
+            }
         }
-        var bandSize = model.has(channel) ?
-            model.scale(channel).bandSize :
-            scaleConfig.bandSize;
-        return bandSize / 1.5;
+        return { value: config.scale.bandSize / 2 };
+    }
+    function size(fieldDef, scaleName, config, scaleBandSize) {
+        if (fieldDef) {
+            if (fieldDef.field) {
+                return {
+                    scale: scaleName,
+                    field: fieldDef.field
+                };
+            }
+            else if (fieldDef.value !== undefined) {
+                return { value: fieldDef.value };
+            }
+        }
+        if (config.mark.tickSize) {
+            return { value: config.mark.tickSize };
+        }
+        var bandSize = scaleBandSize !== undefined ?
+            scaleBandSize :
+            config.scale.bandSize;
+        return { value: bandSize / 1.5 };
     }
     function labels(model) {
         return undefined;
@@ -55337,7 +55579,7 @@ var tick;
     tick.labels = labels;
 })(tick = exports.tick || (exports.tick = {}));
 
-},{"../../channel":226,"../common":228}],256:[function(require,module,exports){
+},{"../../channel":226,"../../fielddef":264,"../common":228}],256:[function(require,module,exports){
 "use strict";
 var channel_1 = require('../channel');
 var encoding_1 = require('../encoding');
@@ -55510,15 +55752,15 @@ var Model = (function () {
 }());
 exports.Model = Model;
 
-},{"../channel":226,"../encoding":263,"../fielddef":264,"../scale":267,"../util":273}],257:[function(require,module,exports){
+},{"../channel":226,"../encoding":262,"../fielddef":264,"../scale":267,"../util":275}],257:[function(require,module,exports){
 "use strict";
 var aggregate_1 = require('../aggregate');
 var channel_1 = require('../channel');
-var config_1 = require('../config');
 var data_1 = require('../data');
 var fielddef_1 = require('../fielddef');
 var mark_1 = require('../mark');
 var scale_1 = require('../scale');
+var stack_1 = require('../stack');
 var timeunit_1 = require('../timeunit');
 var type_1 = require('../type');
 var util_1 = require('../util');
@@ -55551,7 +55793,25 @@ function parseMainScale(model, fieldDef, channel) {
         name: model.scaleName(channel),
         type: scale.type,
     };
-    scaleDef.domain = domain(scale, model, channel);
+    if (channel === channel_1.X && model.has(channel_1.X2)) {
+        if (model.has(channel_1.X)) {
+            scaleDef.domain = { fields: [domain(scale, model, channel_1.X), domain(scale, model, channel_1.X2)] };
+        }
+        else {
+            scaleDef.domain = domain(scale, model, channel_1.X2);
+        }
+    }
+    else if (channel === channel_1.Y && model.has(channel_1.Y2)) {
+        if (model.has(channel_1.Y)) {
+            scaleDef.domain = { fields: [domain(scale, model, channel_1.Y), domain(scale, model, channel_1.Y2)] };
+        }
+        else {
+            scaleDef.domain = domain(scale, model, channel_1.Y2);
+        }
+    }
+    else {
+        scaleDef.domain = domain(scale, model, channel);
+    }
     util_1.extend(scaleDef, rangeMixins(scale, model, channel));
     if (sort && (typeof sort === 'string' ? sort : sort.order) === 'descending') {
         scaleDef.reverse = true;
@@ -55627,6 +55887,7 @@ function scaleType(scale, fieldDef, channel, mark) {
                     case timeunit_1.TimeUnit.HOURS:
                     case timeunit_1.TimeUnit.DAY:
                     case timeunit_1.TimeUnit.MONTH:
+                    case timeunit_1.TimeUnit.QUARTER:
                         return scale_1.ScaleType.ORDINAL;
                     default:
                         return scale_1.ScaleType.TIME;
@@ -55665,7 +55926,7 @@ function domain(scale, model, channel) {
     }
     var stack = model.stack();
     if (stack && channel === stack.fieldChannel) {
-        if (stack.offset === config_1.StackOffset.NORMALIZE) {
+        if (stack.offset === stack_1.StackOffset.NORMALIZE) {
             return [0, 1];
         }
         return {
@@ -55889,102 +56150,7 @@ function zero(scale, channel, fieldDef) {
 }
 exports.zero = zero;
 
-},{"../aggregate":223,"../channel":226,"../config":261,"../data":262,"../fielddef":264,"../mark":266,"../scale":267,"../timeunit":271,"../type":272,"../util":273,"./time":259}],258:[function(require,module,exports){
-"use strict";
-var channel_1 = require('../channel');
-var scale_1 = require('../scale');
-var config_1 = require('../config');
-var mark_1 = require('../mark');
-var fielddef_1 = require('../fielddef');
-var encoding_1 = require('../encoding');
-var util_1 = require('../util');
-var common_1 = require('./common');
-function compileStackProperties(mark, encoding, scale, config) {
-    var stackFields = getStackFields(mark, encoding, scale);
-    if (stackFields.length > 0 &&
-        util_1.contains([mark_1.BAR, mark_1.AREA], mark) &&
-        config.mark.stacked !== config_1.StackOffset.NONE &&
-        encoding_1.isAggregate(encoding)) {
-        var isXMeasure = encoding_1.has(encoding, channel_1.X) && fielddef_1.isMeasure(encoding.x), isYMeasure = encoding_1.has(encoding, channel_1.Y) && fielddef_1.isMeasure(encoding.y);
-        if (isXMeasure && !isYMeasure) {
-            return {
-                groupbyChannel: channel_1.Y,
-                fieldChannel: channel_1.X,
-                stackFields: stackFields,
-                offset: config.mark.stacked
-            };
-        }
-        else if (isYMeasure && !isXMeasure) {
-            return {
-                groupbyChannel: channel_1.X,
-                fieldChannel: channel_1.Y,
-                stackFields: stackFields,
-                offset: config.mark.stacked
-            };
-        }
-    }
-    return null;
-}
-exports.compileStackProperties = compileStackProperties;
-function getStackFields(mark, encoding, scaleMap) {
-    return [channel_1.COLOR, channel_1.DETAIL, channel_1.OPACITY, channel_1.SIZE].reduce(function (fields, channel) {
-        var channelEncoding = encoding[channel];
-        if (encoding_1.has(encoding, channel)) {
-            if (util_1.isArray(channelEncoding)) {
-                channelEncoding.forEach(function (fieldDef) {
-                    fields.push(fielddef_1.field(fieldDef));
-                });
-            }
-            else {
-                var fieldDef = channelEncoding;
-                var scale = scaleMap[channel];
-                fields.push(fielddef_1.field(fieldDef, {
-                    binSuffix: scale && scale.type === scale_1.ScaleType.ORDINAL ? '_range' : '_start'
-                }));
-            }
-        }
-        return fields;
-    }, []);
-}
-function imputeTransform(model) {
-    var stack = model.stack();
-    return {
-        type: 'impute',
-        field: model.field(stack.fieldChannel),
-        groupby: stack.stackFields,
-        orderby: [model.field(stack.groupbyChannel)],
-        method: 'value',
-        value: 0
-    };
-}
-exports.imputeTransform = imputeTransform;
-function stackTransform(model) {
-    var stack = model.stack();
-    var encoding = model.encoding();
-    var sortby = model.has(channel_1.ORDER) ?
-        (util_1.isArray(encoding[channel_1.ORDER]) ? encoding[channel_1.ORDER] : [encoding[channel_1.ORDER]]).map(common_1.sortField) :
-        stack.stackFields.map(function (field) {
-            return '-' + field;
-        });
-    var valName = model.field(stack.fieldChannel);
-    var transform = {
-        type: 'stack',
-        groupby: [model.field(stack.groupbyChannel)],
-        field: model.field(stack.fieldChannel),
-        sortby: sortby,
-        output: {
-            start: valName + '_start',
-            end: valName + '_end'
-        }
-    };
-    if (stack.offset) {
-        transform.offset = stack.offset;
-    }
-    return transform;
-}
-exports.stackTransform = stackTransform;
-
-},{"../channel":226,"../config":261,"../encoding":263,"../fielddef":264,"../mark":266,"../scale":267,"../util":273,"./common":228}],259:[function(require,module,exports){
+},{"../aggregate":223,"../channel":226,"../data":261,"../fielddef":264,"../mark":266,"../scale":267,"../stack":271,"../timeunit":272,"../type":274,"../util":275,"./time":258}],258:[function(require,module,exports){
 "use strict";
 var util_1 = require('../util');
 var channel_1 = require('../channel');
@@ -55993,22 +56159,23 @@ function smallestUnit(timeUnit) {
     if (!timeUnit) {
         return undefined;
     }
-    if (timeUnit.indexOf('second') > -1) {
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.SECONDS)) {
         return 'second';
     }
-    if (timeUnit.indexOf('minute') > -1) {
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.MINUTES)) {
         return 'minute';
     }
-    if (timeUnit.indexOf('hour') > -1) {
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.HOURS)) {
         return 'hour';
     }
-    if (timeUnit.indexOf('day') > -1 || timeUnit.indexOf('date') > -1) {
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.DAY) ||
+        timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.DATE)) {
         return 'day';
     }
-    if (timeUnit.indexOf('month') > -1) {
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.MONTH)) {
         return 'month';
     }
-    if (timeUnit.indexOf('year') > -1) {
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.YEAR)) {
         return 'year';
     }
     return undefined;
@@ -56017,57 +56184,66 @@ exports.smallestUnit = smallestUnit;
 function parseExpression(timeUnit, fieldRef, onlyRef) {
     if (onlyRef === void 0) { onlyRef = false; }
     var out = 'datetime(';
-    var timeString = timeUnit.toString();
-    function get(fun, addComma) {
+    function func(fun, addComma) {
         if (addComma === void 0) { addComma = true; }
         if (onlyRef) {
             return fieldRef + (addComma ? ', ' : '');
         }
         else {
-            return fun + '(' + fieldRef + ')' + (addComma ? ', ' : '');
+            var res = '';
+            if (fun === 'quarter') {
+                res = 'floor(month(' + fieldRef + ')' + '/3)*3';
+            }
+            else {
+                res = fun + '(' + fieldRef + ')';
+            }
+            return res + (addComma ? ', ' : '');
         }
     }
-    if (timeString.indexOf('year') > -1) {
-        out += get('year');
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.YEAR)) {
+        out += func('year');
     }
     else {
         out += '2006, ';
     }
-    if (timeString.indexOf('month') > -1) {
-        out += get('month');
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.MONTH)) {
+        out += func('month');
+    }
+    else if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.QUARTER)) {
+        out += func('quarter');
     }
     else {
         out += '0, ';
     }
-    if (timeString.indexOf('day') > -1) {
-        out += get('day', false) + '+1, ';
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.DAY)) {
+        out += func('day', false) + '+1, ';
     }
-    else if (timeString.indexOf('date') > -1) {
-        out += get('date');
+    else if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.DATE)) {
+        out += func('date');
     }
     else {
         out += '1, ';
     }
-    if (timeString.indexOf('hours') > -1) {
-        out += get('hours');
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.HOURS)) {
+        out += func('hours');
     }
     else {
         out += '0, ';
     }
-    if (timeString.indexOf('minutes') > -1) {
-        out += get('minutes');
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.MINUTES)) {
+        out += func('minutes');
     }
     else {
         out += '0, ';
     }
-    if (timeString.indexOf('seconds') > -1) {
-        out += get('seconds');
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.SECONDS)) {
+        out += func('seconds');
     }
     else {
         out += '0, ';
     }
-    if (timeString.indexOf('milliseconds') > -1) {
-        out += get('milliseconds', false);
+    if (timeunit_1.containsTimeUnit(timeUnit, timeunit_1.TimeUnit.MILLISECONDS)) {
+        out += func('milliseconds', false);
     }
     else {
         out += '0';
@@ -56092,12 +56268,14 @@ function rawDomain(timeUnit, channel) {
             return util_1.range(1, 32);
         case timeunit_1.TimeUnit.MONTH:
             return util_1.range(0, 12);
+        case timeunit_1.TimeUnit.QUARTER:
+            return [0, 3, 6, 9];
     }
     return null;
 }
 exports.rawDomain = rawDomain;
 
-},{"../channel":226,"../timeunit":271,"../util":273}],260:[function(require,module,exports){
+},{"../channel":226,"../timeunit":272,"../util":275}],259:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -56123,7 +56301,7 @@ var layout_1 = require('./layout');
 var model_1 = require('./model');
 var mark_2 = require('./mark/mark');
 var scale_2 = require('./scale');
-var stack_1 = require('./stack');
+var stack_1 = require('../stack');
 var UnitModel = (function (_super) {
     __extends(UnitModel, _super);
     function UnitModel(spec, parent, parentGivenName) {
@@ -56131,10 +56309,10 @@ var UnitModel = (function (_super) {
         var mark = this._mark = spec.mark;
         var encoding = this._encoding = this._initEncoding(mark, spec.encoding || {});
         var config = this._config = this._initConfig(spec.config, parent, mark, encoding);
-        var scale = this._scale = this._initScale(mark, encoding, config);
+        this._scale = this._initScale(mark, encoding, config);
         this._axis = this._initAxis(encoding, config);
         this._legend = this._initLegend(encoding, config);
-        this._stack = stack_1.compileStackProperties(mark, encoding, scale, config);
+        this._stack = stack_1.stack(mark, encoding, config);
     }
     UnitModel.prototype._initEncoding = function (mark, encoding) {
         encoding = util_1.duplicate(encoding);
@@ -56160,9 +56338,11 @@ var UnitModel = (function (_super) {
     };
     UnitModel.prototype._initScale = function (mark, encoding, config) {
         return channel_1.UNIT_SCALE_CHANNELS.reduce(function (_scale, channel) {
-            if (vlEncoding.has(encoding, channel)) {
-                var scaleSpec = encoding[channel].scale || {};
+            if (vlEncoding.has(encoding, channel) ||
+                (channel === channel_1.X && vlEncoding.has(encoding, channel_1.X2)) ||
+                (channel === channel_1.Y && vlEncoding.has(encoding, channel_1.Y2))) {
                 var channelDef = encoding[channel];
+                var scaleSpec = (channelDef || {}).scale || {};
                 var _scaleType = scale_2.scaleType(scaleSpec, channelDef, channel, mark);
                 _scale[channel] = util_1.extend({
                     type: _scaleType,
@@ -56178,8 +56358,10 @@ var UnitModel = (function (_super) {
     };
     UnitModel.prototype._initAxis = function (encoding, config) {
         return [channel_1.X, channel_1.Y].reduce(function (_axis, channel) {
-            if (vlEncoding.has(encoding, channel)) {
-                var axisSpec = encoding[channel].axis;
+            if (vlEncoding.has(encoding, channel) ||
+                (channel === channel_1.X && vlEncoding.has(encoding, channel_1.X2)) ||
+                (channel === channel_1.Y && vlEncoding.has(encoding, channel_1.Y2))) {
+                var axisSpec = (encoding[channel] || {}).axis;
                 if (axisSpec !== false) {
                     _axis[channel] = util_1.extend({}, config.axis, axisSpec === true ? {} : axisSpec || {});
                 }
@@ -56292,7 +56474,7 @@ var UnitModel = (function (_super) {
 }(model_1.Model));
 exports.UnitModel = UnitModel;
 
-},{"../aggregate":223,"../channel":226,"../config":261,"../data":262,"../encoding":263,"../fielddef":264,"../mark":266,"../scale":267,"../type":272,"../util":273,"./axis":227,"./common":228,"./config":230,"./data/data":233,"./layout":246,"./legend":247,"./mark/mark":251,"./model":256,"./scale":257,"./stack":258}],261:[function(require,module,exports){
+},{"../aggregate":223,"../channel":226,"../config":260,"../data":261,"../encoding":262,"../fielddef":264,"../mark":266,"../scale":267,"../stack":271,"../type":274,"../util":275,"./axis":227,"./common":228,"./config":230,"./data/data":233,"./layout":246,"./legend":247,"./mark/mark":251,"./model":256,"./scale":257}],260:[function(require,module,exports){
 "use strict";
 var scale_1 = require('./scale');
 var axis_1 = require('./axis');
@@ -56347,13 +56529,6 @@ var VerticalAlign = exports.VerticalAlign;
     FontStyle[FontStyle["ITALIC"] = 'italic'] = "ITALIC";
 })(exports.FontStyle || (exports.FontStyle = {}));
 var FontStyle = exports.FontStyle;
-(function (StackOffset) {
-    StackOffset[StackOffset["ZERO"] = 'zero'] = "ZERO";
-    StackOffset[StackOffset["CENTER"] = 'center'] = "CENTER";
-    StackOffset[StackOffset["NORMALIZE"] = 'normalize'] = "NORMALIZE";
-    StackOffset[StackOffset["NONE"] = 'none'] = "NONE";
-})(exports.StackOffset || (exports.StackOffset = {}));
-var StackOffset = exports.StackOffset;
 (function (Interpolate) {
     Interpolate[Interpolate["LINEAR"] = 'linear'] = "LINEAR";
     Interpolate[Interpolate["LINEAR_CLOSED"] = 'linear-closed'] = "LINEAR_CLOSED";
@@ -56370,6 +56545,17 @@ var StackOffset = exports.StackOffset;
     Interpolate[Interpolate["MONOTONE"] = 'monotone'] = "MONOTONE";
 })(exports.Interpolate || (exports.Interpolate = {}));
 var Interpolate = exports.Interpolate;
+(function (AreaOverlay) {
+    AreaOverlay[AreaOverlay["LINE"] = 'line'] = "LINE";
+    AreaOverlay[AreaOverlay["LINEPOINT"] = 'linepoint'] = "LINEPOINT";
+    AreaOverlay[AreaOverlay["NONE"] = 'none'] = "NONE";
+})(exports.AreaOverlay || (exports.AreaOverlay = {}));
+var AreaOverlay = exports.AreaOverlay;
+exports.defaultOverlayConfig = {
+    line: false,
+    pointStyle: { filled: true },
+    lineStyle: {}
+};
 exports.defaultMarkConfig = {
     color: '#4682b4',
     shape: Shape.CIRCLE,
@@ -56387,23 +56573,26 @@ exports.defaultMarkConfig = {
 exports.defaultConfig = {
     numberFormat: 's',
     timeFormat: '%Y-%m-%d',
+    countTitle: 'Number of Records',
     cell: exports.defaultCellConfig,
     mark: exports.defaultMarkConfig,
+    overlay: exports.defaultOverlayConfig,
     scale: scale_1.defaultScaleConfig,
     axis: axis_1.defaultAxisConfig,
     legend: legend_1.defaultLegendConfig,
     facet: exports.defaultFacetConfig,
 };
 
-},{"./axis":224,"./legend":265,"./scale":267}],262:[function(require,module,exports){
+},{"./axis":224,"./legend":265,"./scale":267}],261:[function(require,module,exports){
 "use strict";
 var type_1 = require('./type');
-(function (DataFormat) {
-    DataFormat[DataFormat["JSON"] = 'json'] = "JSON";
-    DataFormat[DataFormat["CSV"] = 'csv'] = "CSV";
-    DataFormat[DataFormat["TSV"] = 'tsv'] = "TSV";
-})(exports.DataFormat || (exports.DataFormat = {}));
-var DataFormat = exports.DataFormat;
+(function (DataFormatType) {
+    DataFormatType[DataFormatType["JSON"] = 'json'] = "JSON";
+    DataFormatType[DataFormatType["CSV"] = 'csv'] = "CSV";
+    DataFormatType[DataFormatType["TSV"] = 'tsv'] = "TSV";
+    DataFormatType[DataFormatType["TOPOJSON"] = 'topojson'] = "TOPOJSON";
+})(exports.DataFormatType || (exports.DataFormatType = {}));
+var DataFormatType = exports.DataFormatType;
 (function (DataTable) {
     DataTable[DataTable["SOURCE"] = 'source'] = "SOURCE";
     DataTable[DataTable["SUMMARY"] = 'summary'] = "SUMMARY";
@@ -56423,7 +56612,7 @@ exports.types = {
     'string': type_1.Type.NOMINAL
 };
 
-},{"./type":272}],263:[function(require,module,exports){
+},{"./type":274}],262:[function(require,module,exports){
 "use strict";
 var channel_1 = require('./channel');
 var util_1 = require('./util');
@@ -56457,7 +56646,7 @@ function has(encoding, channel) {
 }
 exports.has = has;
 function isAggregate(encoding) {
-    return util_1.any(channel_1.CHANNELS, function (channel) {
+    return util_1.some(channel_1.CHANNELS, function (channel) {
         if (has(encoding, channel) && encoding[channel].aggregate) {
             return true;
         }
@@ -56465,6 +56654,10 @@ function isAggregate(encoding) {
     });
 }
 exports.isAggregate = isAggregate;
+function isRanged(encoding) {
+    return encoding && ((!!encoding.x && !!encoding.x2) || (!!encoding.y && !!encoding.y2));
+}
+exports.isRanged = isRanged;
 function fieldDefs(encoding) {
     var arr = [];
     channel_1.CHANNELS.forEach(function (channel) {
@@ -56546,7 +56739,10 @@ function channelMappingReduce(channels, mapping, f, init, thisArg) {
 }
 exports.channelMappingReduce = channelMappingReduce;
 
-},{"./channel":226,"./util":273}],264:[function(require,module,exports){
+},{"./channel":226,"./util":275}],263:[function(require,module,exports){
+"use strict";
+
+},{}],264:[function(require,module,exports){
 "use strict";
 var aggregate_1 = require('./aggregate');
 var scale_1 = require('./scale');
@@ -56605,9 +56801,8 @@ function isMeasure(fieldDef) {
     return fieldDef && fieldDef.field && !_isFieldDimension(fieldDef);
 }
 exports.isMeasure = isMeasure;
-exports.COUNT_TITLE = 'Number of Records';
 function count() {
-    return { field: '*', aggregate: aggregate_1.AggregateOp.COUNT, type: type_1.QUANTITATIVE, title: exports.COUNT_TITLE };
+    return { field: '*', aggregate: aggregate_1.AggregateOp.COUNT, type: type_1.QUANTITATIVE };
 }
 exports.count = count;
 function isCount(fieldDef) {
@@ -56635,6 +56830,7 @@ function cardinality(fieldDef, stats, filterNull) {
             case timeunit_1.TimeUnit.DAY: return 7;
             case timeunit_1.TimeUnit.DATE: return 31;
             case timeunit_1.TimeUnit.MONTH: return 12;
+            case timeunit_1.TimeUnit.QUARTER: return 4;
             case timeunit_1.TimeUnit.YEAR:
                 var yearstat = stats['year_' + fieldDef.field];
                 if (!yearstat) {
@@ -56651,12 +56847,12 @@ function cardinality(fieldDef, stats, filterNull) {
         (stat.missing > 0 && filterNull[type] ? 1 : 0);
 }
 exports.cardinality = cardinality;
-function title(fieldDef) {
+function title(fieldDef, config) {
     if (fieldDef.title != null) {
         return fieldDef.title;
     }
     if (isCount(fieldDef)) {
-        return exports.COUNT_TITLE;
+        return config.countTitle;
     }
     var fn = fieldDef.aggregate || fieldDef.timeUnit || (fieldDef.bin && 'bin');
     if (fn) {
@@ -56668,7 +56864,7 @@ function title(fieldDef) {
 }
 exports.title = title;
 
-},{"./aggregate":223,"./scale":267,"./timeunit":271,"./type":272,"./util":273}],265:[function(require,module,exports){
+},{"./aggregate":223,"./scale":267,"./timeunit":272,"./type":274,"./util":275}],265:[function(require,module,exports){
 "use strict";
 exports.defaultLegendConfig = {
     orient: undefined,
@@ -56687,6 +56883,7 @@ exports.defaultLegendConfig = {
     Mark[Mark["RULE"] = 'rule'] = "RULE";
     Mark[Mark["CIRCLE"] = 'circle'] = "CIRCLE";
     Mark[Mark["SQUARE"] = 'square'] = "SQUARE";
+    Mark[Mark["ERRORBAR"] = 'errorBar'] = "ERRORBAR";
 })(exports.Mark || (exports.Mark = {}));
 var Mark = exports.Mark;
 exports.AREA = Mark.AREA;
@@ -56698,6 +56895,8 @@ exports.TICK = Mark.TICK;
 exports.RULE = Mark.RULE;
 exports.CIRCLE = Mark.CIRCLE;
 exports.SQUARE = Mark.SQUARE;
+exports.ERRORBAR = Mark.ERRORBAR;
+exports.PRIMITIVE_MARKS = [exports.AREA, exports.BAR, exports.LINE, exports.POINT, exports.TEXT, exports.TICK, exports.RULE, exports.CIRCLE, exports.SQUARE];
 
 },{}],267:[function(require,module,exports){
 "use strict";
@@ -56832,7 +57031,7 @@ function parseFieldDef(fieldDefShorthand) {
 }
 exports.parseFieldDef = parseFieldDef;
 
-},{"./aggregate":223,"./encoding":263,"./mark":266,"./timeunit":271,"./type":272}],269:[function(require,module,exports){
+},{"./aggregate":223,"./encoding":262,"./mark":266,"./timeunit":272,"./type":274}],269:[function(require,module,exports){
 "use strict";
 (function (SortOrder) {
     SortOrder[SortOrder["ASCENDING"] = 'ascending'] = "ASCENDING";
@@ -56843,10 +57042,12 @@ var SortOrder = exports.SortOrder;
 
 },{}],270:[function(require,module,exports){
 "use strict";
+var config_1 = require('./config');
 var encoding_1 = require('./encoding');
+var mark_1 = require('./mark');
+var stack_1 = require('./stack');
 var channel_1 = require('./channel');
 var vlEncoding = require('./encoding');
-var mark_1 = require('./mark');
 var util_1 = require('./util');
 function isFacetSpec(spec) {
     return spec['facet'] !== undefined;
@@ -56878,22 +57079,129 @@ function isLayerSpec(spec) {
 exports.isLayerSpec = isLayerSpec;
 function normalize(spec) {
     if (isExtendedUnitSpec(spec)) {
-        var hasRow = encoding_1.has(spec.encoding, channel_1.ROW);
-        var hasColumn = encoding_1.has(spec.encoding, channel_1.COLUMN);
-        var encoding = util_1.duplicate(spec.encoding);
-        delete encoding.column;
-        delete encoding.row;
-        return util_1.extend(spec.name ? { name: spec.name } : {}, spec.description ? { description: spec.description } : {}, { data: spec.data }, spec.transform ? { transform: spec.transform } : {}, {
-            facet: util_1.extend(hasRow ? { row: spec.encoding.row } : {}, hasColumn ? { column: spec.encoding.column } : {}),
-            spec: {
-                mark: spec.mark,
-                encoding: encoding
-            }
-        }, spec.config ? { config: spec.config } : {});
+        return normalizeExtendedUnitSpec(spec);
+    }
+    if (isUnitSpec(spec)) {
+        return normalizeUnitSpec(spec);
     }
     return spec;
 }
 exports.normalize = normalize;
+function normalizeExtendedUnitSpec(spec) {
+    var hasRow = encoding_1.has(spec.encoding, channel_1.ROW);
+    var hasColumn = encoding_1.has(spec.encoding, channel_1.COLUMN);
+    var encoding = util_1.duplicate(spec.encoding);
+    delete encoding.column;
+    delete encoding.row;
+    return util_1.extend(spec.name ? { name: spec.name } : {}, spec.description ? { description: spec.description } : {}, { data: spec.data }, spec.transform ? { transform: spec.transform } : {}, {
+        facet: util_1.extend(hasRow ? { row: spec.encoding.row } : {}, hasColumn ? { column: spec.encoding.column } : {}),
+        spec: normalizeUnitSpec({
+            mark: spec.mark,
+            encoding: encoding
+        })
+    }, spec.config ? { config: spec.config } : {});
+}
+exports.normalizeExtendedUnitSpec = normalizeExtendedUnitSpec;
+function normalizeUnitSpec(spec) {
+    var config = spec.config;
+    var overlayConfig = config && config.overlay;
+    var overlayWithLine = overlayConfig && spec.mark === mark_1.AREA &&
+        util_1.contains([config_1.AreaOverlay.LINEPOINT, config_1.AreaOverlay.LINE], overlayConfig.area);
+    var overlayWithPoint = overlayConfig && ((overlayConfig.line && spec.mark === mark_1.LINE) ||
+        (overlayConfig.area === config_1.AreaOverlay.LINEPOINT && spec.mark === mark_1.AREA));
+    if (spec.mark === mark_1.ERRORBAR) {
+        return normalizeErrorBarUnitSpec(spec);
+    }
+    if (encoding_1.isRanged(spec.encoding)) {
+        return normalizeRangedUnitSpec(spec);
+    }
+    if (isStacked(spec)) {
+        return spec;
+    }
+    if (overlayWithPoint || overlayWithLine) {
+        return normalizeOverlay(spec, overlayWithPoint, overlayWithLine);
+    }
+    return spec;
+}
+exports.normalizeUnitSpec = normalizeUnitSpec;
+function normalizeRangedUnitSpec(spec) {
+    if (spec.encoding) {
+        var hasX = encoding_1.has(spec.encoding, channel_1.X);
+        var hasY = encoding_1.has(spec.encoding, channel_1.Y);
+        var hasX2 = encoding_1.has(spec.encoding, channel_1.X2);
+        var hasY2 = encoding_1.has(spec.encoding, channel_1.Y2);
+        if ((hasX2 && !hasX) || (hasY2 && !hasY)) {
+            var normalizedSpec = util_1.duplicate(spec);
+            if (hasX2 && !hasX) {
+                normalizedSpec.encoding.x = normalizedSpec.encoding.x2;
+                delete normalizedSpec.encoding.x2;
+            }
+            if (hasY2 && !hasY) {
+                normalizedSpec.encoding.y = normalizedSpec.encoding.y2;
+                delete normalizedSpec.encoding.y2;
+            }
+            return normalizedSpec;
+        }
+    }
+    return spec;
+}
+exports.normalizeRangedUnitSpec = normalizeRangedUnitSpec;
+function normalizeErrorBarUnitSpec(spec) {
+    var layerSpec = util_1.extend(spec.name ? { name: spec.name } : {}, spec.description ? { description: spec.description } : {}, spec.data ? { data: spec.data } : {}, spec.transform ? { transform: spec.transform } : {}, spec.config ? { config: spec.config } : {}, { layers: [] });
+    if (!spec.encoding) {
+        return layerSpec;
+    }
+    if (spec.mark === mark_1.ERRORBAR) {
+        var ruleSpec = {
+            mark: mark_1.RULE,
+            encoding: util_1.extend(spec.encoding.x ? { x: util_1.duplicate(spec.encoding.x) } : {}, spec.encoding.y ? { y: util_1.duplicate(spec.encoding.y) } : {}, spec.encoding.x2 ? { x2: util_1.duplicate(spec.encoding.x2) } : {}, spec.encoding.y2 ? { y2: util_1.duplicate(spec.encoding.y2) } : {}, {})
+        };
+        var lowerTickSpec = {
+            mark: mark_1.TICK,
+            encoding: util_1.extend(spec.encoding.x ? { x: util_1.duplicate(spec.encoding.x) } : {}, spec.encoding.y ? { y: util_1.duplicate(spec.encoding.y) } : {}, spec.encoding.size ? { size: util_1.duplicate(spec.encoding.size) } : {}, {})
+        };
+        var upperTickSpec = {
+            mark: mark_1.TICK,
+            encoding: util_1.extend({
+                x: spec.encoding.x2 ? util_1.duplicate(spec.encoding.x2) : util_1.duplicate(spec.encoding.x),
+                y: spec.encoding.y2 ? util_1.duplicate(spec.encoding.y2) : util_1.duplicate(spec.encoding.y)
+            }, spec.encoding.size ? { size: util_1.duplicate(spec.encoding.size) } : {})
+        };
+        layerSpec.layers.push(normalizeUnitSpec(ruleSpec));
+        layerSpec.layers.push(normalizeUnitSpec(lowerTickSpec));
+        layerSpec.layers.push(normalizeUnitSpec(upperTickSpec));
+    }
+    return layerSpec;
+}
+exports.normalizeErrorBarUnitSpec = normalizeErrorBarUnitSpec;
+function normalizeOverlay(spec, overlayWithPoint, overlayWithLine) {
+    var outerProps = ['name', 'description', 'data', 'transform'];
+    var baseSpec = util_1.omit(spec, outerProps.concat('config'));
+    var baseConfig = util_1.duplicate(spec.config);
+    delete baseConfig.overlay;
+    var layerSpec = util_1.extend(util_1.pick(spec, outerProps), { layers: [baseSpec] }, util_1.keys(baseConfig).length > 0 ? { config: baseConfig } : {});
+    if (overlayWithLine) {
+        var lineSpec = util_1.duplicate(baseSpec);
+        lineSpec.mark = mark_1.LINE;
+        var markConfig = util_1.extend({}, config_1.defaultOverlayConfig.lineStyle, spec.config.overlay.lineStyle);
+        if (util_1.keys(markConfig).length > 0) {
+            lineSpec.config = { mark: markConfig };
+        }
+        layerSpec.layers.push(lineSpec);
+    }
+    if (overlayWithPoint) {
+        var pointSpec = util_1.duplicate(baseSpec);
+        pointSpec.mark = mark_1.POINT;
+        var markConfig = util_1.extend({}, config_1.defaultOverlayConfig.pointStyle, spec.config.overlay.pointStyle);
+        ;
+        if (util_1.keys(markConfig).length > 0) {
+            pointSpec.config = { mark: markConfig };
+        }
+        layerSpec.layers.push(pointSpec);
+    }
+    return layerSpec;
+}
+exports.normalizeOverlay = normalizeOverlay;
 function alwaysNoOcclusion(spec) {
     return vlEncoding.isAggregate(spec.encoding);
 }
@@ -56907,13 +57215,10 @@ function getCleanSpec(spec) {
     return spec;
 }
 exports.getCleanSpec = getCleanSpec;
-function isStack(spec) {
-    return (vlEncoding.has(spec.encoding, channel_1.COLOR) || vlEncoding.has(spec.encoding, channel_1.SHAPE)) &&
-        (spec.mark === mark_1.BAR || spec.mark === mark_1.AREA) &&
-        (!spec.config || !spec.config.mark.stacked !== false) &&
-        vlEncoding.isAggregate(spec.encoding);
+function isStacked(spec) {
+    return stack_1.stack(spec.mark, spec.encoding, spec.config) !== null;
 }
-exports.isStack = isStack;
+exports.isStacked = isStacked;
 function transpose(spec) {
     var oldenc = spec.encoding;
     var encoding = util_1.duplicate(spec.encoding);
@@ -56926,7 +57231,56 @@ function transpose(spec) {
 }
 exports.transpose = transpose;
 
-},{"./channel":226,"./encoding":263,"./mark":266,"./util":273}],271:[function(require,module,exports){
+},{"./channel":226,"./config":260,"./encoding":262,"./mark":266,"./stack":271,"./util":275}],271:[function(require,module,exports){
+"use strict";
+var channel_1 = require('./channel');
+var encoding_1 = require('./encoding');
+var mark_1 = require('./mark');
+var util_1 = require('./util');
+(function (StackOffset) {
+    StackOffset[StackOffset["ZERO"] = 'zero'] = "ZERO";
+    StackOffset[StackOffset["CENTER"] = 'center'] = "CENTER";
+    StackOffset[StackOffset["NORMALIZE"] = 'normalize'] = "NORMALIZE";
+    StackOffset[StackOffset["NONE"] = 'none'] = "NONE";
+})(exports.StackOffset || (exports.StackOffset = {}));
+var StackOffset = exports.StackOffset;
+function stack(mark, encoding, config) {
+    var stacked = (config && config.mark) ? config.mark.stacked : undefined;
+    if (util_1.contains([StackOffset.NONE, null, false], stacked)) {
+        return null;
+    }
+    if (!util_1.contains([mark_1.BAR, mark_1.AREA], mark)) {
+        return null;
+    }
+    if (!encoding_1.isAggregate(encoding)) {
+        return null;
+    }
+    var stackByChannels = channel_1.STACK_GROUP_CHANNELS.reduce(function (sc, channel) {
+        if (encoding_1.has(encoding, channel) && !encoding[channel].aggregate) {
+            sc.push(channel);
+        }
+        return sc;
+    }, []);
+    if (stackByChannels.length === 0) {
+        return null;
+    }
+    var hasXField = encoding_1.has(encoding, channel_1.X);
+    var hasYField = encoding_1.has(encoding, channel_1.Y);
+    var xIsAggregate = hasXField && !!encoding.x.aggregate;
+    var yIsAggregate = hasYField && !!encoding.y.aggregate;
+    if (xIsAggregate !== yIsAggregate) {
+        return {
+            groupbyChannel: xIsAggregate ? (hasYField ? channel_1.Y : null) : (hasXField ? channel_1.X : null),
+            fieldChannel: xIsAggregate ? channel_1.X : channel_1.Y,
+            stackByChannels: stackByChannels,
+            offset: stacked || StackOffset.ZERO
+        };
+    }
+    return null;
+}
+exports.stack = stack;
+
+},{"./channel":226,"./encoding":262,"./mark":266,"./util":275}],272:[function(require,module,exports){
 "use strict";
 (function (TimeUnit) {
     TimeUnit[TimeUnit["YEAR"] = 'year'] = "YEAR";
@@ -56949,6 +57303,10 @@ exports.transpose = transpose;
     TimeUnit[TimeUnit["HOURSMINUTESSECONDS"] = 'hoursminutesseconds'] = "HOURSMINUTESSECONDS";
     TimeUnit[TimeUnit["MINUTESSECONDS"] = 'minutesseconds'] = "MINUTESSECONDS";
     TimeUnit[TimeUnit["SECONDSMILLISECONDS"] = 'secondsmilliseconds'] = "SECONDSMILLISECONDS";
+    TimeUnit[TimeUnit["QUARTER"] = 'quarter'] = "QUARTER";
+    TimeUnit[TimeUnit["YEARQUARTER"] = 'yearquarter'] = "YEARQUARTER";
+    TimeUnit[TimeUnit["QUARTERMONTH"] = 'quartermonth'] = "QUARTERMONTH";
+    TimeUnit[TimeUnit["YEARQUARTERMONTH"] = 'yearquartermonth'] = "YEARQUARTERMONTH";
 })(exports.TimeUnit || (exports.TimeUnit = {}));
 var TimeUnit = exports.TimeUnit;
 exports.TIMEUNITS = [
@@ -56972,37 +57330,42 @@ exports.TIMEUNITS = [
     TimeUnit.HOURSMINUTESSECONDS,
     TimeUnit.MINUTESSECONDS,
     TimeUnit.SECONDSMILLISECONDS,
+    TimeUnit.QUARTER,
+    TimeUnit.YEARQUARTER,
+    TimeUnit.QUARTERMONTH,
+    TimeUnit.YEARQUARTERMONTH,
 ];
-function format(timeUnit, abbreviated) {
-    if (abbreviated === void 0) { abbreviated = false; }
+function template(timeUnit, field, shortTimeLabels) {
     if (!timeUnit) {
         return undefined;
     }
-    var timeString = timeUnit.toString();
     var dateComponents = [];
-    if (timeString.indexOf('year') > -1) {
-        dateComponents.push(abbreviated ? '%y' : '%Y');
+    if (containsTimeUnit(timeUnit, TimeUnit.YEAR)) {
+        dateComponents.push(shortTimeLabels ? '%y' : '%Y');
     }
-    if (timeString.indexOf('month') > -1) {
-        dateComponents.push(abbreviated ? '%b' : '%B');
+    if (containsTimeUnit(timeUnit, TimeUnit.QUARTER)) {
+        dateComponents.push('\'}}Q{{' + field + ' | quarter}}{{' + field + ' | time:\'');
     }
-    if (timeString.indexOf('day') > -1) {
-        dateComponents.push(abbreviated ? '%a' : '%A');
+    if (containsTimeUnit(timeUnit, TimeUnit.MONTH)) {
+        dateComponents.push(shortTimeLabels ? '%b' : '%B');
     }
-    else if (timeString.indexOf('date') > -1) {
+    if (containsTimeUnit(timeUnit, TimeUnit.DAY)) {
+        dateComponents.push(shortTimeLabels ? '%a' : '%A');
+    }
+    else if (containsTimeUnit(timeUnit, TimeUnit.DATE)) {
         dateComponents.push('%d');
     }
     var timeComponents = [];
-    if (timeString.indexOf('hours') > -1) {
+    if (containsTimeUnit(timeUnit, TimeUnit.HOURS)) {
         timeComponents.push('%H');
     }
-    if (timeString.indexOf('minutes') > -1) {
+    if (containsTimeUnit(timeUnit, TimeUnit.MINUTES)) {
         timeComponents.push('%M');
     }
-    if (timeString.indexOf('seconds') > -1) {
+    if (containsTimeUnit(timeUnit, TimeUnit.SECONDS)) {
         timeComponents.push('%S');
     }
-    if (timeString.indexOf('milliseconds') > -1) {
+    if (containsTimeUnit(timeUnit, TimeUnit.MILLISECONDS)) {
         timeComponents.push('%L');
     }
     var out = [];
@@ -57012,11 +57375,26 @@ function format(timeUnit, abbreviated) {
     if (timeComponents.length > 0) {
         out.push(timeComponents.join(':'));
     }
-    return out.length > 0 ? out.join(' ') : undefined;
+    if (out.length > 0) {
+        var template_1 = '{{' + field + ' | time:\'' + out.join(' ') + '\'}}';
+        return template_1.replace(new RegExp('{{' + field + ' \\| time:\'\'}}', 'g'), '');
+    }
+    else {
+        return undefined;
+    }
 }
-exports.format = format;
+exports.template = template;
+function containsTimeUnit(fullTimeUnit, timeUnit) {
+    var fullTimeUnitStr = fullTimeUnit.toString();
+    var timeUnitStr = timeUnit.toString();
+    return fullTimeUnitStr.indexOf(timeUnitStr) > -1;
+}
+exports.containsTimeUnit = containsTimeUnit;
 
-},{}],272:[function(require,module,exports){
+},{}],273:[function(require,module,exports){
+"use strict";
+
+},{}],274:[function(require,module,exports){
 "use strict";
 (function (Type) {
     Type[Type["QUANTITATIVE"] = 'quantitative'] = "QUANTITATIVE";
@@ -57048,7 +57426,7 @@ function getFullName(type) {
 }
 exports.getFullName = getFullName;
 
-},{}],273:[function(require,module,exports){
+},{}],275:[function(require,module,exports){
 "use strict";
 var stringify = require('json-stable-stringify');
 var util_1 = require('datalib/src/util');
@@ -57063,15 +57441,34 @@ exports.isObject = util_1.isObject;
 exports.isString = util_1.isString;
 exports.isNumber = util_1.isNumber;
 exports.isBoolean = util_1.isBoolean;
+var util_2 = require('datalib/src/util');
 var generate_1 = require('datalib/src/generate');
 exports.range = generate_1.range;
 var encoding_1 = require('./encoding');
 exports.has = encoding_1.has;
 var channel_1 = require('./channel');
 exports.Channel = channel_1.Channel;
-var util_2 = require('datalib/src/util');
+var util_3 = require('datalib/src/util');
+function pick(obj, props) {
+    var copy = {};
+    props.forEach(function (prop) {
+        if (obj.hasOwnProperty(prop)) {
+            copy[prop] = obj[prop];
+        }
+    });
+    return copy;
+}
+exports.pick = pick;
+function omit(obj, props) {
+    var copy = util_2.duplicate(obj);
+    props.forEach(function (prop) {
+        delete copy[prop];
+    });
+    return copy;
+}
+exports.omit = omit;
 function hash(a) {
-    if (util_2.isString(a) || util_2.isNumber(a) || util_2.isBoolean(a)) {
+    if (util_3.isString(a) || util_3.isNumber(a) || util_3.isBoolean(a)) {
         return String(a);
     }
     return stringify(a);
@@ -57133,7 +57530,7 @@ function map(obj, f, thisArg) {
     }
 }
 exports.map = map;
-function any(arr, f) {
+function some(arr, f) {
     var i = 0;
     for (var k = 0; k < arr.length; k++) {
         if (f(arr[k], k, i++)) {
@@ -57142,8 +57539,8 @@ function any(arr, f) {
     }
     return false;
 }
-exports.any = any;
-function all(arr, f) {
+exports.some = some;
+function every(arr, f) {
     var i = 0;
     for (var k = 0; k < arr.length; k++) {
         if (!f(arr[k], k, i++)) {
@@ -57152,7 +57549,7 @@ function all(arr, f) {
     }
     return true;
 }
-exports.all = all;
+exports.every = every;
 function flatten(arrays) {
     return [].concat.apply([], arrays);
 }
@@ -57236,7 +57633,7 @@ function differ(dict, other) {
 }
 exports.differ = differ;
 
-},{"./channel":226,"./encoding":263,"datalib/src/bins/bins":13,"datalib/src/generate":17,"datalib/src/util":31,"json-stable-stringify":222}],274:[function(require,module,exports){
+},{"./channel":226,"./encoding":262,"datalib/src/bins/bins":13,"datalib/src/generate":17,"datalib/src/util":31,"json-stable-stringify":222}],276:[function(require,module,exports){
 "use strict";
 var util_1 = require('./util');
 var mark_1 = require('./mark');
@@ -57281,7 +57678,7 @@ function getEncodingMappingError(spec, requiredChannelMap, supportedChannelMap) 
 }
 exports.getEncodingMappingError = getEncodingMappingError;
 
-},{"./mark":266,"./util":273}],275:[function(require,module,exports){
+},{"./mark":266,"./util":275}],277:[function(require,module,exports){
 "use strict";
 var util_1 = require('./util');
 function isUnionedDomain(domain) {
@@ -57299,37 +57696,33 @@ function isDataRefDomain(domain) {
 }
 exports.isDataRefDomain = isDataRefDomain;
 
-},{"./util":273}],276:[function(require,module,exports){
+},{"./util":275}],278:[function(require,module,exports){
 "use strict";
-var vlBin = require('./bin');
-var vlChannel = require('./channel');
-var vlConfig = require('./config');
-var vlData = require('./data');
-var vlEncoding = require('./encoding');
-var vlFieldDef = require('./fielddef');
-var vlCompile = require('./compile/compile');
-var vlShorthand = require('./shorthand');
-var vlSpec = require('./spec');
-var vlTimeUnit = require('./timeunit');
-var vlType = require('./type');
-var vlValidate = require('./validate');
-var vlUtil = require('./util');
-exports.bin = vlBin;
-exports.channel = vlChannel;
-exports.compile = vlCompile.compile;
-exports.config = vlConfig;
-exports.data = vlData;
-exports.encoding = vlEncoding;
-exports.fieldDef = vlFieldDef;
-exports.shorthand = vlShorthand;
-exports.spec = vlSpec;
-exports.timeUnit = vlTimeUnit;
-exports.type = vlType;
-exports.util = vlUtil;
-exports.validate = vlValidate;
-exports.version = '1.0.11';
+exports.axis = require('./axis');
+exports.aggregate = require('./aggregate');
+exports.bin = require('./bin');
+exports.channel = require('./channel');
+exports.compile = require('./compile/compile').compile;
+exports.config = require('./config');
+exports.data = require('./data');
+exports.encoding = require('./encoding');
+exports.facet = require('./facet');
+exports.fieldDef = require('./fielddef');
+exports.legend = require('./legend');
+exports.mark = require('./mark');
+exports.scale = require('./scale');
+exports.shorthand = require('./shorthand');
+exports.sort = require('./sort');
+exports.spec = require('./spec');
+exports.stack = require('./stack');
+exports.timeUnit = require('./timeunit');
+exports.transform = require('./transform');
+exports.type = require('./type');
+exports.util = require('./util');
+exports.validate = require('./validate');
+exports.version = '1.0.16';
 
-},{"./bin":225,"./channel":226,"./compile/compile":229,"./config":261,"./data":262,"./encoding":263,"./fielddef":264,"./shorthand":268,"./spec":270,"./timeunit":271,"./type":272,"./util":273,"./validate":274}],277:[function(require,module,exports){
+},{"./aggregate":223,"./axis":224,"./bin":225,"./channel":226,"./compile/compile":229,"./config":260,"./data":261,"./encoding":262,"./facet":263,"./fielddef":264,"./legend":265,"./mark":266,"./scale":267,"./shorthand":268,"./sort":269,"./spec":270,"./stack":271,"./timeunit":272,"./transform":273,"./type":274,"./util":275,"./validate":276}],279:[function(require,module,exports){
 var ts = Date.now();
 
 function write(msg) {
@@ -57365,7 +57758,7 @@ module.exports = {
   debug: (debug.enable = false, debug)
 };
 
-},{}],278:[function(require,module,exports){
+},{}],280:[function(require,module,exports){
 module.exports = {
   path:       require('./path'),
   render:     require('./render'),
@@ -57377,7 +57770,7 @@ module.exports = {
   toJSON:     require('./util/scene').toJSON,
   fromJSON:   require('./util/scene').fromJSON
 };
-},{"./path":280,"./render":300,"./util/Bounds":306,"./util/Gradient":308,"./util/Item":310,"./util/bound":311,"./util/canvas":312,"./util/scene":314}],279:[function(require,module,exports){
+},{"./path":282,"./render":302,"./util/Bounds":308,"./util/Gradient":310,"./util/Item":312,"./util/bound":313,"./util/canvas":314,"./util/scene":316}],281:[function(require,module,exports){
 var segmentCache = {},
     bezierCache = {},
     join = [].join;
@@ -57492,13 +57885,13 @@ module.exports = {
   }
 };
 
-},{}],280:[function(require,module,exports){
+},{}],282:[function(require,module,exports){
 module.exports = {
   parse:  require('./parse'),
   render: require('./render')
 };
 
-},{"./parse":281,"./render":282}],281:[function(require,module,exports){
+},{"./parse":283,"./render":284}],283:[function(require,module,exports){
 // Path parsing and rendering code adapted from fabric.js -- Thanks!
 var cmdlen = { m:2, l:2, h:1, v:1, c:6, s:4, q:4, t:2, a:7 },
     regexp = [/([MLHVCSQTAZmlhvcsqtaz])/g, /###/, /(\d)([-+])/g, /\s|,|###/];
@@ -57549,7 +57942,7 @@ module.exports = function(pathstr) {
   return result;
 };
 
-},{}],282:[function(require,module,exports){
+},{}],284:[function(require,module,exports){
 var arc = require('./arc');
 
 module.exports = function(g, path, l, t) {
@@ -57845,7 +58238,7 @@ function drawArc(g, x, y, coords) {
   }
 }
 
-},{"./arc":279}],283:[function(require,module,exports){
+},{"./arc":281}],285:[function(require,module,exports){
 function Handler() {
   this._active = null;
   this._handlers = {};
@@ -57895,7 +58288,7 @@ prototype.eventName = function(name) {
 };
 
 module.exports = Handler;
-},{}],284:[function(require,module,exports){
+},{}],286:[function(require,module,exports){
 function Renderer() {
   this._el = null;
   this._bgcolor = null;
@@ -57937,7 +58330,7 @@ prototype.render = function(/*scene, items*/) {
 };
 
 module.exports = Renderer;
-},{}],285:[function(require,module,exports){
+},{}],287:[function(require,module,exports){
 var DOM = require('../../util/dom'),
     Handler = require('../Handler'),
     marks = require('./marks');
@@ -58126,7 +58519,7 @@ prototype.pick = function(scene, x, y, gx, gy) {
 
 module.exports = CanvasHandler;
 
-},{"../../util/dom":313,"../Handler":283,"./marks":292}],286:[function(require,module,exports){
+},{"../../util/dom":315,"../Handler":285,"./marks":294}],288:[function(require,module,exports){
 var DOM = require('../../util/dom'),
     Bounds = require('../../util/Bounds'),
     ImageLoader = require('../../util/ImageLoader'),
@@ -58264,12 +58657,12 @@ prototype.renderAsync = function(scene) {
 
 module.exports = CanvasRenderer;
 
-},{"../../util/Bounds":306,"../../util/ImageLoader":309,"../../util/canvas":312,"../../util/dom":313,"../Renderer":284,"./marks":292}],287:[function(require,module,exports){
+},{"../../util/Bounds":308,"../../util/ImageLoader":311,"../../util/canvas":314,"../../util/dom":315,"../Renderer":286,"./marks":294}],289:[function(require,module,exports){
 module.exports = {
   Handler:  require('./CanvasHandler'),
   Renderer: require('./CanvasRenderer')
 };
-},{"./CanvasHandler":285,"./CanvasRenderer":286}],288:[function(require,module,exports){
+},{"./CanvasHandler":287,"./CanvasRenderer":288}],290:[function(require,module,exports){
 var util = require('./util');
 var halfpi = Math.PI / 2;
 
@@ -58291,7 +58684,7 @@ module.exports = {
   draw: util.drawAll(path),
   pick: util.pickPath(path)
 };
-},{"./util":299}],289:[function(require,module,exports){
+},{"./util":301}],291:[function(require,module,exports){
 var util = require('./util'),
     parse = require('../../../path/parse'),
     render = require('../../../path/render'),
@@ -58326,7 +58719,7 @@ module.exports = {
   nested: true
 };
 
-},{"../../../path/parse":281,"../../../path/render":282,"../../../util/svg":315,"./util":299}],290:[function(require,module,exports){
+},{"../../../path/parse":283,"../../../path/render":284,"../../../util/svg":317,"./util":301}],292:[function(require,module,exports){
 var util = require('./util'),
     EMPTY = [];
 
@@ -58465,7 +58858,7 @@ module.exports = {
   pick: pick
 };
 
-},{"./util":299}],291:[function(require,module,exports){
+},{"./util":301}],293:[function(require,module,exports){
 var util = require('./util');
 
 function draw(g, scene, bounds) {
@@ -58503,7 +58896,7 @@ module.exports = {
   draw: draw,
   pick: util.pick()
 };
-},{"./util":299}],292:[function(require,module,exports){
+},{"./util":301}],294:[function(require,module,exports){
 module.exports = {
   arc:    require('./arc'),
   area:   require('./area'),
@@ -58517,7 +58910,7 @@ module.exports = {
   text:   require('./text')
 };
 
-},{"./arc":288,"./area":289,"./group":290,"./image":291,"./line":293,"./path":294,"./rect":295,"./rule":296,"./symbol":297,"./text":298}],293:[function(require,module,exports){
+},{"./arc":290,"./area":291,"./group":292,"./image":293,"./line":295,"./path":296,"./rect":297,"./rule":298,"./symbol":299,"./text":300}],295:[function(require,module,exports){
 var util = require('./util'),
     parse = require('../../../path/parse'),
     render = require('../../../path/render'),
@@ -58552,7 +58945,7 @@ module.exports = {
   nested: true
 };
 
-},{"../../../path/parse":281,"../../../path/render":282,"../../../util/svg":315,"./util":299}],294:[function(require,module,exports){
+},{"../../../path/parse":283,"../../../path/render":284,"../../../util/svg":317,"./util":301}],296:[function(require,module,exports){
 var util = require('./util'),
     parse = require('../../../path/parse'),
     render = require('../../../path/render');
@@ -58568,7 +58961,7 @@ module.exports = {
   pick: util.pickPath(path)
 };
 
-},{"../../../path/parse":281,"../../../path/render":282,"./util":299}],295:[function(require,module,exports){
+},{"../../../path/parse":283,"../../../path/render":284,"./util":301}],297:[function(require,module,exports){
 var util = require('./util');
 
 function draw(g, scene, bounds) {
@@ -58603,7 +58996,7 @@ module.exports = {
   draw: draw,
   pick: util.pick()
 };
-},{"./util":299}],296:[function(require,module,exports){
+},{"./util":301}],298:[function(require,module,exports){
 var util = require('./util');
 
 function draw(g, scene, bounds) {
@@ -58660,8 +59053,10 @@ module.exports = {
   pick: util.pick(hit)
 };
 
-},{"./util":299}],297:[function(require,module,exports){
-var util = require('./util');
+},{"./util":301}],299:[function(require,module,exports){
+var util = require('./util'),
+    parse = require('../../../path/parse'),
+    render = require('../../../path/render');
 
 var sqrt3 = Math.sqrt(3),
     tan30 = Math.tan(30 * Math.PI / 180);
@@ -58726,15 +59121,34 @@ function path(g, o) {
       g.moveTo(x, y-ry);
       g.lineTo(x+rx, y+ry);
       g.lineTo(x-rx, y+ry);
+      break;
+
+    // custom shape
+    default:
+      var pathArray = resize(parse(o.shape), size);
+      render(g, pathArray, x, y);
   }
   g.closePath();
+}
+
+// Scale custom shapes (defined within a unit square) by given size.
+function resize(path, size) {
+  var sz = Math.sqrt(size),
+      i, n, j, m, curr;
+
+  for (i=0, n=path.length; i<n; ++i) {
+    for (curr=path[i], j=1, m=curr.length; j<m; ++j) {
+      curr[j] *= sz;
+    }
+  }
+  return path;
 }
 
 module.exports = {
   draw: util.drawAll(path),
   pick: util.pickPath(path)
 };
-},{"./util":299}],298:[function(require,module,exports){
+},{"../../../path/parse":283,"../../../path/render":284,"./util":301}],300:[function(require,module,exports){
 var Bounds = require('../../../util/Bounds'),
     textBounds = require('../../../util/bound').text,
     text = require('../../../util/text'),
@@ -58809,7 +59223,7 @@ module.exports = {
   pick: util.pick(hit)
 };
 
-},{"../../../util/Bounds":306,"../../../util/bound":311,"../../../util/text":316,"./util":299}],299:[function(require,module,exports){
+},{"../../../util/Bounds":308,"../../../util/bound":313,"../../../util/text":318,"./util":301}],301:[function(require,module,exports){
 function drawPathOne(path, g, o, items) {
   if (path(g, items)) return;
 
@@ -58958,13 +59372,13 @@ module.exports = {
   gradient: gradient
 };
 
-},{}],300:[function(require,module,exports){
+},{}],302:[function(require,module,exports){
 module.exports = {
   'canvas': require('./canvas'),
   'svg':    require('./svg')
 };
 
-},{"./canvas":287,"./svg":304}],301:[function(require,module,exports){
+},{"./canvas":289,"./svg":306}],303:[function(require,module,exports){
 var DOM = require('../../util/dom'),
     Handler = require('../Handler');
 
@@ -59030,7 +59444,7 @@ prototype.off = function(type, handler) {
 
 module.exports = SVGHandler;
 
-},{"../../util/dom":313,"../Handler":283}],302:[function(require,module,exports){
+},{"../../util/dom":315,"../Handler":285}],304:[function(require,module,exports){
 var ImageLoader = require('../../util/ImageLoader'),
     Renderer = require('../Renderer'),
     text = require('../../util/text'),
@@ -59455,7 +59869,7 @@ function href() {
 
 module.exports = SVGRenderer;
 
-},{"../../util/ImageLoader":309,"../../util/dom":313,"../../util/svg":315,"../../util/text":316,"../Renderer":284,"./marks":305}],303:[function(require,module,exports){
+},{"../../util/ImageLoader":311,"../../util/dom":315,"../../util/svg":317,"../../util/text":318,"../Renderer":286,"./marks":307}],305:[function(require,module,exports){
 var Renderer = require('../Renderer'),
     ImageLoader = require('../../util/ImageLoader'),
     SVG = require('../../util/svg'),
@@ -59699,7 +60113,7 @@ function escape_text(s) {
 
 module.exports = SVGStringRenderer;
 
-},{"../../util/ImageLoader":309,"../../util/dom":313,"../../util/svg":315,"../../util/text":316,"../Renderer":284,"./marks":305}],304:[function(require,module,exports){
+},{"../../util/ImageLoader":311,"../../util/dom":315,"../../util/svg":317,"../../util/text":318,"../Renderer":286,"./marks":307}],306:[function(require,module,exports){
 module.exports = {
   Handler:  require('./SVGHandler'),
   Renderer: require('./SVGRenderer'),
@@ -59707,9 +60121,10 @@ module.exports = {
     Renderer : require('./SVGStringRenderer')
   }
 };
-},{"./SVGHandler":301,"./SVGRenderer":302,"./SVGStringRenderer":303}],305:[function(require,module,exports){
+},{"./SVGHandler":303,"./SVGRenderer":304,"./SVGStringRenderer":305}],307:[function(require,module,exports){
 var text = require('../../util/text'),
     SVG = require('../../util/svg'),
+    symbolTypes = SVG.symbolTypes,
     textAlign = SVG.textAlign,
     path = SVG.path;
 
@@ -59819,8 +60234,11 @@ module.exports = {
     tag:  'path',
     type: 'symbol',
     attr: function(emit, o) {
+      var pathStr = !o.shape || symbolTypes[o.shape] ?
+        path.symbol(o) : path.resize(o.shape, o.size);
+
       emit('transform', translateItem(o));
-      emit('d', path.symbol(o));
+      emit('d', pathStr);
     }
   },
   text: {
@@ -59842,7 +60260,7 @@ module.exports = {
       }
 
       emit('text-anchor', textAlign[o.align] || 'start');
-      
+
       if (a) {
         t = translate(x, y) + ' rotate('+a+')';
         if (dx || dy) t += ' ' + translate(dx, dy);
@@ -59854,7 +60272,7 @@ module.exports = {
   }
 };
 
-},{"../../util/svg":315,"../../util/text":316}],306:[function(require,module,exports){
+},{"../../util/svg":317,"../../util/text":318}],308:[function(require,module,exports){
 function Bounds(b) {
   this.clear();
   if (b) this.union(b);
@@ -59983,7 +60401,7 @@ prototype.height = function() {
 
 module.exports = Bounds;
 
-},{}],307:[function(require,module,exports){
+},{}],309:[function(require,module,exports){
 module.exports = function(b) {
   function noop() { }
   function add(x,y) { b.add(x, y); }
@@ -60009,7 +60427,7 @@ module.exports = function(b) {
   };
 };
 
-},{}],308:[function(require,module,exports){
+},{}],310:[function(require,module,exports){
 var gradient_id = 0;
 
 function Gradient(type) {
@@ -60033,7 +60451,7 @@ prototype.stop = function(offset, color) {
 };
 
 module.exports = Gradient;
-},{}],309:[function(require,module,exports){
+},{}],311:[function(require,module,exports){
 (function (global){
 var load = require('datalib/src/import/load');
 
@@ -60112,7 +60530,7 @@ prototype.loadImage = function(uri, callback) {
 module.exports = ImageLoader;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"datalib/src/import/load":23}],310:[function(require,module,exports){
+},{"datalib/src/import/load":23}],312:[function(require,module,exports){
 function Item(mark) {
   this.mark = mark;
 }
@@ -60161,7 +60579,7 @@ prototype.touch = function() {
 };
 
 module.exports = Item;
-},{}],311:[function(require,module,exports){
+},{}],313:[function(require,module,exports){
 var BoundsContext = require('./BoundsContext'),
     Bounds = require('./Bounds'),
     canvas = require('./canvas'),
@@ -60458,7 +60876,7 @@ module.exports = {
   group: group
 };
 
-},{"../path":280,"./Bounds":306,"./BoundsContext":307,"./canvas":312,"./svg":315,"./text":316}],312:[function(require,module,exports){
+},{"../path":282,"./Bounds":308,"./BoundsContext":309,"./canvas":314,"./svg":317,"./text":318}],314:[function(require,module,exports){
 (function (global){
 function instance(w, h) {
   w = w || 1;
@@ -60551,7 +60969,7 @@ module.exports = {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],313:[function(require,module,exports){
+},{}],315:[function(require,module,exports){
 // create a new DOM element
 function create(doc, tag, ns) {
   return ns ? doc.createElementNS(ns, tag) : doc.createElement(tag);
@@ -60629,7 +61047,7 @@ module.exports = {
   }
 };
 
-},{}],314:[function(require,module,exports){
+},{}],316:[function(require,module,exports){
 var bound = require('../util/bound');
 
 var sets = [
@@ -60687,9 +61105,11 @@ module.exports = {
   toJSON:   toJSON,
   fromJSON: fromJSON
 };
-},{"../util/bound":311}],315:[function(require,module,exports){
+},{"../util/bound":313}],317:[function(require,module,exports){
 (function (global){
-var d3_svg = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null).svg;
+var dl = require('datalib'),
+    d3_svg = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null).svg,
+    parse = require('../path/parse');
 
 function x(o)     { return o.x || 0; }
 function y(o)     { return o.y || 0; }
@@ -60724,8 +61144,29 @@ module.exports = {
         .interpolate(o.interpolate || 'linear')
         .tension(o.tension || 0.7)
         (items);
+    },
+    resize: function(pathStr, size) {
+      var path = parse(pathStr),
+          newPath = '',
+          command, current, index, i, n, j, m;
+
+      size = Math.sqrt(size);
+      for (i=0, n=path.length; i<n; ++i) {
+        for (command=path[i], j=0, m=command.length; j<m; ++j) {
+          if (command[j] === 'Z') break;
+          if ((current = +command[j]) === current) {
+            // if number, need to resize
+            index = pathStr.indexOf(current);
+            newPath += pathStr.substring(0, index) + (current * size);
+            pathStr  = pathStr.substring(index + (current+'').length);
+          }
+        }
+      }
+
+      return newPath + 'Z';
     }
   },
+  symbolTypes: dl.toMap(d3_svg.symbolTypes),
   textAlign: {
     'left':   'start',
     'center': 'middle',
@@ -60761,7 +61202,7 @@ module.exports = {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],316:[function(require,module,exports){
+},{"../path/parse":283,"datalib":27}],318:[function(require,module,exports){
 function size(item) {
   return item.fontSize != null ? item.fontSize : 11;
 }
@@ -60796,9 +61237,9 @@ module.exports = {
   }
 };
 
-},{}],317:[function(require,module,exports){
+},{}],319:[function(require,module,exports){
 module.exports = {
-  version: '2.5.2',
+  version: '2.6.0',
   dataflow: require('vega-dataflow'),
   parse: require('./src/parse/'),
   scene: {
@@ -60818,7 +61259,950 @@ module.exports = {
   logging: require('vega-logging'),
   debug: require('vega-logging').debug
 };
-},{"./src/core/config":321,"./src/core/schema":322,"./src/parse/":327,"./src/scene/Bounder":339,"./src/scene/Builder":340,"./src/scene/Encoder":341,"./src/scene/GroupBuilder":342,"./src/scene/visit":347,"./src/transforms":375,"./src/transforms/BatchTransform":349,"./src/transforms/Parameter":365,"./src/transforms/Transform":370,"./src/util":378,"vega-dataflow":215,"vega-logging":277}],318:[function(require,module,exports){
+},{"./src/core/config":347,"./src/core/schema":348,"./src/parse/":353,"./src/scene/Bounder":365,"./src/scene/Builder":366,"./src/scene/Encoder":367,"./src/scene/GroupBuilder":368,"./src/scene/visit":373,"./src/transforms":401,"./src/transforms/BatchTransform":375,"./src/transforms/Parameter":391,"./src/transforms/Transform":396,"./src/util":404,"vega-dataflow":215,"vega-logging":279}],320:[function(require,module,exports){
+arguments[4][8][0].apply(exports,arguments)
+},{"./time":342,"./util":343,"dup":8}],321:[function(require,module,exports){
+arguments[4][9][0].apply(exports,arguments)
+},{"../util":343,"./collector":322,"./measures":324,"dup":9}],322:[function(require,module,exports){
+arguments[4][10][0].apply(exports,arguments)
+},{"../stats":340,"../util":343,"dup":10}],323:[function(require,module,exports){
+arguments[4][11][0].apply(exports,arguments)
+},{"../util":343,"./aggregator":321,"dup":11}],324:[function(require,module,exports){
+arguments[4][12][0].apply(exports,arguments)
+},{"../stats":340,"../util":343,"dup":12}],325:[function(require,module,exports){
+arguments[4][13][0].apply(exports,arguments)
+},{"../time":342,"../util":343,"dup":13}],326:[function(require,module,exports){
+arguments[4][14][0].apply(exports,arguments)
+},{"../generate":329,"../import/type":338,"../stats":340,"../util":343,"./bins":325,"dup":14}],327:[function(require,module,exports){
+arguments[4][15][0].apply(exports,arguments)
+},{"./import/type":338,"./stats":340,"./template":341,"./util":343,"dup":15}],328:[function(require,module,exports){
+var util = require('./util'),
+    d3_time = require('d3-time'),
+    d3_timeF = require('d3-time-format'),
+    d3_numberF = require('d3-format'),
+    numberF = d3_numberF, // defaults to EN-US
+    timeF = d3_timeF,     // defaults to EN-US
+    tmpDate = new Date(2000, 0, 1),
+    monthFull, monthAbbr, dayFull, dayAbbr;
+
+
+module.exports = {
+  // Update number formatter to use provided locale configuration.
+  // For more see https://github.com/d3/d3-format
+  numberLocale: numberLocale,
+  number:       function(f) { return numberF.format(f); },
+  numberPrefix: function(f, v) { return numberF.formatPrefix(f, v); },
+
+  // Update time formatter to use provided locale configuration.
+  // For more see https://github.com/d3/d3-time-format
+  timeLocale:   timeLocale,
+  time:         function(f) { return timeF.format(f); },
+  utc:          function(f) { return timeF.utcFormat(f); },
+
+  // Set number and time locale simultaneously.
+  locale:       function(l) { numberLocale(l); timeLocale(l); },
+
+  // automatic formatting functions
+  auto: {
+    number:   autoNumberFormat,
+    linear:   linearNumberFormat,
+    time:     function() { return timeAutoFormat(); },
+    utc:      function() { return utcAutoFormat(); }
+  },
+
+  month:      monthFormat,      // format month name from integer code
+  day:        dayFormat,        // format week day name from integer code
+  quarter:    quarterFormat,    // format quarter name from timestamp
+  utcQuarter: utcQuarterFormat  // format quarter name from utc timestamp
+};
+
+// -- Locales ----
+
+// transform 'en-US' style locale string to match d3-format v0.4+ convention
+function localeRef(l) {
+  return l.length > 4 && 'locale' + (
+    l[0].toUpperCase() + l[1].toLowerCase() +
+    l[3].toUpperCase() + l[4].toLowerCase()
+  );
+}
+
+function numberLocale(l) {
+  var f = util.isString(l) ? d3_numberF[localeRef(l)] : d3_numberF.locale(l);
+  if (f == null) throw Error('Unrecognized locale: ' + l);
+  numberF = f;
+}
+
+function timeLocale(l) {
+  var f = util.isString(l) ? d3_timeF[localeRef(l)] : d3_timeF.locale(l);
+  if (f == null) throw Error('Unrecognized locale: ' + l);
+  timeF = f;
+  monthFull = monthAbbr = dayFull = dayAbbr = null;
+}
+
+// -- Number Formatting ----
+
+var e10 = Math.sqrt(50),
+    e5 = Math.sqrt(10),
+    e2 = Math.sqrt(2);
+
+function linearRange(domain, count) {
+  if (!domain.length) domain = [0];
+  if (count == null) count = 10;
+
+  var start = domain[0],
+      stop = domain[domain.length - 1];
+
+  if (stop < start) { error = stop; stop = start; start = error; }
+
+  var span = (stop - start) || (count = 1, start || stop || 1),
+      step = Math.pow(10, Math.floor(Math.log(span / count) / Math.LN10)),
+      error = span / count / step;
+
+  // Filter ticks to get closer to the desired count.
+  if (error >= e10) step *= 10;
+  else if (error >= e5) step *= 5;
+  else if (error >= e2) step *= 2;
+
+  // Round start and stop values to step interval.
+  return [
+    Math.ceil(start / step) * step,
+    Math.floor(stop / step) * step + step / 2, // inclusive
+    step
+  ];
+}
+
+function trimZero(f, decimal) {
+  return function(x) {
+    var s = f(x),
+        n = s.indexOf(decimal);
+    if (n < 0) return s;
+
+    var idx = rightmostDigit(s, n),
+        end = idx < s.length ? s.slice(idx) : '';
+
+    while (--idx > n) {
+      if (s[idx] !== '0') { ++idx; break; }
+    }
+    return s.slice(0, idx) + end;
+  };
+}
+
+function rightmostDigit(s, n) {
+  var i = s.lastIndexOf('e'), c;
+  if (i > 0) return i;
+  for (i=s.length; --i > n;) {
+    c = s.charCodeAt(i);
+    if (c >= 48 && c <= 57) return i+1; // is digit
+  }
+}
+
+function autoNumberFormat(f) {
+  var decimal = numberF.format('.1f')(1)[1]; // get decimal char
+  if (f == null) f = ',';
+  f = d3_numberF.formatSpecifier(f);
+  if (f.precision == null) f.precision = 12;
+  switch (f.type) {
+    case '%': f.precision -= 2; break;
+    case 'e': f.precision -= 1; break;
+  }
+  return trimZero(numberF.format(f), decimal);
+}
+
+function linearNumberFormat(domain, count, f) {
+  var range = linearRange(domain, count);
+
+  if (f == null) f = ',f';
+
+  switch (f = d3_numberF.formatSpecifier(f), f.type) {
+    case 's': {
+      var value = Math.max(Math.abs(range[0]), Math.abs(range[1]));
+      if (f.precision == null) f.precision = d3_numberF.precisionPrefix(range[2], value);
+      return numberF.formatPrefix(f, value);
+    }
+    case '':
+    case 'e':
+    case 'g':
+    case 'p':
+    case 'r': {
+      if (f.precision == null) f.precision = d3_numberF.precisionRound(range[2], Math.max(Math.abs(range[0]), Math.abs(range[1]))) - (f.type === 'e');
+      break;
+    }
+    case 'f':
+    case '%': {
+      if (f.precision == null) f.precision = d3_numberF.precisionFixed(range[2]) - 2 * (f.type === '%');
+      break;
+    }
+  }
+  return numberF.format(f);
+}
+
+// -- Datetime Formatting ----
+
+function timeAutoFormat() {
+  var f = timeF.format,
+      formatMillisecond = f('.%L'),
+      formatSecond = f(':%S'),
+      formatMinute = f('%I:%M'),
+      formatHour = f('%I %p'),
+      formatDay = f('%a %d'),
+      formatWeek = f('%b %d'),
+      formatMonth = f('%B'),
+      formatYear = f('%Y');
+
+  return function(date) {
+    var d = +date;
+    return (d3_time.second(date) < d ? formatMillisecond
+        : d3_time.minute(date) < d ? formatSecond
+        : d3_time.hour(date) < d ? formatMinute
+        : d3_time.day(date) < d ? formatHour
+        : d3_time.month(date) < d ?
+          (d3_time.week(date) < d ? formatDay : formatWeek)
+        : d3_time.year(date) < d ? formatMonth
+        : formatYear)(date);
+  };
+}
+
+function utcAutoFormat() {
+  var f = timeF.utcFormat,
+      formatMillisecond = f('.%L'),
+      formatSecond = f(':%S'),
+      formatMinute = f('%I:%M'),
+      formatHour = f('%I %p'),
+      formatDay = f('%a %d'),
+      formatWeek = f('%b %d'),
+      formatMonth = f('%B'),
+      formatYear = f('%Y');
+
+  return function(date) {
+    var d = +date;
+    return (d3_time.utcSecond(date) < d ? formatMillisecond
+        : d3_time.utcMinute(date) < d ? formatSecond
+        : d3_time.utcHour(date) < d ? formatMinute
+        : d3_time.utcDay(date) < d ? formatHour
+        : d3_time.utcMonth(date) < d ?
+          (d3_time.utcWeek(date) < d ? formatDay : formatWeek)
+        : d3_time.utcYear(date) < d ? formatMonth
+        : formatYear)(date);
+  };
+}
+
+function monthFormat(month, abbreviate) {
+  var f = abbreviate ?
+    (monthAbbr || (monthAbbr = timeF.format('%b'))) :
+    (monthFull || (monthFull = timeF.format('%B')));
+  return (tmpDate.setMonth(month), f(tmpDate));
+}
+
+function dayFormat(day, abbreviate) {
+  var f = abbreviate ?
+    (dayAbbr || (dayAbbr = timeF.format('%a'))) :
+    (dayFull || (dayFull = timeF.format('%A')));
+  return (tmpDate.setMonth(0), tmpDate.setDate(2 + day), f(tmpDate));
+}
+
+function quarterFormat(date) {
+  return Math.floor(date.getMonth() / 3) + 1;
+}
+
+function utcQuarterFormat(date) {
+  return Math.floor(date.getUTCMonth() / 3) + 1;
+}
+
+},{"./util":343,"d3-format":4,"d3-time":6,"d3-time-format":5}],329:[function(require,module,exports){
+arguments[4][17][0].apply(exports,arguments)
+},{"./util":343,"dup":17}],330:[function(require,module,exports){
+arguments[4][18][0].apply(exports,arguments)
+},{"../../util":343,"d3-dsv":3,"dup":18}],331:[function(require,module,exports){
+arguments[4][19][0].apply(exports,arguments)
+},{"./dsv":330,"./json":332,"./topojson":333,"./treejson":334,"dup":19}],332:[function(require,module,exports){
+arguments[4][20][0].apply(exports,arguments)
+},{"../../util":343,"dup":20}],333:[function(require,module,exports){
+arguments[4][21][0].apply(exports,arguments)
+},{"./json":332,"dup":21,"topojson":204}],334:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"./json":332,"dup":22}],335:[function(require,module,exports){
+arguments[4][23][0].apply(exports,arguments)
+},{"../util":343,"dup":23,"fs":411,"request":411,"sync-request":411,"url":411}],336:[function(require,module,exports){
+arguments[4][24][0].apply(exports,arguments)
+},{"../format":328,"../util":343,"./formats":331,"./type":338,"dup":24}],337:[function(require,module,exports){
+arguments[4][25][0].apply(exports,arguments)
+},{"../util":343,"./load":335,"./read":336,"dup":25}],338:[function(require,module,exports){
+var util = require('../util');
+
+var TYPES = '__types__';
+
+var PARSERS = {
+  boolean: util.boolean,
+  integer: util.number,
+  number:  util.number,
+  date:    util.date,
+  string:  function(x) { return x == null || x === '' ? null : x + ''; }
+};
+
+var TESTS = {
+  boolean: function(x) { return x==='true' || x==='false' || util.isBoolean(x); },
+  integer: function(x) { return TESTS.number(x) && (x=+x) === ~~x; },
+  number: function(x) { return !isNaN(+x) && !util.isDate(x); },
+  date: function(x) { return !isNaN(Date.parse(x)); }
+};
+
+function annotation(data, types) {
+  if (!types) return data && data[TYPES] || null;
+  data[TYPES] = types;
+}
+
+function type(values, f) {
+  values = util.array(values);
+  f = util.$(f);
+  var v, i, n;
+
+  // if data array has type annotations, use them
+  if (values[TYPES]) {
+    v = f(values[TYPES]);
+    if (util.isString(v)) return v;
+  }
+
+  for (i=0, n=values.length; !util.isValid(v) && i<n; ++i) {
+    v = f ? f(values[i]) : values[i];
+  }
+
+  return util.isDate(v) ? 'date' :
+    util.isNumber(v)    ? 'number' :
+    util.isBoolean(v)   ? 'boolean' :
+    util.isString(v)    ? 'string' : null;
+}
+
+function typeAll(data, fields) {
+  if (!data.length) return;
+  fields = fields || util.keys(data[0]);
+  return fields.reduce(function(types, f) {
+    return (types[f] = type(data, f), types);
+  }, {});
+}
+
+function infer(values, f) {
+  values = util.array(values);
+  f = util.$(f);
+  var i, j, v;
+
+  // types to test for, in precedence order
+  var types = ['boolean', 'integer', 'number', 'date'];
+
+  for (i=0; i<values.length; ++i) {
+    // get next value to test
+    v = f ? f(values[i]) : values[i];
+    // test value against remaining types
+    for (j=0; j<types.length; ++j) {
+      if (util.isValid(v) && !TESTS[types[j]](v)) {
+        types.splice(j, 1);
+        j -= 1;
+      }
+    }
+    // if no types left, return 'string'
+    if (types.length === 0) return 'string';
+  }
+
+  return types[0];
+}
+
+function inferAll(data, fields) {
+  fields = fields || util.keys(data[0]);
+  return fields.reduce(function(types, f) {
+    types[f] = infer(data, f);
+    return types;
+  }, {});
+}
+
+type.annotation = annotation;
+type.all = typeAll;
+type.infer = infer;
+type.inferAll = inferAll;
+type.parsers = PARSERS;
+module.exports = type;
+
+},{"../util":343}],339:[function(require,module,exports){
+var util = require('./util');
+
+var dl = {
+  version:    '1.7.1',
+  load:       require('./import/load'),
+  read:       require('./import/read'),
+  type:       require('./import/type'),
+  Aggregator: require('./aggregate/aggregator'),
+  groupby:    require('./aggregate/groupby'),
+  bins:       require('./bins/bins'),
+  $bin:       require('./bins/histogram').$bin,
+  histogram:  require('./bins/histogram').histogram,
+  format:     require('./format'),
+  template:   require('./template'),
+  time:       require('./time')
+};
+
+util.extend(dl, util);
+util.extend(dl, require('./accessor'));
+util.extend(dl, require('./generate'));
+util.extend(dl, require('./stats'));
+util.extend(dl, require('./import/readers'));
+util.extend(dl.format, require('./format-tables'));
+
+// backwards-compatible, deprecated API
+// will remove in the future
+dl.print = {
+  table:   dl.format.table,
+  summary: dl.format.summary
+};
+
+module.exports = dl;
+
+},{"./accessor":320,"./aggregate/aggregator":321,"./aggregate/groupby":323,"./bins/bins":325,"./bins/histogram":326,"./format":328,"./format-tables":327,"./generate":329,"./import/load":335,"./import/read":336,"./import/readers":337,"./import/type":338,"./stats":340,"./template":341,"./time":342,"./util":343}],340:[function(require,module,exports){
+arguments[4][28][0].apply(exports,arguments)
+},{"./generate":329,"./import/type":338,"./util":343,"dup":28}],341:[function(require,module,exports){
+var util = require('./util'),
+    format = require('./format');
+
+var context = {
+  formats:    [],
+  format_map: {},
+  truncate:   util.truncate,
+  pad:        util.pad,
+  day:        format.day,
+  month:      format.month,
+  quarter:    format.quarter,
+  utcQuarter: format.utcQuarter
+};
+
+function template(text) {
+  var src = source(text, 'd');
+  src = 'var __t; return ' + src + ';';
+
+  /* jshint evil: true */
+  return (new Function('d', src)).bind(context);
+}
+
+template.source = source;
+template.context = context;
+template.format = get_format;
+module.exports = template;
+
+// Clear cache of format objects.
+// This can *break* prior template functions, so invoke with care!
+template.clearFormatCache = function() {
+  context.formats = [];
+  context.format_map = {};
+};
+
+// Generate property access code for use within template source.
+// object: the name of the object (variable) containing template data
+// property: the property access string, verbatim from template tag
+template.property = function(object, property) {
+  var src = util.field(property).map(util.str).join('][');
+  return object + '[' + src + ']';
+};
+
+// Generate source code for a template function.
+// text: the template text
+// variable: the name of the data object variable ('obj' by default)
+// properties: optional hash for collecting all accessed properties
+function source(text, variable, properties) {
+  variable = variable || 'obj';
+  var index = 0;
+  var src = '\'';
+  var regex = template_re;
+
+  // Compile the template source, escaping string literals appropriately.
+  text.replace(regex, function(match, interpolate, offset) {
+    src += text
+      .slice(index, offset)
+      .replace(template_escaper, template_escapeChar);
+    index = offset + match.length;
+
+    if (interpolate) {
+      src += '\'\n+((__t=(' +
+        template_var(interpolate, variable, properties) +
+        '))==null?\'\':__t)+\n\'';
+    }
+
+    // Adobe VMs need the match returned to produce the correct offest.
+    return match;
+  });
+  return src + '\'';
+}
+
+function template_var(text, variable, properties) {
+  var filters = text.match(filter_re);
+  var prop = filters.shift().trim();
+  var stringCast = true;
+
+  function strcall(fn) {
+    fn = fn || '';
+    if (stringCast) {
+      stringCast = false;
+      src = 'String(' + src + ')' + fn;
+    } else {
+      src += fn;
+    }
+    return src;
+  }
+
+  function date() {
+    return '(typeof ' + src + '==="number"?new Date('+src+'):'+src+')';
+  }
+
+  function formatter(type) {
+    var pattern = args[0];
+    if ((pattern[0] === '\'' && pattern[pattern.length-1] === '\'') ||
+        (pattern[0] === '"'  && pattern[pattern.length-1] === '"')) {
+      pattern = pattern.slice(1, -1);
+    } else {
+      throw Error('Format pattern must be quoted: ' + pattern);
+    }
+    a = template_format(pattern, type);
+    stringCast = false;
+    var arg = type === 'number' ? src : date();
+    src = 'this.formats['+a+']('+arg+')';
+  }
+
+  if (properties) properties[prop] = 1;
+  var src = template.property(variable, prop);
+
+  for (var i=0; i<filters.length; ++i) {
+    var f = filters[i], args = null, pidx, a, b;
+
+    if ((pidx=f.indexOf(':')) > 0) {
+      f = f.slice(0, pidx);
+      args = filters[i].slice(pidx+1)
+        .match(args_re)
+        .map(function(s) { return s.trim(); });
+    }
+    f = f.trim();
+
+    switch (f) {
+      case 'length':
+        strcall('.length');
+        break;
+      case 'lower':
+        strcall('.toLowerCase()');
+        break;
+      case 'upper':
+        strcall('.toUpperCase()');
+        break;
+      case 'lower-locale':
+        strcall('.toLocaleLowerCase()');
+        break;
+      case 'upper-locale':
+        strcall('.toLocaleUpperCase()');
+        break;
+      case 'trim':
+        strcall('.trim()');
+        break;
+      case 'left':
+        a = util.number(args[0]);
+        strcall('.slice(0,' + a + ')');
+        break;
+      case 'right':
+        a = util.number(args[0]);
+        strcall('.slice(-' + a +')');
+        break;
+      case 'mid':
+        a = util.number(args[0]);
+        b = a + util.number(args[1]);
+        strcall('.slice(+'+a+','+b+')');
+        break;
+      case 'slice':
+        a = util.number(args[0]);
+        strcall('.slice('+ a +
+          (args.length > 1 ? ',' + util.number(args[1]) : '') +
+          ')');
+        break;
+      case 'truncate':
+        a = util.number(args[0]);
+        b = args[1];
+        b = (b!=='left' && b!=='middle' && b!=='center') ? 'right' : b;
+        src = 'this.truncate(' + strcall() + ',' + a + ',\'' + b + '\')';
+        break;
+      case 'pad':
+        a = util.number(args[0]);
+        b = args[1];
+        b = (b!=='left' && b!=='middle' && b!=='center') ? 'right' : b;
+        src = 'this.pad(' + strcall() + ',' + a + ',\'' + b + '\')';
+        break;
+      case 'number':
+        formatter('number');
+        break;
+      case 'time':
+        formatter('time');
+        break;
+      case 'time-utc':
+        formatter('utc');
+        break;
+      case 'month':
+        src = 'this.month(' + src + ')';
+        break;
+      case 'month-abbrev':
+        src = 'this.month(' + src + ',true)';
+        break;
+      case 'day':
+        src = 'this.day(' + src + ')';
+        break;
+      case 'day-abbrev':
+        src = 'this.day(' + src + ',true)';
+        break;
+      case 'quarter':
+        src = 'this.quarter(' + src + ')';
+        break;
+      case 'quarter-utc':
+        src = 'this.utcQuarter(' + src + ')';
+        break;
+      default:
+        throw Error('Unrecognized template filter: ' + f);
+    }
+  }
+
+  return src;
+}
+
+var template_re = /\{\{(.+?)\}\}|$/g,
+    filter_re = /(?:"[^"]*"|\'[^\']*\'|[^\|"]+|[^\|\']+)+/g,
+    args_re = /(?:"[^"]*"|\'[^\']*\'|[^,"]+|[^,\']+)+/g;
+
+// Certain characters need to be escaped so that they can be put into a
+// string literal.
+var template_escapes = {
+  '\'':     '\'',
+  '\\':     '\\',
+  '\r':     'r',
+  '\n':     'n',
+  '\u2028': 'u2028',
+  '\u2029': 'u2029'
+};
+
+var template_escaper = /\\|'|\r|\n|\u2028|\u2029/g;
+
+function template_escapeChar(match) {
+  return '\\' + template_escapes[match];
+}
+
+function template_format(pattern, type) {
+  var key = type + ':' + pattern;
+  if (context.format_map[key] == null) {
+    var f = format[type](pattern);
+    var i = context.formats.length;
+    context.formats.push(f);
+    context.format_map[key] = i;
+    return i;
+  }
+  return context.format_map[key];
+}
+
+function get_format(pattern, type) {
+  return context.formats[template_format(pattern, type)];
+}
+
+},{"./format":328,"./util":343}],342:[function(require,module,exports){
+arguments[4][30][0].apply(exports,arguments)
+},{"d3-time":6,"dup":30}],343:[function(require,module,exports){
+(function (Buffer){
+var u = module.exports;
+
+// utility functions
+
+var FNAME = '__name__';
+
+u.namedfunc = function(name, f) { return (f[FNAME] = name, f); };
+
+u.name = function(f) { return f==null ? null : f[FNAME]; };
+
+u.identity = function(x) { return x; };
+
+u.true = u.namedfunc('true', function() { return true; });
+
+u.false = u.namedfunc('false', function() { return false; });
+
+u.duplicate = function(obj) {
+  return JSON.parse(JSON.stringify(obj));
+};
+
+u.equal = function(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
+u.extend = function(obj) {
+  for (var x, name, i=1, len=arguments.length; i<len; ++i) {
+    x = arguments[i];
+    for (name in x) { obj[name] = x[name]; }
+  }
+  return obj;
+};
+
+u.length = function(x) {
+  return x != null && x.length != null ? x.length : null;
+};
+
+u.keys = function(x) {
+  var keys = [], k;
+  for (k in x) keys.push(k);
+  return keys;
+};
+
+u.vals = function(x) {
+  var vals = [], k;
+  for (k in x) vals.push(x[k]);
+  return vals;
+};
+
+u.toMap = function(list, f) {
+  return (f = u.$(f)) ?
+    list.reduce(function(obj, x) { return (obj[f(x)] = 1, obj); }, {}) :
+    list.reduce(function(obj, x) { return (obj[x] = 1, obj); }, {});
+};
+
+u.keystr = function(values) {
+  // use to ensure consistent key generation across modules
+  var n = values.length;
+  if (!n) return '';
+  for (var s=String(values[0]), i=1; i<n; ++i) {
+    s += '|' + String(values[i]);
+  }
+  return s;
+};
+
+// type checking functions
+
+var toString = Object.prototype.toString;
+
+u.isObject = function(obj) {
+  return obj === Object(obj);
+};
+
+u.isFunction = function(obj) {
+  return toString.call(obj) === '[object Function]';
+};
+
+u.isString = function(obj) {
+  return typeof value === 'string' || toString.call(obj) === '[object String]';
+};
+
+u.isArray = Array.isArray || function(obj) {
+  return toString.call(obj) === '[object Array]';
+};
+
+u.isNumber = function(obj) {
+  return typeof obj === 'number' || toString.call(obj) === '[object Number]';
+};
+
+u.isBoolean = function(obj) {
+  return obj === true || obj === false || toString.call(obj) == '[object Boolean]';
+};
+
+u.isDate = function(obj) {
+  return toString.call(obj) === '[object Date]';
+};
+
+u.isValid = function(obj) {
+  return obj != null && obj === obj;
+};
+
+u.isBuffer = (typeof Buffer === 'function' && Buffer.isBuffer) || u.false;
+
+// type coercion functions
+
+u.number = function(s) {
+  return s == null || s === '' ? null : +s;
+};
+
+u.boolean = function(s) {
+  return s == null || s === '' ? null : s==='false' ? false : !!s;
+};
+
+// parse a date with optional d3.time-format format
+u.date = function(s, format) {
+  var d = format ? format : Date;
+  return s == null || s === '' ? null : d.parse(s);
+};
+
+u.array = function(x) {
+  return x != null ? (u.isArray(x) ? x : [x]) : [];
+};
+
+u.str = function(x) {
+  return u.isArray(x) ? '[' + x.map(u.str) + ']'
+    : u.isObject(x) || u.isString(x) ?
+      // Output valid JSON and JS source strings.
+      // See http://timelessrepo.com/json-isnt-a-javascript-subset
+      JSON.stringify(x).replace('\u2028','\\u2028').replace('\u2029', '\\u2029')
+    : x;
+};
+
+// data access functions
+
+var field_re = /\[(.*?)\]|[^.\[]+/g;
+
+u.field = function(f) {
+  return String(f).match(field_re).map(function(d) {
+    return d[0] !== '[' ? d :
+      d[1] !== "'" && d[1] !== '"' ? d.slice(1, -1) :
+      d.slice(2, -2).replace(/\\(["'])/g, '$1');
+  });
+};
+
+u.accessor = function(f) {
+  /* jshint evil: true */
+  return f==null || u.isFunction(f) ? f :
+    u.namedfunc(f, Function('x', 'return x[' + u.field(f).map(u.str).join('][') + '];'));
+};
+
+// short-cut for accessor
+u.$ = u.accessor;
+
+u.mutator = function(f) {
+  var s;
+  return u.isString(f) && (s=u.field(f)).length > 1 ?
+    function(x, v) {
+      for (var i=0; i<s.length-1; ++i) x = x[s[i]];
+      x[s[i]] = v;
+    } :
+    function(x, v) { x[f] = v; };
+};
+
+
+u.$func = function(name, op) {
+  return function(f) {
+    f = u.$(f) || u.identity;
+    var n = name + (u.name(f) ? '_'+u.name(f) : '');
+    return u.namedfunc(n, function(d) { return op(f(d)); });
+  };
+};
+
+u.$valid  = u.$func('valid', u.isValid);
+u.$length = u.$func('length', u.length);
+
+u.$in = function(f, values) {
+  f = u.$(f);
+  var map = u.isArray(values) ? u.toMap(values) : values;
+  return function(d) { return !!map[f(d)]; };
+};
+
+// comparison / sorting functions
+
+u.comparator = function(sort) {
+  var sign = [];
+  if (sort === undefined) sort = [];
+  sort = u.array(sort).map(function(f) {
+    var s = 1;
+    if      (f[0] === '-') { s = -1; f = f.slice(1); }
+    else if (f[0] === '+') { s = +1; f = f.slice(1); }
+    sign.push(s);
+    return u.accessor(f);
+  });
+  return function(a, b) {
+    var i, n, f, c;
+    for (i=0, n=sort.length; i<n; ++i) {
+      f = sort[i];
+      c = u.cmp(f(a), f(b));
+      if (c) return c * sign[i];
+    }
+    return 0;
+  };
+};
+
+u.cmp = function(a, b) {
+  return (a < b || a == null) && b != null ? -1 :
+    (a > b || b == null) && a != null ? 1 :
+    ((b = b instanceof Date ? +b : b),
+     (a = a instanceof Date ? +a : a)) !== a && b === b ? -1 :
+    b !== b && a === a ? 1 : 0;
+};
+
+u.numcmp = function(a, b) { return a - b; };
+
+u.stablesort = function(array, sortBy, keyFn) {
+  var indices = array.reduce(function(idx, v, i) {
+    return (idx[keyFn(v)] = i, idx);
+  }, {});
+
+  array.sort(function(a, b) {
+    var sa = sortBy(a),
+        sb = sortBy(b);
+    return sa < sb ? -1 : sa > sb ? 1
+         : (indices[keyFn(a)] - indices[keyFn(b)]);
+  });
+
+  return array;
+};
+
+// permutes an array using a Knuth shuffle
+u.permute = function(a) {
+  var m = a.length,
+      swap,
+      i;
+
+  while (m) {
+    i = Math.floor(Math.random() * m--);
+    swap = a[m];
+    a[m] = a[i];
+    a[i] = swap;
+  }
+};
+
+// string functions
+
+u.pad = function(s, length, pos, padchar) {
+  padchar = padchar || " ";
+  var d = length - s.length;
+  if (d <= 0) return s;
+  switch (pos) {
+    case 'left':
+      return strrep(d, padchar) + s;
+    case 'middle':
+    case 'center':
+      return strrep(Math.floor(d/2), padchar) +
+         s + strrep(Math.ceil(d/2), padchar);
+    default:
+      return s + strrep(d, padchar);
+  }
+};
+
+function strrep(n, str) {
+  var s = "", i;
+  for (i=0; i<n; ++i) s += str;
+  return s;
+}
+
+u.truncate = function(s, length, pos, word, ellipsis) {
+  var len = s.length;
+  if (len <= length) return s;
+  ellipsis = ellipsis !== undefined ? String(ellipsis) : '\u2026';
+  var l = Math.max(0, length - ellipsis.length);
+
+  switch (pos) {
+    case 'left':
+      return ellipsis + (word ? truncateOnWord(s,l,1) : s.slice(len-l));
+    case 'middle':
+    case 'center':
+      var l1 = Math.ceil(l/2), l2 = Math.floor(l/2);
+      return (word ? truncateOnWord(s,l1) : s.slice(0,l1)) +
+        ellipsis + (word ? truncateOnWord(s,l2,1) : s.slice(len-l2));
+    default:
+      return (word ? truncateOnWord(s,l) : s.slice(0,l)) + ellipsis;
+  }
+};
+
+function truncateOnWord(s, len, rev) {
+  var cnt = 0, tok = s.split(truncate_word_re);
+  if (rev) {
+    s = (tok = tok.reverse())
+      .filter(function(w) { cnt += w.length; return cnt <= len; })
+      .reverse();
+  } else {
+    s = tok.filter(function(w) { cnt += w.length; return cnt <= len; });
+  }
+  return s.length ? s.join('').trim() : tok[0].slice(0, len);
+}
+
+var truncate_word_re = /([\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u180E\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u2028\u2029\u3000\uFEFF])/;
+
+}).call(this,require("buffer").Buffer)
+},{"buffer":411}],344:[function(require,module,exports){
 var sg = require('vega-scenegraph').render,
     canvas = sg.canvas,
     svg = sg.svg.string,
@@ -60882,7 +62266,7 @@ prototype.initialize = function() {
 };
 
 module.exports = HeadlessView;
-},{"./View":320,"vega-scenegraph":278}],319:[function(require,module,exports){
+},{"./View":346,"vega-scenegraph":280}],345:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     ChangeSet = df.ChangeSet,
@@ -61045,7 +62429,7 @@ prototype.fire = function(cs) {
 };
 
 module.exports = Model;
-},{"../parse/expr":326,"../scene/GroupBuilder":342,"../scene/visit":347,"./config":321,"datalib":27,"vega-dataflow":215}],320:[function(require,module,exports){
+},{"../parse/expr":352,"../scene/GroupBuilder":368,"../scene/visit":373,"./config":347,"datalib":339,"vega-dataflow":215}],346:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -61537,7 +62921,7 @@ View.factory = function(model) {
 
 module.exports = View;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../parse/streams":337,"../scene/Encoder":341,"../scene/Transition":344,"./HeadlessView":318,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],321:[function(require,module,exports){
+},{"../parse/streams":363,"../scene/Encoder":367,"../scene/Transition":370,"./HeadlessView":344,"datalib":339,"vega-dataflow":215,"vega-logging":279,"vega-scenegraph":280}],347:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     config = {};
@@ -61580,7 +62964,7 @@ config.scene = {
 
 // default axis properties
 config.axis = {
-  orient: 'bottom',
+  layer: 'back',
   ticks: 10,
   padding: 3,
   axisColor: '#000',
@@ -61599,7 +62983,7 @@ config.axis = {
   titleFontWeight: 'bold',
   titleOffset: 'auto',
   titleOffsetAutoMin: 30,
-  titleOffsetAutoMax: Infinity,
+  titleOffsetAutoMax: 10000,
   titleOffsetAutoMargin: 4
 };
 
@@ -61655,7 +63039,7 @@ config.range = {
 
 module.exports = config;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],322:[function(require,module,exports){
+},{}],348:[function(require,module,exports){
 var dl = require('datalib'),
     parse = require('../parse'),
     Scale = require('../scene/Scale'),
@@ -61702,9 +63086,10 @@ module.exports = function(opt) {
 
   return schema;
 };
-},{"../parse":327,"../scene/Scale":343,"./config":321,"datalib":27}],323:[function(require,module,exports){
+},{"../parse":353,"../scene/Scale":369,"./config":347,"datalib":339}],349:[function(require,module,exports){
 var dl = require('datalib'),
-    axs = require('../scene/axis');
+    axs = require('../scene/axis'),
+    themeVal = require('../util/theme-val');
 
 var ORIENT = {
   "x":      "bottom",
@@ -61716,32 +63101,38 @@ var ORIENT = {
 };
 
 function parseAxes(model, spec, axes, group) {
-  var config = model.config();
+  var cfg = config(model);
   (spec || []).forEach(function(def, index) {
-    axes[index] = axes[index] || axs(model);
-    parseAxis(config, def, index, axes[index], group);
+    axes[index] = axes[index] || axs(model, cfg[def.type]);
+    parseAxis(cfg[def.type], def, index, axes[index], group);
   });
 }
 
 function parseAxis(config, def, index, axis, group) {
   // axis scale
+  var scale;
   if (def.scale !== undefined) {
-    axis.scale(group.scale(def.scale));
+    axis.scale(scale = group.scale(def.scale));
+  }
+
+  // grid by scaletype
+  var grid = config.grid;
+  if (dl.isObject(grid)) {
+    config.grid = grid[scale.type] !== undefined ? grid[scale.type] : grid.default;
   }
 
   // axis orientation
-  axis.orient(def.orient || ORIENT[def.type]);
+  axis.orient(themeVal(def, config, 'orient', ORIENT[def.type]));
   // axis offset
-  axis.offset(def.offset || 0);
+  axis.offset(themeVal(def, config, 'offset', 0));
   // axis layer
-  axis.layer(def.layer || "front");
+  axis.layer(themeVal(def, config, 'layer', 'front'));
   // axis grid lines
-  axis.grid(def.grid || false);
+  axis.grid(themeVal(def, config, 'grid', false));
   // axis title
   axis.title(def.title || null);
   // axis title offset
-  axis.titleOffset(def.titleOffset != null ?
-    def.titleOffset : config.axis.titleOffset);
+  axis.titleOffset(themeVal(def, config, 'titleOffset'));
   // axis values
   axis.tickValues(def.values || null);
   // axis label formatting
@@ -61749,26 +63140,23 @@ function parseAxis(config, def, index, axis, group) {
   axis.tickFormatType(def.formatType || null);
   // axis tick subdivision
   axis.tickSubdivide(def.subdivide || 0);
-  // axis tick padding
-  axis.tickPadding(def.tickPadding || config.axis.padding);
+  // axis tick padding (config.padding for backwards compatibility).
+  axis.tickPadding(themeVal(def, config, 'tickPadding', config.padding));
 
   // axis tick size(s)
-  var size = [];
-  if (def.tickSize !== undefined) {
-    for (var i=0; i<3; ++i) size.push(def.tickSize);
-  } else {
-    var ts = config.axis.tickSize;
-    size = [ts, ts, ts];
-  }
-  if (def.tickSizeMajor != null) size[0] = def.tickSizeMajor;
-  if (def.tickSizeMinor != null) size[1] = def.tickSizeMinor;
-  if (def.tickSizeEnd   != null) size[2] = def.tickSizeEnd;
+  var ts = themeVal(def, config, 'tickSize'),
+      size = [ts, ts, ts];
+
+  size[0] = themeVal(def, config, 'tickSizeMajor', size[0]);
+  size[1] = themeVal(def, config, 'tickSizeMinor', size[1]);
+  size[2] = themeVal(def, config, 'tickSizeEnd', size[2]);
+
   if (size.length) {
     axis.tickSize.apply(axis, size);
   }
 
   // axis tick count
-  axis.tickCount(def.ticks || config.axis.ticks);
+  axis.tickCount(themeVal(def, config, 'ticks'));
 
   // style properties
   var p = def.properties;
@@ -61787,8 +63175,18 @@ function parseAxis(config, def, index, axis, group) {
   axis.domainProperties(p && p.axis || {});
 }
 
+function config(model) {
+  var cfg  = model.config(),
+      axis = cfg.axis;
+
+  return {
+    x: dl.extend(dl.duplicate(axis), cfg.axis_x),
+    y: dl.extend(dl.duplicate(axis), cfg.axis_y)
+  };
+}
+
 module.exports = parseAxes;
-},{"../scene/axis":345,"datalib":27}],324:[function(require,module,exports){
+},{"../scene/axis":371,"../util/theme-val":405,"datalib":339}],350:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null);
 
@@ -61801,7 +63199,7 @@ function parseBg(bg) {
 
 module.exports = parseBg;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],325:[function(require,module,exports){
+},{}],351:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     parseTransforms = require('./transforms'),
@@ -61870,11 +63268,11 @@ parseData.datasource = function(model, d) {
 };
 
 module.exports = parseData;
-},{"./modify":331,"./transforms":338,"datalib":27,"vega-logging":277}],326:[function(require,module,exports){
+},{"./modify":357,"./transforms":364,"datalib":339,"vega-logging":279}],352:[function(require,module,exports){
 var dl = require('datalib'),
     template = dl.template,
     expr = require('vega-expression'),
-    args = ['datum', 'event', 'signals'];
+    args = ['datum', 'parent', 'event', 'signals'];
 
 var compile = expr.compiler(args, {
   idWhiteList: args,
@@ -61995,7 +63393,7 @@ function wrap(model) {
 wrap.scale = scale;
 wrap.codegen = compile.codegen;
 module.exports = wrap;
-},{"datalib":27,"vega-expression":220}],327:[function(require,module,exports){
+},{"datalib":339,"vega-expression":220}],353:[function(require,module,exports){
 module.exports = {
   axes:       require('./axes'),
   background: require('./background'),
@@ -62014,7 +63412,7 @@ module.exports = {
   streams:    require('./streams'),
   transforms: require('./transforms')
 };
-},{"./axes":323,"./background":324,"./data":325,"./expr":326,"./legends":328,"./mark":329,"./marks":330,"./modify":331,"./padding":332,"./predicates":333,"./properties":334,"./signals":335,"./spec":336,"./streams":337,"./transforms":338,"vega-event-selector":216}],328:[function(require,module,exports){
+},{"./axes":349,"./background":350,"./data":351,"./expr":352,"./legends":354,"./mark":355,"./marks":356,"./modify":357,"./padding":358,"./predicates":359,"./properties":360,"./signals":361,"./spec":362,"./streams":363,"./transforms":364,"vega-event-selector":216}],354:[function(require,module,exports){
 var lgnd = require('../scene/legend');
 
 function parseLegends(model, spec, legends, group) {
@@ -62026,10 +63424,11 @@ function parseLegends(model, spec, legends, group) {
 
 function parseLegend(def, index, legend, group) {
   // legend scales
-  legend.size  (def.size   ? group.scale(def.size)   : null);
-  legend.shape (def.shape  ? group.scale(def.shape)  : null);
-  legend.fill  (def.fill   ? group.scale(def.fill)   : null);
-  legend.stroke(def.stroke ? group.scale(def.stroke) : null);
+  legend.size   (def.size    ? group.scale(def.size)    : null);
+  legend.shape  (def.shape   ? group.scale(def.shape)   : null);
+  legend.fill   (def.fill    ? group.scale(def.fill)    : null);
+  legend.stroke (def.stroke  ? group.scale(def.stroke)  : null);
+  legend.opacity(def.opacity ? group.scale(def.opacity) : null);
 
   // legend orientation
   if (def.orient) legend.orient(def.orient);
@@ -62057,13 +63456,35 @@ function parseLegend(def, index, legend, group) {
 }
 
 module.exports = parseLegends;
-},{"../scene/legend":346}],329:[function(require,module,exports){
+},{"../scene/legend":372}],355:[function(require,module,exports){
 var dl = require('datalib'),
     parseProperties = require('./properties');
 
-function parseMark(model, mark) {
-  var props = mark.properties,
-      group = mark.marks;
+function parseMark(model, mark, applyDefaults) {
+  var props = mark.properties || (applyDefaults && (mark.properties = {})),
+      enter = props.enter || (applyDefaults && (props.enter = {})),
+      group = mark.marks,
+      config = model.config().marks || {};
+
+  if (applyDefaults) {
+    // for scatter plots, set symbol size specified in config if not in spec
+    if (mark.type === 'symbol' && !enter.size && config.symbolSize) {
+        enter.size = {value: config.symbolSize};
+    }
+
+    // Themes define a default "color" that maps to fill/stroke based on mark type.
+    var colorMap = {
+      arc: 'fill', area: 'fill', rect: 'fill', symbol: 'fill', text: 'fill',
+      line: 'stroke', path: 'stroke', rule: 'stroke'
+    };
+
+    // Set default mark color if no color is given in spec, and only do so for
+    // user-defined marks (not axis/legend marks).
+    var colorProp = colorMap[mark.type];
+    if (!enter[colorProp] && config.color) {
+      enter[colorProp] = {value: config.color};
+    }
+  }
 
   // parse mark property definitions
   dl.keys(props).forEach(function(k) {
@@ -62077,14 +63498,14 @@ function parseMark(model, mark) {
 
   // recurse if group type
   if (group) {
-    mark.marks = group.map(function(g) { return parseMark(model, g); });
+    mark.marks = group.map(function(g) { return parseMark(model, g, true); });
   }
 
   return mark;
 }
 
 module.exports = parseMark;
-},{"./properties":334,"datalib":27}],330:[function(require,module,exports){
+},{"./properties":360,"datalib":339}],356:[function(require,module,exports){
 var parseMark = require('./mark'),
     parseProperties = require('./properties');
 
@@ -62097,7 +63518,7 @@ function parseRootMark(model, spec, width, height) {
     scales:     spec.scales  || [],
     axes:       spec.axes    || [],
     legends:    spec.legends || [],
-    marks:      (spec.marks || []).map(function(m) { return parseMark(model, m); })
+    marks:      (spec.marks || []).map(function(m) { return parseMark(model, m, true); })
   };
 }
 
@@ -62125,7 +63546,7 @@ function defaults(spec, model) {
 }
 
 module.exports = parseRootMark;
-},{"./mark":329,"./properties":334}],331:[function(require,module,exports){
+},{"./mark":355,"./properties":360}],357:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     df = require('vega-dataflow'),
@@ -62276,7 +63697,7 @@ function parseModify(model, def, ds) {
 }
 
 module.exports = parseModify;
-},{"datalib":27,"vega-dataflow":215,"vega-logging":277}],332:[function(require,module,exports){
+},{"datalib":339,"vega-dataflow":215,"vega-logging":279}],358:[function(require,module,exports){
 var dl = require('datalib');
 
 function parsePadding(pad) {
@@ -62287,7 +63708,7 @@ function parsePadding(pad) {
 }
 
 module.exports = parsePadding;
-},{"datalib":27}],333:[function(require,module,exports){
+},{"datalib":339}],359:[function(require,module,exports){
 var dl = require('datalib');
 
 var types = {
@@ -62482,7 +63903,7 @@ function parseScale(spec, ops) {
 }
 
 module.exports = parsePredicates;
-},{"datalib":27}],334:[function(require,module,exports){
+},{"datalib":339}],360:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -62525,6 +63946,8 @@ function properties(model, mark, spec) {
     var k = (r.parent ? "parent_" : "group_")+r.level;
     deps._nRefs[k] = r;
   }
+
+  parseShape(model, config, spec);
 
   for (i=0, len=names.length; i<len; ++i) {
     ref = spec[name = names[i]];
@@ -62656,6 +64079,28 @@ function hasPath(mark, vars) {
        vars.tension || vars.interpolate));
 }
 
+var hb = /{{(.*?)}}/g;
+function parseShape(model, config, spec) {
+  var shape = spec.shape,
+      last = 0,
+      value, match;
+
+  if (shape && (value = shape.value)) {
+    if (config.shape && config.shape[value]) {
+      value = config.shape[value];
+    }
+
+    // Parse handlebars
+    shape = '';
+    while ((match = hb.exec(value)) !== null) {
+      shape += value.substring(last, match.index);
+      shape += model.expr(match[1]).fn();
+      last = hb.lastIndex;
+    }
+    spec.shape.value = shape + value.substring(last);
+  }
+}
+
 function rule(model, name, rules, exprs) {
   var config  = model.config(),
       deps = dependencies(),
@@ -62672,7 +64117,7 @@ function rule(model, name, rules, exprs) {
       deps.signals.push.apply(deps.signals, exprFn.globals);
       deps.data.push.apply(deps.data, exprFn.dataSources);
 
-      code += "if (exprs[" + exprs.length + "](item.datum, null)) {" +
+      code += "if (exprs[" + exprs.length + "](item.datum, item.mark.group.datum, null)) {" +
           "\n    d += set(o, "+dl.str(name)+", " +ref.val+");";
       code += rules[i+1] ? "\n  } else " : "  }";
 
@@ -62868,7 +64313,7 @@ function scaleRef(ref) {
 
 module.exports = properties;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"datalib":27,"vega-dataflow":215,"vega-logging":277}],335:[function(require,module,exports){
+},{"datalib":339,"vega-dataflow":215,"vega-logging":279}],361:[function(require,module,exports){
 var dl = require('datalib'),
     expr = require('./expr'),
     SIGNALS = require('vega-dataflow').Dependencies.SIGNALS;
@@ -62936,9 +64381,10 @@ parseSignals.scale = function scale(model, spec, value, datum, evt) {
 };
 
 module.exports = parseSignals;
-},{"./expr":326,"datalib":27,"vega-dataflow":215}],336:[function(require,module,exports){
+},{"./expr":352,"datalib":339,"vega-dataflow":215}],362:[function(require,module,exports){
 var dl  = require('datalib'),
     log = require('vega-logging'),
+    themeVal = require('../util/theme-val'),
     Model = require('../core/Model'),
     View  = require('../core/View');
 
@@ -62955,20 +64401,23 @@ var dl  = require('datalib'),
       argidx = 2,
       cb = arguments[arglen-1],
       model = new Model(),
-      viewFactory = View.factory;
+      viewFactory = View.factory,
+      config;
 
   if (arglen > argidx && dl.isFunction(arguments[arglen - argidx])) {
     viewFactory = arguments[arglen - argidx];
     ++argidx;
   }
+
   if (arglen > argidx && dl.isObject(arguments[arglen - argidx])) {
     model.config(arguments[arglen - argidx]);
   }
 
+  config = model.config();
   if (dl.isObject(spec)) {
     parse(spec);
   } else if (dl.isString(spec)) {
-    var opts = dl.extend({url: spec}, model.config().load);
+    var opts = dl.extend({url: spec}, config.load);
     dl.json(opts, function(err, spec) {
       if (err) done('SPECIFICATION LOAD FAILED: ' + err);
       else parse(spec);
@@ -62983,9 +64432,10 @@ var dl  = require('datalib'),
       spec = dl.duplicate(spec);
 
       var parsers = require('./'),
-          width   = spec.width || 500,
-          height  = spec.height || 500,
-          padding = parsers.padding(spec.padding);
+          width   = themeVal(spec, config, 'width', 500),
+          height  = themeVal(spec, config, 'height', 500),
+          padding = parsers.padding(themeVal(spec, config, 'padding')),
+          background = themeVal(spec, config, 'background');
 
       // create signals for width, height, padding, and cursor
       model.signal('width', width);
@@ -62999,7 +64449,7 @@ var dl  = require('datalib'),
         height:     height,
         padding:    padding,
         viewport:   spec.viewport || null,
-        background: parsers.background(spec.background),
+        background: parsers.background(background),
         signals:    parsers.signals(model, spec.signals),
         predicates: parsers.predicates(model, spec.predicates),
         marks:      parsers.marks(model, spec, width, height),
@@ -63041,7 +64491,7 @@ var dl  = require('datalib'),
 }
 
 module.exports = parseSpec;
-},{"../core/Model":319,"../core/View":320,"./":327,"datalib":27,"vega-logging":277}],337:[function(require,module,exports){
+},{"../core/Model":345,"../core/View":346,"../util/theme-val":405,"./":353,"datalib":339,"vega-logging":279}],363:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -63054,7 +64504,12 @@ var GATEKEEPER = '_vgGATEKEEPER',
 
 var vgEvent = {
   getItem: function() { return this.item; },
-  getGroup: function(name) { return name ? this.name[name] : this.group; },
+  getGroup: function(name) {
+    var group = name ? this.name[name] : this.group,
+        mark = group && group.mark,
+        interactive = mark && (mark.interactive || mark.interactive === undefined);
+    return interactive ? group : {};
+  },
   getXY: function(item) {
       var p = {x: this.x, y: this.y};
       if (typeof item === 'string') {
@@ -63097,7 +64552,7 @@ function parseStreams(view) {
     view.on(type, function(evt, item) {
       evt.preventDefault(); // stop text selection
       extendEvent(evt, item);
-      fire(internal, type, (item && item.datum) || {}, evt);
+      fire(internal, type, (item && item.datum) || {}, (item && item.mark && item.mark.group && item.mark.group.datum) || {}, evt);
     });
   });
 
@@ -63112,7 +64567,7 @@ function parseStreams(view) {
 
     function handler(evt) {
       extendEvent(evt);
-      fire(external, type, d3.select(this).datum(), evt);
+      fire(external, type, d3.select(this).datum(), this.parentNode && d3.select(this.parentNode).datum(), evt);
     }
 
     for (var i=0; i<elt.length; ++i) {
@@ -63165,7 +64620,7 @@ function parseStreams(view) {
     evt.vg.y = mouse[1] - pad.top;
   }
 
-  function fire(registry, type, datum, evt) {
+  function fire(registry, type, datum, parent, evt) {
     var handlers = registry.handlers[type],
         node = registry.nodes[type],
         cs = df.ChangeSet.create(null, true),
@@ -63173,7 +64628,7 @@ function parseStreams(view) {
         val, i, n, h;
 
     function invoke(f) {
-      return !f.fn(datum, evt);
+      return !f.fn(datum, parent, evt);
     }
 
     for (i=0, n=handlers.length; i<n; ++i) {
@@ -63181,7 +64636,7 @@ function parseStreams(view) {
       filtered = h.filters.some(invoke);
       if (filtered) continue;
 
-      val = h.exp.fn(datum, evt);
+      val = h.exp.fn(datum, parent, evt);
       if (h.spec.scale) {
         val = parseSignals.scale(model, h.spec, val, datum, evt);
       }
@@ -63278,7 +64733,7 @@ function parseStreams(view) {
 
 module.exports = parseStreams;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./signals":335,"datalib":27,"vega-dataflow":215,"vega-event-selector":216}],338:[function(require,module,exports){
+},{"./signals":361,"datalib":339,"vega-dataflow":215,"vega-event-selector":216}],364:[function(require,module,exports){
 var dl = require('datalib'),
     transforms = require('../transforms/index');
 
@@ -63302,7 +64757,7 @@ function parseTransforms(model, def) {
 }
 
 module.exports = parseTransforms;
-},{"../transforms/index":375,"datalib":27}],339:[function(require,module,exports){
+},{"../transforms/index":401,"datalib":339}],365:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     scene = require('vega-scenegraph'),
@@ -63371,7 +64826,7 @@ proto.evaluate = function(input) {
 };
 
 module.exports = Bounder;
-},{"./Encoder":341,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],340:[function(require,module,exports){
+},{"./Encoder":367,"datalib":339,"vega-dataflow":215,"vega-logging":279,"vega-scenegraph":280}],366:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     Item = require('vega-scenegraph').Item,
@@ -63679,7 +65134,7 @@ function keyFunction(key) {
 }
 
 module.exports = Builder;
-},{"../parse/data":325,"./Bounder":339,"./Encoder":341,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],341:[function(require,module,exports){
+},{"../parse/data":351,"./Bounder":365,"./Encoder":367,"datalib":339,"vega-dataflow":215,"vega-logging":279,"vega-scenegraph":280}],367:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     df = require('vega-dataflow'),
@@ -63866,7 +65321,7 @@ Encoder.update = function(graph, trans, request, items, dirty) {
 };
 
 module.exports = Encoder;
-},{"./Builder":340,"datalib":27,"vega-dataflow":215,"vega-logging":277,"vega-scenegraph":278}],342:[function(require,module,exports){
+},{"./Builder":366,"datalib":339,"vega-dataflow":215,"vega-logging":279,"vega-scenegraph":280}],368:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     Node  = df.Node, // jshint ignore:line
@@ -63913,11 +65368,13 @@ proto.init = function(graph, def) {
   this._recursor.evaluate = recurse.bind(this);
 
   var scales = (def.axes||[]).reduce(function(acc, x) {
-    return (acc[x.scale] = 1, acc);
+    acc[x.scale] = 1;
+    return acc;
   }, {});
 
   scales = (def.legends||[]).reduce(function(acc, x) {
-    return (acc[x.size || x.shape || x.fill || x.stroke], acc);
+    acc[x.size || x.shape || x.fill || x.stroke || x.opacity] = 1;
+    return acc;
   }, scales);
 
   this._recursor.dependency(Deps.SCALES, dl.keys(scales));
@@ -63942,8 +65399,21 @@ proto.evaluate = function() {
       return scales[s].reevaluate(output);
     });
 
+    if (!fullUpdate && this._def.axes) {
+      fullUpdate = this._def.axes.reduce(function(acc, a) {
+        return acc || output.scales[a.scale];
+      }, false);
+    }
+
+    if (!fullUpdate && this._def.legends) {
+      fullUpdate = this._def.legends.reduce(function(acc, l) {
+        return acc || output.scales[l.size || l.shape || l.fill || l.stroke];
+      }, false);
+    }
+
     if (fullUpdate) {
-      output.mod = output.mod.concat(Tuple.idFilter(items, output.mod));
+      output.mod = output.mod.concat(Tuple.idFilter(items,
+          output.mod, output.add, output.rem));
     }
   }
 
@@ -64033,7 +65503,7 @@ function recurse(input) {
   }
 
   function updateLegend(l) {
-    var scale = l.size() || l.shape() || l.fill() || l.stroke();
+    var scale = l.size() || l.shape() || l.fill() || l.stroke() || l.opacity();
     if (!input.scales[scale.scaleName]) return;
     l.reset().def();
   }
@@ -64142,7 +65612,7 @@ function buildLegends(input, group) {
 
   parseLegends(this._graph, this._def.legends, legends, group);
   legends.forEach(function(l, i) {
-    var scale = l.size() || l.shape() || l.fill() || l.stroke(),
+    var scale = l.size() || l.shape() || l.fill() || l.stroke() || l.opacity(),
         def = l.def(),
         b = null;
 
@@ -64155,7 +65625,7 @@ function buildLegends(input, group) {
 }
 
 module.exports = GroupBuilder;
-},{"../parse/axes":323,"../parse/legends":328,"./Builder":340,"./Scale":343,"datalib":27,"vega-dataflow":215,"vega-logging":277}],343:[function(require,module,exports){
+},{"../parse/axes":349,"../parse/legends":354,"./Builder":366,"./Scale":369,"datalib":339,"vega-dataflow":215,"vega-logging":279}],369:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -64271,9 +65741,9 @@ function ordinal(scale, rng, group) {
       prev = scale._prev,
       dataDrivenRange = false,
       pad = signal.call(this, def.padding) || 0,
-      outer = def.outerPadding == null ? pad : signal.call(this, def.outerPadding),
+      outer  = def.outerPadding == null ? pad : signal.call(this, def.outerPadding),
       points = def.points && signal.call(this, def.points),
-      round = signal.call(this, def.round) || def.round == null,
+      round  = signal.call(this, def.round) || def.round == null,
       domain, str, spatial=true;
 
   // range pre-processing for data-driven ranges
@@ -64666,7 +66136,7 @@ function range(group) {
 
 module.exports = Scale;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../transforms/Aggregate":348,"datalib":27,"vega-dataflow":215,"vega-logging":277}],344:[function(require,module,exports){
+},{"../transforms/Aggregate":374,"datalib":339,"vega-dataflow":215,"vega-logging":279}],370:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     bound = require('vega-scenegraph').bound,
@@ -64772,7 +66242,7 @@ function step(elapsed) {
 
 module.exports = Transition;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Builder":340,"vega-dataflow":215,"vega-scenegraph":278}],345:[function(require,module,exports){
+},{"./Builder":366,"vega-dataflow":215,"vega-scenegraph":280}],371:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     parseMark = require('../parse/mark'),
@@ -64781,9 +66251,8 @@ var dl = require('datalib'),
 var axisBounds = new (require('vega-scenegraph').Bounds)();
 var ORDINAL = 'ordinal';
 
-function axs(model) {
+function axs(model, config) {
   var scale,
-      config = model.config().axis,
       orient = config.orient,
       offset = 0,
       titleOffset = config.titleOffset,
@@ -64794,7 +66263,7 @@ function axs(model) {
       tickMajorSize = config.tickSize,
       tickMinorSize = config.tickSize,
       tickEndSize = config.tickSize,
-      tickPadding = config.padding,
+      tickPadding = config.tickPadding || config.padding,
       tickValues = null,
       tickFormatString = null,
       tickFormatType = null,
@@ -64904,11 +66373,14 @@ function axs(model) {
     dl.extend(m.title, axisTitle(config));
     m.gridLines.properties.enter.stroke = {value: config.gridColor};
     m.gridLines.properties.enter.strokeOpacity = {value: config.gridOpacity};
+    m.gridLines.properties.enter.strokeWidth = {value: config.gridWidth};
+    m.gridLines.properties.enter.strokeDash = {value: config.gridDash};
 
     // extend axis marks based on axis orientation
-    axisTicksExtend(orient, m.gridLines, oldScale, newScale, Infinity, offset);
-    axisTicksExtend(orient, m.majorTicks, oldScale, newScale, tickMajorSize);
-    axisTicksExtend(orient, m.minorTicks, oldScale, newScale, tickMinorSize);
+    axisTicksExtend(orient, m.gridLines, oldScale, newScale, Infinity, scale, config, offset);
+    axisTicksExtend(orient, m.majorTicks, oldScale, newScale, tickMajorSize, scale, config);
+    axisTicksExtend(orient, m.minorTicks, oldScale, newScale, tickMinorSize, scale, config);
+
     axisLabelExtend(orient, m.tickLabels, oldScale, newScale, tickMajorSize, tickPadding);
 
     axisDomainExtend(orient, m.domain, range, tickEndSize);
@@ -65173,7 +66645,7 @@ function axisLabelExtend(orient, labels, oldScale, newScale, size, pad) {
   }
 }
 
-function axisTicksExtend(orient, ticks, oldScale, newScale, size, offset) {
+function axisTicksExtend(orient, ticks, oldRef, newRef, size, scale, config, offset) {
   var sign = (orient === 'left' || orient === 'top') ? -1 : 1;
   if (size === Infinity) {
     size = (orient === 'top' || orient === 'bottom') ?
@@ -65182,33 +66654,43 @@ function axisTicksExtend(orient, ticks, oldScale, newScale, size, offset) {
   } else {
     size = {value: sign * size, offset: offset};
   }
+
+  // Update offset of tick placement to be in between ordinal marks
+  // instead of directly aligned with.
+  if (config.tickPlacement === 'between' && scale.type === ORDINAL) {
+    var rng = scale.range(),
+        tickOffset = 0.5 + (scale.rangeBand() || (rng[1] - rng[0]) / 2);
+    newRef = oldRef = dl.duplicate(newRef);
+    newRef.offset = oldRef.offset = tickOffset;
+  }
+
   if (orient === 'top' || orient === 'bottom') {
     dl.extend(ticks.properties.enter, {
-      x:  oldScale,
+      x:  oldRef,
       y:  {value: 0},
       y2: size
     });
     dl.extend(ticks.properties.update, {
-      x:  newScale,
+      x:  newRef,
       y:  {value: 0},
       y2: size
     });
     dl.extend(ticks.properties.exit, {
-      x:  newScale,
+      x:  newRef,
     });
   } else {
     dl.extend(ticks.properties.enter, {
       x:  {value: 0},
       x2: size,
-      y:  oldScale
+      y:  oldRef
     });
     dl.extend(ticks.properties.update, {
       x:  {value: 0},
       x2: size,
-      y:  newScale
+      y:  newRef
     });
     dl.extend(ticks.properties.exit, {
-      y:  newScale,
+      y:  newRef,
     });
   }
 }
@@ -65350,7 +66832,7 @@ function axisDomain(config) {
 }
 
 module.exports = axs;
-},{"../parse/mark":329,"../util":378,"datalib":27,"vega-dataflow":215,"vega-scenegraph":278}],346:[function(require,module,exports){
+},{"../parse/mark":355,"../util":404,"datalib":339,"vega-dataflow":215,"vega-scenegraph":280}],372:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -65364,6 +66846,7 @@ function lgnd(model) {
       shape = null,
       fill  = null,
       stroke  = null,
+      opacity = null,
       spacing = null,
       values  = null,
       formatString = null,
@@ -65393,7 +66876,7 @@ function lgnd(model) {
   function ingest(d, i) { return {data: d, index: i}; }
 
   legend.def = function() {
-    var scale = size || shape || fill || stroke;
+    var scale = size || shape || fill || stroke || opacity;
 
     if (!legendDef.type) {
       legendDef = (scale===fill || scale===stroke) && !discrete(scale.type) ?
@@ -65412,7 +66895,7 @@ function lgnd(model) {
   }
 
   function ordinalDef(scale) {
-    var def = o_legend_def(size, shape, fill, stroke);
+    var def = o_legend_def(size, shape, fill, stroke, opacity);
 
     // generate data
     var data = (values == null ?
@@ -65470,14 +66953,14 @@ function lgnd(model) {
     return def;
   }
 
-  function o_legend_def(size, shape, fill, stroke) {
+  function o_legend_def(size, shape, fill, stroke, opacity) {
     // setup legend marks
     var titles  = dl.extend(m.titles, legendTitle(config)),
         symbols = dl.extend(m.symbols, legendSymbols(config)),
         labels  = dl.extend(m.labels, vLegendLabels(config));
 
     // extend legend marks
-    legendSymbolExtend(symbols, size, shape, fill, stroke);
+    legendSymbolExtend(symbols, size, shape, fill, stroke, opacity);
 
     // add / override custom style properties
     dl.extend(titles.properties.update,  titleStyle);
@@ -65498,7 +66981,7 @@ function lgnd(model) {
       properties: {
         enter: parseProperties(model, 'group', legendStyle),
         legendPosition: {
-          encode: legendPosition,
+          encode: legendPosition.bind(null, config),
           signals: [], scales:[], data: [], fields: []
         }
       }
@@ -65600,7 +67083,7 @@ function lgnd(model) {
       properties: {
         enter: parseProperties(model, 'group', legendStyle),
         legendPosition: {
-          encode: legendPosition,
+          encode: legendPosition.bind(null, config),
           signals: [], scales: [], data: [], fields: []
         }
       }
@@ -65631,6 +67114,12 @@ function lgnd(model) {
   legend.stroke = function(x) {
     if (!arguments.length) return stroke;
     if (stroke !== x) { stroke = x; reset(); }
+    return legend;
+  };
+
+  legend.opacity = function(x) {
+    if (!arguments.length) return opacity;
+    if (opacity !== x) { opacity = x; reset(); }
     return legend;
   };
 
@@ -65720,9 +67209,16 @@ function lgnd(model) {
   return legend;
 }
 
-var LEGEND_ORIENT = {left: 'x1', right: 'x2'};
+var LEGEND_ORIENT = {
+  'left': 'x1',
+  'right': 'x2',
+  'top-left': 'x1',
+  'top-right': 'x2',
+  'bottom-left': 'x1',
+  'bottom-right': 'x2'
+};
 
-function legendPosition(item, group, trans, db, signals, predicates) {
+function legendPosition(config, item, group, trans, db, signals, predicates) {
   var o = trans ? {} : item, i,
       def = item.mark.def,
       offset = def.offset,
@@ -65735,24 +67231,61 @@ function legendPosition(item, group, trans, db, signals, predicates) {
         (group._legendPositions = {right: 0.5, left: 0.5});
 
   o.x = 0.5;
+  o.y = 0.5;
   o.width = lw;
-  o.y = pos[orient];
-  pos[orient] += (o.height = lh) + def.margin;
+  o.height = lh;
 
-  // Calculate axis offset. 
-  var axes  = group.axes, 
-      items = group.axisItems,
-      bound = LEGEND_ORIENT[orient];
-  for (i=0; i<axes.length; ++i) {
-    if (axes[i].orient() === orient) {
-      ao = Math.max(ao, Math.abs(items[i].bounds[bound]));
+  if (orient === 'left' || orient === 'right') {
+    o.y = pos[orient];
+    pos[orient] += lh + def.margin;
+
+    // Calculate axis offset.
+    var axes  = group.axes,
+        items = group.axisItems,
+        bound = LEGEND_ORIENT[orient];
+    for (i=0; i<axes.length; ++i) {
+      if (axes[i].orient() === orient) {
+        ao = Math.max(ao, Math.abs(items[i].bounds[bound]));
+      }
     }
   }
 
-  if (orient === 'left') {
-    o.x -= ao + offset + lw;
-  } else {
-    o.x += ao + offset;
+  switch (orient) {
+    case 'left':
+      o.x -= ao + offset + lw;
+      break;
+    case 'right':
+      o.x += ao + offset;
+      break;
+    case 'top-left':
+      o.x += offset;
+      o.y += offset;
+      break;
+    case 'top-right':
+      o.x += group.width - lw - offset;
+      o.y += offset;
+      break;
+    case 'bottom-left':
+      o.x += offset;
+      o.y += group.height - lh - offset;
+      break;
+    case 'bottom-right':
+      o.x += group.width - lw - offset;
+      o.y += group.height - lh - offset;
+      break;
+  }
+
+  var baseline = config.baseline,
+      totalHeight = 0;
+  for (i=0; i<group.legendItems.length; i++) {
+    var currItem = group.legendItems[i];
+    totalHeight += currItem.bounds.height() + (item.height ? 0 : pad);
+  }
+
+  if (baseline === 'middle') {
+    o.y += offset + (group.height / 2) - (totalHeight / 2);
+  } else if (baseline === 'bottom') {
+    o.y += offset + group.height - totalHeight;
   }
 
   if (trans) trans.interpolate(item, o);
@@ -65761,13 +67294,14 @@ function legendPosition(item, group, trans, db, signals, predicates) {
   return true;
 }
 
-function legendSymbolExtend(mark, size, shape, fill, stroke) {
+function legendSymbolExtend(mark, size, shape, fill, stroke, opacity) {
   var e = mark.properties.enter,
       u = mark.properties.update;
-  if (size)   e.size   = u.size   = {scale: size.scaleName,   field: 'data'};
-  if (shape)  e.shape  = u.shape  = {scale: shape.scaleName,  field: 'data'};
-  if (fill)   e.fill   = u.fill   = {scale: fill.scaleName,   field: 'data'};
-  if (stroke) e.stroke = u.stroke = {scale: stroke.scaleName, field: 'data'};
+  if (size)    e.size    = u.size    = {scale: size.scaleName,   field: 'data'};
+  if (shape)   e.shape   = u.shape   = {scale: shape.scaleName,  field: 'data'};
+  if (fill)    e.fill    = u.fill    = {scale: fill.scaleName,   field: 'data'};
+  if (stroke)  e.stroke  = u.stroke  = {scale: stroke.scaleName, field: 'data'};
+  if (opacity) u.opacity = {scale: opacity.scaleName, field: 'data'};
 }
 
 function legendTitle(config) {
@@ -65899,7 +67433,7 @@ function hLegendLabels(config) {
 
 module.exports = lgnd;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../parse/mark":329,"../parse/properties":334,"../util":378,"datalib":27,"vega-scenegraph":278}],347:[function(require,module,exports){
+},{"../parse/mark":355,"../parse/properties":360,"../util":404,"datalib":339,"vega-scenegraph":280}],373:[function(require,module,exports){
 module.exports = function visit(node, func) {
   var i, n, s, m, items;
   if (func(node)) return true;
@@ -65913,7 +67447,7 @@ module.exports = function visit(node, func) {
     }
   }
 };
-},{}],348:[function(require,module,exports){
+},{}],374:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     log = require('vega-logging'),
@@ -66126,7 +67660,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Aggregate;
-},{"./Facetor":354,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],349:[function(require,module,exports){
+},{"./Facetor":380,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],375:[function(require,module,exports){
 var Base = require('./Transform').prototype;
 
 function BatchTransform() {
@@ -66151,7 +67685,7 @@ prototype.batchTransform = function(/* input, data, reset */) {
 };
 
 module.exports = BatchTransform;
-},{"./Transform":370}],350:[function(require,module,exports){
+},{"./Transform":396}],376:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -66236,7 +67770,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Bin;
-},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],351:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],377:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Tuple = df.Tuple,
     log = require('vega-logging'),
@@ -66361,7 +67895,7 @@ prototype._rem = function(tuples, get) {
 };
 
 module.exports = CountPattern;
-},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],352:[function(require,module,exports){
+},{"./Transform":396,"vega-dataflow":215,"vega-logging":279}],378:[function(require,module,exports){
 var dl = require('datalib'),
     df = require('vega-dataflow'),
     ChangeSet = df.ChangeSet,
@@ -66565,7 +68099,7 @@ prototype.batchTransform = function(input, data, reset) {
 };
 
 module.exports = Cross;
-},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],353:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],379:[function(require,module,exports){
 var Transform = require('./Transform'),
     Aggregate = require('./Aggregate');
 
@@ -66612,7 +68146,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Facet;
-},{"../parse/transforms":338,"./Aggregate":348,"./Transform":370}],354:[function(require,module,exports){
+},{"../parse/transforms":364,"./Aggregate":374,"./Transform":396}],380:[function(require,module,exports){
 var dl = require('datalib'),
     Aggregator = dl.Aggregator,
     Base = Aggregator.prototype,
@@ -66711,7 +68245,7 @@ prototype._on_keep = function(cell) {
 };
 
 module.exports = Facetor;
-},{"datalib":27,"vega-dataflow":215,"vega-logging":277}],355:[function(require,module,exports){
+},{"datalib":339,"vega-dataflow":215,"vega-logging":279}],381:[function(require,module,exports){
 var df = require('vega-dataflow'),
     log = require('vega-logging'),
     Transform = require('./Transform');
@@ -66764,7 +68298,7 @@ prototype.transform = function(input) {
 };
 
 module.exports = Filter;
-},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],356:[function(require,module,exports){
+},{"./Transform":396,"vega-dataflow":215,"vega-logging":279}],382:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Tuple = df.Tuple,
     log = require('vega-logging'),
@@ -66836,7 +68370,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Fold;
-},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],357:[function(require,module,exports){
+},{"./Transform":396,"vega-dataflow":215,"vega-logging":279}],383:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     df = require('vega-dataflow'),
@@ -67045,7 +68579,7 @@ prototype.update = function(active) {
 
 module.exports = Force;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Transform":370,"./screen":376,"vega-dataflow":215,"vega-logging":277}],358:[function(require,module,exports){
+},{"./Transform":396,"./screen":402,"vega-dataflow":215,"vega-logging":279}],384:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Tuple = df.Tuple,
     log = require('vega-logging'),
@@ -67068,10 +68602,12 @@ prototype.transform = function(input) {
   log.debug(input, ['formulating']);
 
   var field = this.param('field'),
-      expr = this.param('expr');
+      expr = this.param('expr'),
+      updated = false;
 
   function set(x) {
     Tuple.set(x, field, expr(x));
+    updated = true;
   }
 
   input.add.forEach(set);
@@ -67080,12 +68616,12 @@ prototype.transform = function(input) {
     input.mod.forEach(set);
   }
 
-  input.fields[field] = 1;
+  if (updated) input.fields[field] = 1;
   return input;
 };
 
 module.exports = Formula;
-},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],359:[function(require,module,exports){
+},{"./Transform":396,"vega-dataflow":215,"vega-logging":279}],385:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -67175,7 +68711,7 @@ prototype.transform = function(input) {
 
 module.exports = Geo;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow":215,"vega-logging":277}],360:[function(require,module,exports){
+},{"./Transform":396,"./screen":402,"datalib":339,"vega-dataflow":215,"vega-logging":279}],386:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -67224,7 +68760,7 @@ prototype.transform = function(input) {
 
 module.exports = GeoPath;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Geo":359,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],361:[function(require,module,exports){
+},{"./Geo":385,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],387:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -67326,7 +68862,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Hierarchy;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":349,"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow":215,"vega-logging":277}],362:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"./screen":402,"datalib":339,"vega-dataflow":215,"vega-logging":279}],388:[function(require,module,exports){
 var dl = require('datalib'),
     log = require('vega-logging'),
     Tuple = require('vega-dataflow').Tuple,
@@ -67429,7 +68965,7 @@ function partition(data, groupby, orderby) {
 }
 
 module.exports = Impute;
-},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],363:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],389:[function(require,module,exports){
 var Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
     Transform = require('./Transform');
@@ -67556,7 +69092,7 @@ prototype.transform = function(input) {
 };
 
 module.exports = LinkPath;
-},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],364:[function(require,module,exports){
+},{"./Transform":396,"vega-dataflow":215,"vega-logging":279}],390:[function(require,module,exports){
 var Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
     Transform = require('./Transform');
@@ -67628,7 +69164,7 @@ prototype.transform = function(input, reset) {
 };
 
 module.exports = Lookup;
-},{"./Transform":370,"vega-dataflow":215,"vega-logging":277}],365:[function(require,module,exports){
+},{"./Transform":396,"vega-dataflow":215,"vega-logging":279}],391:[function(require,module,exports){
 var dl = require('datalib'),
     Deps = require('vega-dataflow').Dependencies;
 
@@ -67732,7 +69268,7 @@ prototype.set = function(value) {
       return v.field;
     } else if (v.signal !== undefined) {
       p._resolution = true;
-      p._transform.dependency(Deps.SIGNALS, v.signal);
+      p._transform.dependency(Deps.SIGNALS, dl.field(v.signal)[0]);
       p._signals.push({
         index: i,
         value: function(graph) { return graph.signalRef(v.signal); }
@@ -67756,7 +69292,7 @@ prototype.set = function(value) {
 };
 
 module.exports = Parameter;
-},{"datalib":27,"vega-dataflow":215}],366:[function(require,module,exports){
+},{"datalib":339,"vega-dataflow":215}],392:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -67822,7 +69358,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Pie;
-},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],367:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],393:[function(require,module,exports){
 var Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
     Transform = require('./Transform'),
@@ -67876,7 +69412,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Rank;
-},{"./BatchTransform":349,"./Transform":370,"vega-dataflow":215,"vega-logging":277}],368:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"vega-dataflow":215,"vega-logging":279}],394:[function(require,module,exports){
 var dl = require('datalib'),
     log  = require('vega-logging'),
     Transform = require('./Transform');
@@ -67900,7 +69436,7 @@ prototype.transform = function(input) {
 };
 
 module.exports = Sort;
-},{"./Transform":370,"datalib":27,"vega-logging":277}],369:[function(require,module,exports){
+},{"./Transform":396,"datalib":339,"vega-logging":279}],395:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -67998,7 +69534,7 @@ function partition(data, groupby, sortby, field) {
 }
 
 module.exports = Stack;
-},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],370:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],396:[function(require,module,exports){
 var df = require('vega-dataflow'),
     Base = df.Node.prototype, // jshint ignore:line
     Deps = df.Dependencies,
@@ -68059,7 +69595,7 @@ prototype.output = function(map) {
 };
 
 module.exports = Transform;
-},{"./Parameter":365,"vega-dataflow":215}],371:[function(require,module,exports){
+},{"./Parameter":391,"vega-dataflow":215}],397:[function(require,module,exports){
 var dl = require('datalib'),
     Tuple = require('vega-dataflow').Tuple,
     log = require('vega-logging'),
@@ -68124,7 +69660,7 @@ prototype.batchTransform = function(input, data) {
 };
 
 module.exports = Treeify;
-},{"./BatchTransform":349,"./Transform":370,"datalib":27,"vega-dataflow":215,"vega-logging":277}],372:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"datalib":339,"vega-dataflow":215,"vega-logging":279}],398:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     dl = require('datalib'),
@@ -68213,7 +69749,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Treemap;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":349,"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow":215,"vega-logging":277}],373:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"./screen":402,"datalib":339,"vega-dataflow":215,"vega-logging":279}],399:[function(require,module,exports){
 (function (global){
 var d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
     Tuple = require('vega-dataflow/src/Tuple'),
@@ -68253,7 +69789,7 @@ prototype.batchTransform = function(input, data) {
 
   // build and assign path strings
   for (var i=0; i<data.length; ++i) {
-    Tuple.set(data[i], pathname, 'M' + polygons[i].join('L') + 'Z');
+    if (polygons[i]) Tuple.set(data[i], pathname, 'M' + polygons[i].join('L') + 'Z');
   }
 
   // return changeset
@@ -68263,7 +69799,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Voronoi;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":349,"./Transform":370,"./screen":376,"vega-dataflow/src/Tuple":214,"vega-logging":277}],374:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"./screen":402,"vega-dataflow/src/Tuple":214,"vega-logging":279}],400:[function(require,module,exports){
 (function (global){
 var dl = require('datalib'),
     d3 = (typeof window !== "undefined" ? window['d3'] : typeof global !== "undefined" ? global['d3'] : null),
@@ -68375,7 +69911,7 @@ prototype.batchTransform = function(input, data) {
 
 module.exports = Wordcloud;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BatchTransform":349,"./Transform":370,"./screen":376,"datalib":27,"vega-dataflow/src/Tuple":214,"vega-logging":277,"vega-scenegraph":278}],375:[function(require,module,exports){
+},{"./BatchTransform":375,"./Transform":396,"./screen":402,"datalib":339,"vega-dataflow/src/Tuple":214,"vega-logging":279,"vega-scenegraph":280}],401:[function(require,module,exports){
 module.exports = {
   aggregate:    require('./Aggregate'),
   bin:          require('./Bin'),
@@ -68401,7 +69937,7 @@ module.exports = {
   voronoi:      require('./Voronoi'),
   wordcloud:    require('./Wordcloud')
 };
-},{"./Aggregate":348,"./Bin":350,"./CountPattern":351,"./Cross":352,"./Facet":353,"./Filter":355,"./Fold":356,"./Force":357,"./Formula":358,"./Geo":359,"./GeoPath":360,"./Hierarchy":361,"./Impute":362,"./LinkPath":363,"./Lookup":364,"./Pie":366,"./Rank":367,"./Sort":368,"./Stack":369,"./Treeify":371,"./Treemap":372,"./Voronoi":373,"./Wordcloud":374}],376:[function(require,module,exports){
+},{"./Aggregate":374,"./Bin":376,"./CountPattern":377,"./Cross":378,"./Facet":379,"./Filter":381,"./Fold":382,"./Force":383,"./Formula":384,"./Geo":385,"./GeoPath":386,"./Hierarchy":387,"./Impute":388,"./LinkPath":389,"./Lookup":390,"./Pie":392,"./Rank":393,"./Sort":394,"./Stack":395,"./Treeify":397,"./Treemap":398,"./Voronoi":399,"./Wordcloud":400}],402:[function(require,module,exports){
 module.exports = {
   size:   [{signal: 'width'}, {signal: 'height'}],
   mid:    [{expr: 'width/2'}, {expr: 'height/2'}],
@@ -68410,7 +69946,7 @@ module.exports = {
     {expr: '[width+padding.right, height+padding.bottom]'}
   ]
 };
-},{}],377:[function(require,module,exports){
+},{}],403:[function(require,module,exports){
 var dl = require('datalib');
 
 var TIME    = 'time',
@@ -68474,13 +70010,24 @@ function getFormatter(scale, tickCount, formatType, str) {
 module.exports = {
   getTickFormat: getTickFormat
 };
-},{"datalib":27}],378:[function(require,module,exports){
+},{"datalib":339}],404:[function(require,module,exports){
 var dl = require('datalib'),
     u  = {};
 
 dl.extend(u, require('./format'));
 module.exports = dl.extend(u, dl);
-},{"./format":377,"datalib":27}],379:[function(require,module,exports){
+},{"./format":403,"datalib":339}],405:[function(require,module,exports){
+module.exports = function(def, config, property, defaultVal) {
+  if (def[property] !== undefined) {
+    return def[property];
+  } else if (config !== undefined && config[property] !== undefined) {
+    return config[property];
+  } else if (defaultVal !== undefined) {
+    return defaultVal;
+  }
+  return undefined;
+};
+},{}],406:[function(require,module,exports){
 var $ = require('jquery'),
     _ = require('underscore');
 var vg = require('vega'),
@@ -68631,7 +70178,7 @@ var cccr = function (args, options) {
 
 module.exports = cccr;
 
-},{"./stats":382,"jquery":59,"underscore":205,"vega":317,"vega-lite":276}],380:[function(require,module,exports){
+},{"./stats":409,"jquery":59,"underscore":205,"vega":319,"vega-lite":278}],407:[function(require,module,exports){
 (function (global){
 var _ = require('underscore');
 var d3 = require('d3');
@@ -68647,14 +70194,15 @@ var React = require('react');
 var ReactDOM = require('react-dom');
 var md5 = require('md5');
 
-var kde = require('./stats').kde;
-var kde2d = require('./stats').kde2d;
+var stats = require('./stats'),
+    kde = stats.kde,
+    kde2d = stats.kde2d;
 
 function runningInBrowser() {
   return typeof window === 'object';
 }
 
-function isErp(x) {
+function isDist(x) {
   // TODO: take from dippl
   return x.support && x.score;
 }
@@ -68827,7 +70375,7 @@ kindPrinter.r = function (args, options) {
     "data": { "values": densityEstimates },
     "mark": "line",
     encoding: {
-      x: { "type": "quantitative", "field": "item", axis: { title: fieldName } },
+      x: { "type": "quantitative", "field": "item", axis: { title: fieldName }, scale: { zero: false } },
       y: { "type": "quantitative", "field": "density" }
     }
   };
@@ -68915,7 +70463,7 @@ kindPrinter.cr = function (args, options) {
     "data": { "values": densityEstimatesTidied },
     "mark": "line",
     encoding: {
-      x: { "type": "quantitative", "field": "item", axis: { title: rDimName } },
+      x: { "type": "quantitative", "field": "item", axis: { title: rDimName }, scale: { zero: false } },
       y: { "type": "quantitative", "field": "density" },
       color: { "type": "nominal", "field": cDimName, axis: { title: cDimName } }
     }
@@ -68940,8 +70488,8 @@ kindPrinter.rr = function (args, options) {
     data: { values: data },
     mark: "point",
     encoding: {
-      x: { field: field1Name, type: "quantitative" },
-      y: { field: field2Name, type: "quantitative" },
+      x: { field: field1Name, type: "quantitative", scale: { zero: false } },
+      y: { field: field2Name, type: "quantitative", scale: { zero: false } },
       size: { field: 'prob', type: 'quantitative' },
       color: { field: 'prob', type: 'quantitative' },
       order: { "field": 'prob', "type": "quantitative", "sort": "ascending" }
@@ -69048,7 +70596,7 @@ kindPrinter.ccr = function (args, options) {
     "data": { "values": densityEstimatesTidied },
     "mark": "line",
     encoding: {
-      x: { "type": "quantitative", "field": "item", axis: { title: rDimName } },
+      x: { "type": "quantitative", "field": "item", axis: { title: rDimName }, scale: { zero: false } },
       y: { "type": "quantitative", "field": "density" },
       color: { "type": "nominal", "field": cDimName, axis: { title: cDimName } },
       column: { type: 'nominal', field: facetDimName }
@@ -69079,8 +70627,8 @@ kindPrinter.crr = function (args, options) {
     mark: "point",
     encoding: {
       column: { field: cDimNames[0], type: "nominal" },
-      x: { field: rDimNames[0], type: "quantitative" },
-      y: { field: rDimNames[1], type: "quantitative" },
+      x: { field: rDimNames[0], type: "quantitative", scale: { zero: false } },
+      y: { field: rDimNames[1], type: "quantitative", scale: { zero: false } },
       size: { field: 'prob', type: 'quantitative' },
       color: { field: 'prob', type: 'quantitative' },
       order: { 'field': 'prob', 'type': 'quantitative', 'sort': 'ascending' }
@@ -69219,7 +70767,7 @@ function auto(obj, options) {
     }));
   };
 
-  if (!isErp(obj)) {
+  if (!isDist(obj)) {
     // TODO: write wpEditor.warn method, use it to inform user that auto only works on ERPs
     // (though maybe this isn't necessary since we are using __print__ decorator in wp-editor?)
     // maybe warn and fall back to print
@@ -69345,7 +70893,9 @@ var GraphComponent = React.createClass({
 // parse a vega-lite or regular vega description and render it
 function renderSpec(spec, _options) {
   var options = _.defaults(_options || {}, { regularVega: false,
-    fileName: false
+    fileName: false,
+    smartNumbers: true,
+    smartTickLabels: true
   });
 
   // OPTIMIZE: don't mutate spec (but probably don't just want to clone either, since
@@ -69353,100 +70903,98 @@ function renderSpec(spec, _options) {
 
   var vgSpec = options.regularVega ? spec : vl.compile(spec).spec;
 
-  var formatterKeys = [',r',
-  //',g',
-  ',.1r', ',.2r', ',.3r', ',.4r', ',.5r', ',.6r',
-  //',.1g',',.2g',',.3g',',.4g',',.5g',',.6g',
-  '.1e'];
-  var formatters = _.object(formatterKeys, _.map(formatterKeys, function (s) {
-    return d3.format(s);
-  }));
-
   // format axes: try to guess a good number formatter and format
   // axes so they don't overlap
-  var allData = vgSpec.data;
-  _.each(vgSpec.marks, function (mark) {
-    var scales = mark.scales;
-    _.each(mark.axes, function (axis) {
-      var scale = _.findWhere(scales, { name: axis.scale }),
-          scaleDomain = scale.domain;
 
-      var domain;
-      if (_.isArray(scaleDomain)) {
-        domain = scaleDomain;
-      } else {
-        var dataSource = scale.domain.data,
-            dataField = scale.domain.field || 'item';
-        domain = _.pluck(_.findWhere(allData, { name: dataSource }).values, dataField);
-      }
+  if (options.smartNumbers) {
+    var formatterKeys = [',r',
+    //',g',
+    ',.1r', ',.2r', ',.3r', ',.4r', ',.5r', ',.6r',
+    //',.1g',',.2g',',.3g',',.4g',',.5g',',.6g',
+    '.1e'];
+    var formatters = _.object(formatterKeys, _.map(formatterKeys, function (s) {
+      return d3.format(s);
+    }));
 
-      // get tick values
-      var sc = d3.scale.linear();
-      sc.domain(domain);
-      sc.range([scale.rangeMin, scale.rangeMax]);
-      if (scale.nice) {
-        sc.nice();
-      }
-      var ticks = sc.ticks(axis.ticks);
+    var allData = vgSpec.data;
+    _.each(vgSpec.marks, function (mark) {
+      var scales = mark.scales;
+      _.each(mark.axes, function (axis) {
+        var scale = _.findWhere(scales, { name: axis.scale }),
+            scaleDomain = scale.domain;
 
-      // score formatters by the length of the longest string they produce on ticks
-      var scores = _.map(formatterKeys, function (key) {
-        var f = formatters[key];
-        var strings = _.map(ticks, function (tick) {
-          return f(tick);
-        });
-        var stringsAdjusted;
-        // require that formatter produces different strings for different ticks
-        var score;
-        if (_.unique(strings).length < strings.length) {
-          score = 9999999999;
+        var domain;
+        if (_.isArray(scaleDomain)) {
+          domain = scaleDomain;
         } else {
-          // don't penalize for commas
-          stringsAdjusted = _.map(strings, function (s) {
-            return s.replace(',', '');
+          var dataSource = scale.domain.data,
+              dataField = scale.domain.field || 'item';
+          domain = _.pluck(_.findWhere(allData, { name: dataSource }).values, dataField);
+        }
+
+        // get tick values
+        var sc = d3.scale.linear();
+        sc.domain(domain);
+        sc.range([scale.rangeMin, scale.rangeMax]);
+        if (scale.nice) {
+          sc.nice();
+        }
+        var ticks = sc.ticks(axis.ticks);
+
+        // score formatters by the length of the longest string they produce on ticks
+        var scores = _.map(formatterKeys, function (key) {
+          var f = formatters[key];
+          var strings = _.map(ticks, function (tick) {
+            return f(tick);
           });
-          var lengths = _.pluck(stringsAdjusted, 'length');
-          score = _.max(lengths);
-        };
-        return { key: key,
-          score: score + (key == '.1e' ? 1 : 0),
-          strings: strings,
-          stringsAdjusted
-        }; // extra penalty for .1e
+          var stringsAdjusted;
+          // require that formatter produces different strings for different ticks
+          var score;
+          if (_.unique(strings).length < strings.length) {
+            score = 9999999999;
+          } else {
+            // don't penalize for commas
+            stringsAdjusted = _.map(strings, function (s) {
+              return s.replace(',', '');
+            });
+            var lengths = _.pluck(stringsAdjusted, 'length');
+            score = _.max(lengths);
+          };
+          return { key: key,
+            score: score + (key == '.1e' ? 1 : 0),
+            strings: strings,
+            stringsAdjusted: stringsAdjusted
+          }; // extra penalty for .1e
+        });
+
+        // get best formatter
+        var bestScore = _.min(_.pluck(scores, 'score'));
+        var bestKeys = _.pluck(_.where(scores, { score: bestScore }), 'key');
+
+        // break ties: prefer, in this order:
+        // ,r > ,g >  ,.Xr > ,.Xg > ,.1e
+
+        var bestKey = _.find(bestKeys, function (key) {
+          return key == ',r';
+        }) || _.find(bestKeys, function (key) {
+          return key == ',g';
+        }) || _.find(bestKeys, function (key) {
+          return key.indexOf('g') > -1;
+        }) || _.find(bestKeys, function (key) {
+          return key.indexOf('r') > -1;
+        }) || bestKeys[0];
+
+        axis.format = bestKey;
       });
-
-      // get best formatter
-      var bestScore = _.min(_.pluck(scores, 'score'));
-      var bestKeys = _.pluck(_.where(scores, { score: bestScore }), 'key');
-
-      // break ties: prefer, in this order:
-      // ,r > ,g >  ,.Xr > ,.Xg > ,.1e
-
-      var bestKey = _.find(bestKeys, function (key) {
-        return key == ',r';
-      }) || _.find(bestKeys, function (key) {
-        return key == ',g';
-      }) || _.find(bestKeys, function (key) {
-        return key.indexOf('g') > -1;
-      }) || _.find(bestKeys, function (key) {
-        return key.indexOf('r') > -1;
-      }) || bestKeys[0];
-
-      axis.format = bestKey;
-
-      if (axis.type == 'x') {
-        axis.properties = {
-          labels: {
-            // TODO: the actual strings that show up in the picture can differ
-            // from what we compute here, so i'm just using a large constant angle
-            // as a temporary hack
-            angle: { "value": bestScore < 4 ? 0 : 30 },
-            align: { "value": 'left' }
-          }
-        };
-      }
     });
-  });
+  }
+
+  // format tick labels: try to guess a good rotation
+
+  if (options.smartTickLabels) {
+    var marks = vgSpec.marks;
+    //var vgSpec.marks
+  }
 
   var resultContainer;
 
@@ -69467,7 +71015,7 @@ function renderSpec(spec, _options) {
       ReactDOM.render(r, resultContainer, function () {
         var comp = this;
         var node = this.refs.content;
-        $(node).html('&nbsp;&nbsp;&nbsp&nbsp;rendering...');
+        $(node).css({ 'min-height': 255 }).html('&nbsp;&nbsp;&nbsp&nbsp;Rendering graph...');
 
         vg.parse.spec(vgSpec, function (error, chart) {
           $(node).empty();
@@ -69506,11 +71054,20 @@ function bar(df, options) {
   // TODO: assert that groupBy variable is actually in the df
 
   var vlSpec = {
-    "data": { values: df },
-    "mark": "bar",
-    "encoding": {
-      "x": { "field": xName, "type": options.xType, axis: { title: options.xLabel || xName } },
-      "y": { "field": yName, "type": "quantitative", axis: { title: options.yLabel || yName } }
+    data: { values: df },
+    mark: "bar",
+    encoding: {
+      x: { field: xName,
+        type: options.xType,
+        axis: { title: options.xLabel || xName
+        },
+        scale: { zero: false } },
+      y: { field: yName,
+        type: "quantitative",
+        axis: { title: options.yLabel || yName }
+        // TODO: enable this once i write a custom spec for hist
+        //scale: {zero: false}
+      }
     }
   };
 
@@ -69561,63 +71118,106 @@ function barWrapper() {
 }
 
 // currently hist operates on a collection of samples as well (e.g., from repeat)
+// TODO: emit hist-specific vega-lite spec rather than relying on bar
+// - use zero:true for y but zero:false for x
+// - create custom ticks so that bars sit in between ticks
 function hist(obj, options) {
   options = _.defaults(options || {}, { numBins: 30 });
 
   var erp;
   if (_.isArray(obj)) {
     erp = samplesToErp(obj);
-  } else if (isErp(obj)) {
+  } else if (isDist(obj)) {
     erp = obj;
   } else {
     throw new Error('hist takes an ERP or a list of samples as an argument');
   }
 
-  var support = erp.support();
-  var probs = support.map(function (x) {
+  var rawSupport = erp.support(),
+      probs = rawSupport.map(function (x) {
     return Math.exp(scorer(erp, x));
-  });
-  if (typeof support[0] == 'number') {
+  }),
+      support;
+
+  if (isDataFrame(rawSupport)) {
+    var key = _.keys(rawSupport[0])[0];
+    options.xLabel = options.xLabel || key;
+    support = _.pluck(rawSupport, key);
+  } else {
+    support = rawSupport;
+  }
+
+  var xValues, xTickLabels, yValues;
+
+  if (_.every(support, _.isNumber)) {
+
     var min = _.min(support),
         max = _.max(support),
         binWidth = (max - min) / options.numBins;
 
-    // TODO: move into stats.js, maybe rely on d3 methods
-    // OPTIMIZE
-    var bins = [];
-    for (var i = 0; i < options.numBins; i++) {
-      var currentBin = {
-        lower: min + i * binWidth,
-        upper: min + (i + 1) * binWidth
-      };
-      currentBin.entries = _.filter(support, function (x) {
-        return x >= currentBin.lower && x < currentBin.upper;
-      });
-      bins.push(currentBin);
+    var binIndices = d3.range(options.numBins),
+        bins = binIndices.map(function () {
+      return [];
+    }),
+        binProbs = binIndices.map(function () {
+      return 0;
+    }),
+        binMeans = binIndices.map(function (i) {
+      return min + (i + 0.5) * binWidth;
+    });
+
+    // place values into the appropriate bins
+    var scale = d3.scale.quantile().domain(support).range(binIndices);
+    for (var i = 0, ii = support.length; i < ii; i++) {
+      var x = support[i];
+      var j = scale(x);
+      bins[j].push(x);
+      binProbs[j] += probs[i];
     }
 
-    // make sure max point gets into histogram
-    bins[bins.length - 1].upper += Number.EPSILON;
-
-    var binProbs = bins.map(function (bin) {
-      return util.sum(_.map(bin.entries, function (x) {
-        return Math.exp(scorer(erp, x));
-      }));
-    });
-
-    // TODO: do ticks based on bin boundaries, rather than showing bin means, as i've done here
-    var binLabels = _.map(bins, function (bin) {
-      return ((bin.upper + bin.lower) / 2).toExponential(2);
-    });
-
-    barWrapper(binLabels, binProbs, { xLabel: 'Bin mean', yLabel: 'Probability', xType: 'quantitative' });
-
-    return;
+    xTickLabels = binIndices.reduce(function (acc, x, i) {
+      var extent = scale.invertExtent(x);
+      return acc.concat(i == 0 ? extent : extent[1]);
+    }, []);
+    xValues = binMeans;
+    yValues = binProbs;
+  } else {
+    xValues = support.map(stringifyIfObject);
+    yValues = probs;
   }
 
-  var supportStringified = support.map(stringifyIfObject);
+  var df = xValues.map(function (x, i) {
+    var y = yValues[i];
+    return _.object([['x', x], ['y', y]]);
+  });
 
-  barWrapper(supportStringified, probs, _.extend({ xLabel: 'Value', yLabel: 'Probability' }, options));
+  var vlSpec = {
+    data: { values: df },
+    mark: "bar",
+    encoding: {
+      x: { field: 'x',
+        type: options.xType,
+        axis: { title: options.xLabel,
+          values: xTickLabels || xValues
+        },
+        scale: { zero: false,
+          domain: [min, max]
+        } },
+      y: { field: 'y',
+        type: "quantitative",
+        axis: { title: 'Probability' },
+        // TODO: get false working
+        scale: { zero: true }
+      },
+      // TODO: this is a heuristic hack to make the bars thinner
+      // if there are more bins
+      size: { value: 120 / options.numBins }
+    }
+  };
+
+  renderSpec(vlSpec, { smartNumbers: true });
+
+  // barWrapper(supportStringified, probs, _.extend({xLabel: 'Value', yLabel: 'Probability'}, options))
 };
 
 function scatter(df, options) {
@@ -69667,10 +71267,23 @@ function scatterWrapper() {
 
 // TODO: figure out more idiomatic way of reducing empty space around heatmap
 // TODO: add numBins option, log option
-function heatMap(samples) {
+// TODO: for erps, do weighted kde2d instead of passing n in options and converting to samples (look at http://stackoverflow.com/q/3985135/351392)
+function heatMap(arg, options) {
+  var samples = [];
 
-  if (isErp(samples)) {
-    throw new Error('erp arguments to heat map not yet supported');
+  if (!isDist(arg)) {
+    samples = arg;
+  } else {
+    var n = options.n;
+    var support = arg.support();
+
+    support.forEach(function (s) {
+      var prob = Math.exp(arg.score(s)),
+          m = Math.round(n * prob);
+      for (var i = 0; i < m; i++) {
+        samples.push(s);
+      }
+    });
   }
 
   var x, y;
@@ -69685,55 +71298,94 @@ function heatMap(samples) {
 
   var densityEstimate = kde2d(x, y);
 
-  var formatter = d3.format('.1e');
-  _.forEach(densityEstimate, function (row) {
-    row.x = formatter(row.x);
-    row.y = formatter(row.y);
-  });
+  // var formatter = d3.format('.1e');
+  // _.forEach(densityEstimate,
+  //           function(row) {
+  //             row.x = formatter(row.x);
+  //             row.y = formatter(row.y);
+  //           })
 
   var spec = {
-    data: [{ 'name': 'csv', values: densityEstimate }],
-    "padding": { "left": 50, "top": 10, "right": 150, "bottom": 50 },
+    data: [{ name: 'csv', values: densityEstimate }],
+    "width": 350,
+    "height": 350,
     "scales": [{
       "name": "x",
-      "type": "ordinal",
-      "domain": { "data": "csv", "field": "x" },
-      "range": "width"
+      "type": "linear",
+      "domain": {
+        "data": "csv",
+        "field": "x"
+      },
+      "range": "width",
+      "zero": false
     }, {
       "name": "y",
-      "type": "ordinal",
-      "domain": { "data": "csv", "field": "y" },
+      "type": "linear",
+      "domain": {
+        "data": "csv",
+        "field": "y"
+      },
       "range": "height",
-      "reverse": true
+      "zero": false
     }, {
       "name": "c",
       "type": "linear",
-      "domain": { "data": "csv", "field": "density" },
+      "domain": {
+        "data": "csv",
+        "field": "density"
+      },
       "range": ["#ffffff", "#313695"]
     }],
-    "axes": [{ "type": "x", "scale": "x", "format": ".1e",
-      "properties": { "labels": { "angle": { "value": 45 }, "align": { "value": "left" } } }
-
-    }, { "type": "y", "scale": "y", "format": ".1e"
-
+    "axes": [{
+      "type": "x",
+      "scale": "x",
+      "offset": 16,
+      "ticks": 10,
+      "title": keys[0],
+      "properties": {
+        "labels": {
+          "angle": {
+            "value": 45
+          },
+          "align": {
+            "value": "left"
+          }
+        }
+      }
+    }, {
+      "type": "y",
+      "scale": "y",
+      "offset": 16,
+      "ticks": 10,
+      "title": keys[1]
     }],
     "marks": [{
-      "type": "rect",
-      "from": { "data": "csv" },
+      "type": "symbol",
+      "from": {
+        "data": "csv"
+      },
       "properties": {
         "enter": {
-          "x": { "scale": "x", "field": "x" },
-          "width": { "scale": "x", "band": true },
-          "y": { "scale": "y", "field": "y" },
-          "height": { "scale": "y", "band": true },
-          "fill": { "scale": "c", "field": "density" },
-          "stroke": { "value": "#dddddd" },
-          "strokeWidth": { "value": "0.2" }
+          "shape": { "value": "square" },
+          "x": {
+            "scale": "x",
+            "field": "x"
+          },
+          "size": { "value": 210 },
+          "y": {
+            "scale": "y",
+            "field": "y"
+          },
+          "fill": {
+            "scale": "c",
+            "field": "density"
+          }
         }
       }
     }],
-    "legends": [{ "fill": "c", "values": [0, _.max(_.pluck(densityEstimate, 'density'))] }],
-    "config": { "numberFormat": ".1e" }
+    "legends": [{
+      "title": "density",
+      "fill": "c", "values": [0, _.max(_.pluck(densityEstimate, 'density'))] }]
   };
 
   renderSpec(spec, { regularVega: true });
@@ -69748,7 +71400,7 @@ function density(x, options) {
     return _.isNumber(z) ? z : _.values(z)[0];
   }
 
-  var xIsErp = isErp(x);
+  var xIsErp = isDist(x);
   var support = xIsErp ? _.map(x.support(), extractNumber) : x,
       weights = xIsErp ? _.map(getScores(x), Math.exp) : false;
 
@@ -69770,7 +71422,7 @@ function density(x, options) {
       "x": { "field": "item",
         "type": "quantitative",
         axis: { title: 'Value' },
-        scale: { domain: [min, max] }
+        scale: { domain: [min, max], zero: false }
       },
       "y": { "field": "density", "type": "quantitative", axis: { title: 'Density' } }
     },
@@ -69844,7 +71496,7 @@ function table(obj, options) {
   var erp;
   if (_.isArray(obj)) {
     erp = samplesToErp(obj);
-  } else if (isErp(obj)) {
+  } else if (isDist(obj)) {
     erp = obj;
   } else {
     throw new Error('table takes an ERP or a list of samples as an argument');
@@ -69877,6 +71529,7 @@ function table(obj, options) {
 
 // TODO: display in a wrapped row
 // TODO: optimize
+// TODO: build as single vega spec with group marks
 function marginals(erp, options) {
   var fullSupport = erp.support(),
       fullScores = getScores(erp),
@@ -69904,6 +71557,13 @@ function marginals(erp, options) {
   });
 }
 
+var coarsen = function (xs, numBins) {
+  var scale = d3.scale.quantile().domain(xs).range(d3.range(4));
+  return xs.map(function (x) {
+    return scale(x) + '';
+  });
+};
+
 var viz = {
   d3auto: require('./old').print,
   auto: auto,
@@ -69914,19 +71574,24 @@ var viz = {
   line: lineWrapper,
   table: table,
   heatMap: heatMap,
-  marginals: marginals
+  marginals: marginals,
+  renderSpec: renderSpec,
+  stats: stats,
+  coarsen: coarsen
 };
 
 if (typeof module !== 'undefined' && module.exports) {
   exports = module.exports = viz;
 }
 
-if (typeof window === 'object') {
-  window.viz = viz;
-}
+// if (typeof window === 'object') {
+//   window.viz = viz;
+// }
+
+global.viz = viz;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./cccr":379,"./old":381,"./stats":382,"d3":7,"fs":383,"jquery":59,"md5":63,"react":203,"react-dom":65,"underscore":205,"vega":317,"vega-lite":276}],381:[function(require,module,exports){
+},{"./cccr":406,"./old":408,"./stats":409,"d3":7,"fs":410,"jquery":59,"md5":63,"react":203,"react-dom":65,"underscore":205,"vega":319,"vega-lite":278}],408:[function(require,module,exports){
 var fs = require('fs');
 
 var numPlots = 0;
@@ -70426,7 +72091,7 @@ function plotMarginals(labels, counts, resultDivSelector) {
 
 module.exports = { print: print };
 
-},{"fs":383}],382:[function(require,module,exports){
+},{"fs":410}],409:[function(require,module,exports){
 var _ = require('underscore');
 var d3 = require('d3');
 
@@ -70649,16 +72314,21 @@ function kde2d(x, y) {
   return ret;
 }
 
-module.exports = {
+var exports = {
   kde: kde,
   kde2d: kde2d
 };
 
-},{"d3":7,"underscore":205}],383:[function(require,module,exports){
+if (typeof viz !== 'undefined') {
+  viz.stats = exports;
+}
+module.exports = exports;
 
-},{}],384:[function(require,module,exports){
-arguments[4][383][0].apply(exports,arguments)
-},{"dup":383}],385:[function(require,module,exports){
+},{"d3":7,"underscore":205}],410:[function(require,module,exports){
+
+},{}],411:[function(require,module,exports){
+arguments[4][410][0].apply(exports,arguments)
+},{"dup":410}],412:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -70759,4 +72429,4 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}]},{},[380]);
+},{}]},{},[407]);

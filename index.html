@@ -2,11 +2,11 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <script src="webppl-editor.js"></script>
+    <script src="http://s3-us-west-2.amazonaws.com/cdn.webppl.org/webppl-editor-0.9.4.js"></script>
     <script src="webppl-viz.js"></script>
     <script src="jquery.js"></script>
     <link rel="stylesheet" href="webppl-viz.css">
-    <link rel="stylesheet" href="webppl-editor.css">
+    <link rel="stylesheet" href="http://s3-us-west-2.amazonaws.com/cdn.webppl.org/webppl-editor-0.9.4.css">
 
     <style>
      pre {
@@ -42,21 +42,20 @@
      pre {
          font-size: 12px;
      }
+
+     .col {
+         float: left;
+         width: 45%;
+         margin-left: 1%
+     }
     </style>
   </head>
   <body>
+    <div class="col">
     scratch pad:
-    <pre id="testing"><code></code></pre>
+      <pre id="testing"><code></code></pre>
 
-    silverman's rule can fail:
-    <pre><code>var model = function() {
-  var m = flip() ? 10 : -10;
-  return gaussian(m,1);
-}
-var dist = Rejection(model, {samples: 200});
-viz.hist(dist)
-viz.density(dist)</code></pre>
-
+      <h3>functionality</h3>
     primitives:
     <pre><code>viz.bar(['a','b','c'], [1,2,3])
 viz.hist(repeat(1e4, function() { return uniformDraw(['a','b','c']) }))
@@ -64,6 +63,11 @@ viz.scatter([1,2,3],[4,5,6])
 viz.line([1,3,2],[4,5,6])
 viz.density(repeat(1e2, function() { return gaussian(0,1) }))
 viz.heatMap(repeat(2e2, function() { return [gaussian(0,1), beta(0.5,0.5)] })) </code></pre>
+
+    hist:
+    <pre><code>
+viz.hist(MH(function() { return {a: randomInteger(30) } }, 60), {numBins: 9})
+viz.hist(MH( function() { return {p: uniform(0, 1)} }, 1000), {numBins: 10})</code></pre>
 
     table:
     <pre><code>viz.table(ParticleFilter(function() {
@@ -84,6 +88,15 @@ viz.heatMap(repeat(2e2, function() { return [gaussian(0,1), beta(0.5,0.5)] })) <
     <pre><code>viz.auto(ParticleFilter(function() {
   return {x: beta(3,2)};
 },500))</code></pre>
+
+    marginals:
+    <pre><code>
+viz.marginals(MH(function() {
+  return {x1: uniform(0,1),
+          x2: uniformDraw(['fruit', 'vegetable'])
+         }
+}, 100))
+    </code></pre>
 
     cc:
     <pre><code>viz.auto(Enumerate(function() {
@@ -147,9 +160,20 @@ viz.heatMap(repeat(2e2, function() { return [gaussian(0,1), beta(0.5,0.5)] })) <
   return {x: x, y: y, z: z};
 },500))</code></pre>
 
-    smart axis number formatting:
-    <pre><code>
+    </div>
+    <div class="col">
+
+      <h3>user friendliness</h3>
+      tick label rotation:
+      <pre><code>
+var dist = Enumerate(function() {uniformDraw(['alphabet','city','soup']) })
+viz.auto(dist)
+      </code></pre>
+
+      smart axis number formatting:
+      <pre><code>
 viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 0.00000001}; },500))
+///fold:
 viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 0.0000001}; },500))
 viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 0.000001}; },500))
 viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 0.00001}; },500))
@@ -166,16 +190,27 @@ viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 100000}; },500))
 viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 1000000}; },500))
 viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 10000000}; },500))
 viz.auto(ParticleFilter(function() { return {x: beta(3,2) * 100000000}; },500))
-    </code></pre>
+///
+      </code></pre>
 
-    marginals:
-    <pre><code>
-viz.marginals(MH(function() {
-  return {x1: uniform(0,1),
-          x2: uniformDraw(['fruit', 'vegetable'])
-         }
-}, 100))
-    </code></pre>
+      <h3>regression testing</h3>
+
+      silverman's rule can fail:
+      <pre><code>var model = function() { gaussian(flip() ? 30 : -30, 1); }
+var dist = Rejection(model, {samples: 200});
+viz.hist(dist)
+viz.density(dist)</code></pre>
+
+      make sure x axis doesn't force lower bound of zero:
+      <pre><code>
+      var model = function() { return gaussian(1000,20) }
+var dist = MH(model, 500)
+viz.density(dist)
+viz.auto(dist)
+      </code></pre>
+
+  </div>
+
 
   </body>
 <script>
@@ -195,6 +230,6 @@ viz.marginals(MH(function() {
 
 </script>
 <!-- <script src="webppl.js" defer></script> -->
-<script src="//s3-us-west-2.amazonaws.com/cdn.webppl.org/webppl-v0.8.1-3ac8d4d.js" defer></script>
+<script src="//s3-us-west-2.amazonaws.com/cdn.webppl.org/webppl-v0.8.1-bb926de.js" defer></script>
 
 </html>
