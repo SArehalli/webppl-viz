@@ -1442,12 +1442,18 @@ function marginals(erp, options) {
         }
       }
 
+      // append the field to each filename to prevent duplicates
+      var fauxOptions = options? JSON.parse(JSON.stringify(options)) : null;
+      if (fauxOptions) {
+        fauxOptions.fileName = options.fileName? field + "_" + options.fileName : null; 
+      }
+
       // only call print if running in browser
       if (runningInBrowser()) {
         print(field + ":");
       }
 
-      viz.auto(fauxErp, options)
+      viz.auto(fauxErp, fauxOptions)
     }
   )
 }
